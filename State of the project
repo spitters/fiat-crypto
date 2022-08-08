@@ -1,0 +1,43 @@
+Points of interest:
+
+Everything is in src/Bedrock
+
+Specs:
+Specs/AbstractField.v - Spec for arbitrary field.
+Specs/PrimeField.v - Spec for prime-order field.
+
+Instantiation of fields:
+Field/Synthesis/Examples/bls12_prime.v - Synthesis of Bedrock2 functions for prime-order field
+Field/Synthesis/Examples/bls12_Fp2 - Synthesis of Bedrock2 functions for quadratic field extension.
+
+from_list is a an auxiliary function used for the group operation. Its spec can be found in AbstractField.v under section FromList.
+Field/Synthesis/Examples/bls12_from_list - Version for base field used in G1.
+Field/Synthesis/Examples/bls12_from_list_Fp2 - Version for extended field used in G2.
+
+Implementations of curves:
+Field/Synthesis/Examples/BLS12_G1.v - Synthesis of Bedrock2 function implementing the group operation on G1.
+Field/Synthesis/Examples/BLS12_G2.v - Synthesis of Bedrock2 function implementing the group operation on G2.
+
+Unverified Parts:
+Unfinished implementation of scalarmultplication can be found here:
+Group/CurveAdd
+
+The Body of the loop (in LoopBody.v) consists of five lines of code (l. 145 in LoopBody.v)
+The functions implementing store_zero_G, shift_scalar, group_cmov and ladderstep are found in
+StorePointAtinfinity.v
+BignumShift.v
+CondMoveGroup.v
+and
+CurveAdd.v
+respectively.
+
+Some correctness proof are still missing; so it is expected that bugs still exist.
+
+The Bedrock2 functions are printed to C using Bedrock2's unverified printer.
+
+
+
+
+
+
+
