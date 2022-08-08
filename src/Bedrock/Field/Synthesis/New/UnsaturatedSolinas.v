@@ -567,6 +567,7 @@ Definition prime_field_parameters_prefixed
     (prefix ++ "copy")
     (prefix ++ "small_literal")
     (prefix ++ "select_znz")
+    (prefix ++ "from_list")
     (* (prefix ++ "from_word") *)
 .
 

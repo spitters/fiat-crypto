@@ -723,7 +723,8 @@ Section Extraction.
        to_bytes := "to_bytes";
        select_znz := "select_znz";
        felem_copy := "felem_copy";
-       from_word := "from_word" |}.
+       from_word := "from_word";
+       from_list := "from_list" |}.
 
   Instance fp : FieldParameters := PrimeField.prime_field_parameters.
 End Extraction.

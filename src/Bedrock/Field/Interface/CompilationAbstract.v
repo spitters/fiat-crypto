@@ -1,8 +1,6 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Lib.Alloc.
 Require Import Crypto.Bedrock.Specs.AbstractField.
-Require Import Crypto.Bedrock.Specs.PrimeField.
-Require Import Crypto.Arithmetic.PrimeFieldTheorems.
 Local Open Scope Z_scope.
 
 Section Compile.
@@ -14,9 +12,8 @@ Section Compile.
   Context {locals_ok : map.ok locals}.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
-  Context {prime_field_parameters : PrimeFieldParameters}.
-
-  Local Instance field_parameters : FieldParameters := PrimeField.prime_field_parameters.
+  Context {field_parameters : FieldParameters}
+          {field_parameters_ok : FieldParameters_ok}.
 
   Context {field_representaton : FieldRepresentation}
           {field_representation_ok : FieldRepresentation_ok}.
@@ -111,7 +108,7 @@ Section Compile.
         {tr m l functions} x y:
     let v := bin_model x y in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-           Rin Rout out x_ptr x_var y_ptr y_var out_ptr out_var
+           Rinx Riny Rout out x_ptr x_var y_ptr y_var out_ptr out_var
            bound_out,
 
       (_: spec_of name) functions ->
@@ -119,9 +116,8 @@ Section Compile.
       map.get l out_var = Some out_ptr ->
       (FElem bound_out out_ptr out * Rout)%sep m ->
 
-      (FElem (Some bin_xbounds) x_ptr x
-       * FElem (Some bin_ybounds) y_ptr y
-       * Rin)%sep m ->
+      (FElem (Some bin_xbounds) x_ptr x * Rinx)%sep m ->
+      (FElem (Some bin_ybounds) y_ptr y * Riny)%sep m ->
       map.get l x_var = Some x_ptr ->
       map.get l y_var = Some y_ptr ->
 
@@ -147,7 +143,7 @@ Section Compile.
     unfold FElem in *.
     sepsimpl.
     prove_field_compilation.
-    apply H5.
+    apply H6.
     
     eapply Proper_sep_impl1; eauto.
     2:exact(fun a b => b).
@@ -279,7 +275,7 @@ Section Compile.
     eexists; eexists. split; [eauto | split; eauto].
     eexists; sepsimpl; eauto.
   Qed.
-
+(* 
   Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_from_word _ _ _ _ _ _ _ _)) : typeclass_instances.
 
   Lemma compile_from_word {tr m l functions} x:
@@ -330,27 +326,91 @@ Section Compile.
       eexists;
         sepsimpl;
         eauto. 
-  Qed.
+  Qed. *)
+
+
+  Section FromList.
+    Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_from_list _ _ _ _ _ _ _ _ _)) : typeclass_instances.
+
+    Lemma compile_from_list {tr m l functions} x:
+      let v := feval x in
+      forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+            R (wx : word) out out_ptr out_var,
+
+        spec_of_from_list v functions ->
+        maybe_bounded (Some loose_bounds) x ->
+
+        map.get l out_var = Some out_ptr ->
+        (FElem None out_ptr out * R)%sep m ->
+
+        (* word.unsigned wx = x -> *)
+
+        (let v := v in
+        forall m',
+          (FElem (Some loose_bounds) out_ptr v * R)%sep m' ->
+          (<{ Trace := tr;
+              Memory := m';
+              Locals := l;
+              Functions := functions }>
+            k_impl
+            <{ pred (k v eq_refl) }>)) ->
+        <{ Trace := tr;
+          Memory := m;
+          Locals := l;
+          Functions := functions }>
+        cmd.seq
+          (cmd.call [] from_list
+                    [expr.var out_var])
+          k_impl
+        <{ pred (nlet_eq [out_var] v k) }>.
+    Proof.
+      repeat straightline'.
+      unfold FElem in *.
+      sepsimpl.
+      
+      eapply Proper_call.
+
+      2: eapply H.
+      2: ecancel_assumption.
+
+      intros ? ? ? ?.
+      repeat straightline.
+      apply H3.
+        repeat straightline. 
+        eapply Proper_sep_impl1; eauto.
+        2: exact(fun a b => b).
+        intros m' H'. subst.
+        match goal with H : _ |- _ =>
+                        try rewrite word.of_Z_unsigned in H end.
+        SpecializeBy.specialize_by_assumption.
+        eexists;
+          sepsimpl;
+          eauto.
+    Qed.
+  End FromList.
 
 End Compile.
 
 
 (*must be higher priority than compile_mul*)
-(* #[export] Hint Extern 6 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (a24 * _)%F _))) =>
+Local Infix "*F" := Fmul (at level 90).
+Local Infix "+F" := Fadd (at level 100).
+Local Infix "-F" := Fsub (at level 100).
+Local Notation "x ^F2" := (Fmul x x) (at level 90).
+
+#[export] Hint Extern 6 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (a24 *F _) _))) =>
 simple eapply compile_scmula24; shelve : compiler.
 
-#[export] Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ * _)%F _))) =>
+#[export] Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ *F _) _))) =>
 simple eapply compile_mul; shelve : compiler.
-#[export] Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ + _)%F _))) =>
+#[export] Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ +F _) _))) =>
 simple eapply compile_add; shelve : compiler.
-#[export] Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ - _)%F _))) =>
+#[export] Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ -F _) _))) =>
 simple eapply compile_sub; shelve : compiler.
-#[export] Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ ^ 2)%F _))) =>
+#[export] Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ ^F2) _))) =>
 simple eapply compile_square; shelve : compiler.
-#[export] Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (F.of_Z M_pos _) _))) =>
-simple eapply compile_from_word; shelve : compiler.
 #[export] Hint Extern 10 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ ?v _))) =>
-is_var v; simple eapply compile_felem_copy; shelve : compiler. *)
+is_var v; simple eapply compile_felem_copy; shelve : compiler.
 
 
 #[export] Hint Immediate relax_bounds_FElem : ecancel_impl.
@@ -360,4 +420,3 @@ is_var v; simple eapply compile_felem_copy; shelve : compiler. *)
 #[export] Hint Extern 1 (spec_of _) => (simple refine (@spec_of_BinOp _ _ _ _ _ _ _ _ _ _)) : typeclass_instances.
 #[export] Hint Extern 1 (spec_of _) => (simple refine (@spec_of_UnOp _ _ _ _ _ _ _ _ _ _)) : typeclass_instances.
 #[export] Hint Extern 1 (spec_of felem_copy) => (simple refine (@spec_of_felem_copy _ _ _ _ _ _ _ _)) : typeclass_instances.
-#[export] Hint Extern 1 (spec_of from_word) => (simple refine (@spec_of_from_word _ _ _ _ _ _ _ _)) : typeclass_instances.

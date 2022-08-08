@@ -90,10 +90,10 @@ Section Field.
 End Field.
 
 (* Uncomment below to sanity-check that compilation works *)
-(*
-Require Import bedrock2.Syntax.
+
+(* Require Import bedrock2.Syntax.
 Require Import compiler.Pipeline.
-Require Import compilerExamples.MMIO.
+Require Import compiler.MMIO.
 
 Definition funcs : list func :=
   [ fe1305_mul;
@@ -103,5 +103,4 @@ Definition funcs : list func :=
     fe1305_to_bytes;
     fe1305_from_bytes ].
 
-Compute compile (compile_ext_call (funname_env:=SortedListString.map)) (map.of_list funcs).
-*)
+Compute compile (compile_ext_call (funname_env:=SortedListString.map)) (map.of_list funcs). *)

@@ -42,6 +42,7 @@ Section FieldSpecs.
           ... *)
       felem_copy : string;
       from_word : string;
+      from_list : string;
     }.
 
   Class FieldParameters_ok {field_parameters : FieldParameters} := {
@@ -239,12 +240,13 @@ Section FieldSpecs.
             (FElemBytes pout bs * Rr)%sep mem' }.
 
     Instance spec_of_felem_copy : spec_of felem_copy :=
-      fnspec! felem_copy (pout px : word) / (out x : felem) R,
+      fnspec! felem_copy (pout px : word) / (out x : felem) R Rout,
       { requires tr mem :=
-          (FElem px x * FElem pout out * R)%sep mem;
+          (FElem px x * FElem pout out * R)%sep mem /\
+          (FElem pout out * Rout)%sep mem;
         ensures tr' mem' :=
           tr = tr' /\
-          (FElem px x * FElem pout x * R)%sep mem' }.
+          (FElem pout x * Rout)%sep mem' }.
 
       Local Notation bit_range := {|ZRange.lower := 0; ZRange.upper := 1|}.
 
@@ -261,6 +263,20 @@ Section FieldSpecs.
               then ((FElem pout y * Rout)%sep mem')
               else ((FElem pout x * Rout)%sep mem')
       }.
+
+    Section FromList.
+    Context (v : F).
+
+    Instance spec_of_from_list  : spec_of from_list :=
+    fnspec! from_list (pout : word) / outold Rout,
+    {
+        requires tr mem :=
+        (FElem pout outold * Rout)%sep mem ;
+        ensures tr' mem' := exists out,
+        feval out = v /\ tr = tr' /\ bounded_by loose_bounds out /\
+        (FElem pout out * Rout)%sep mem'
+    }.
+    End FromList.
 
   End FunctionSpecs.
 

@@ -30,6 +30,7 @@ Class PrimeFieldParameters :=
 
     felem_copy : string;
     from_word : string;
+    from_list : string;
   }.
 
   Class PrimeFieldParameters_ok {field_parameters : PrimeFieldParameters} := {
@@ -71,6 +72,7 @@ Class PrimeFieldParameters :=
         - exact select_znz.
         - exact felem_copy.
         - exact from_word.
+        - exact from_list.
     Defined. 
 
     Instance prime_field_parameters_ok : @AbstractField.FieldParameters_ok prime_field_parameters.
