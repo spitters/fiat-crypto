@@ -25,8 +25,7 @@ Require Import Crypto.Bedrock.Field.Common.Types.
 Require Import Crypto.Bedrock.Field.Translation.Func.
 Require Import Crypto.Bedrock.Field.Translation.Proofs.Func.
 Require Import Crypto.Bedrock.Field.Interface.Representation.
-Require Import Crypto.Bedrock.Specs.AbstractField.
-Require Import Crypto.Bedrock.Specs.PrimeField.
+Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.COperationSpecifications.
 Require Import Crypto.Language.API.
 Require Import Crypto.Spec.ModularArithmetic.
@@ -88,7 +87,7 @@ Section WithParameters.
     {width BW word mem locals env ext_spec varname_gen error}
    `{parameters_sentinel : @parameters width BW word mem locals env ext_spec varname_gen error}.
   Context {ok : Types.ok}
-          {prime_field_parameters : PrimeFieldParameters}.
+          {prime_field_parameters : PrimeParameters}.
   Context (n n_bytes : nat) (weight : nat -> Z)
           (bounds : Type)
           (loose_bounds tight_bounds byte_bounds : bounds)
@@ -102,15 +101,20 @@ Section WithParameters.
              disjoint default_inname_gen varname_gen)
           (outname_gen_varname_gen_disjoint :
              disjoint default_outname_gen varname_gen).
+  Context {field_names : FieldNames}.
 
-  Local Instance field_parameters : FieldParameters := PrimeField.prime_field_parameters.
+  (* Existing Instance prime_field_parameters. *)
+  (* Existing Instance frep. *)
+  (* Existing Instance frep_ok. *)
 
-  Local Instance field_representation : FieldRepresentation
-    := @frep _ BW _ _ prime_field_parameters n n_bytes weight bounds list_in_bounds loose_bounds tight_bounds
+  Local Instance field_parameters : FieldParameters (F M_pos) := Field.prime_field_parameters.
+
+  Local Instance field_representation : FieldRepresentation (F M_pos)
+    := @frep _ BW _ _ _ field_parameters n n_bytes weight bounds list_in_bounds loose_bounds tight_bounds
              byte_bounds eval_transformation.
-  Local Instance field_representation_ok : FieldRepresentation_ok
-    := frep_ok n n_bytes weight bounds list_in_bounds loose_bounds tight_bounds byte_bounds
-               relax_bounds _.
+  (* Local Instance field_representation_ok : FieldRepresentation_ok *)
+  (*   := frep_ok n n_bytes weight bounds list_in_bounds loose_bounds tight_bounds byte_bounds *)
+  (*              relax_bounds _. *)
 
   Lemma FElem_array_truncated_scalar_iff1 px x :
     Lift1Prop.iff1
@@ -337,17 +341,17 @@ Section WithParameters.
             (res_valid :
                valid_func (res (fun _ : API.type => unit)))
             (res_Wf : API.Wf res).
-    Context name (bop : BinOp name)
+    Context F name (bop : BinOp F name)
             (res_eq : forall x y : list word,
-                bounded_by bin_xbounds x ->
-                bounded_by bin_ybounds y ->
+                bounded_by (bin_xbounds F) x ->
+                bounded_by (bin_ybounds F) y ->
                 feval (map word.of_Z
                            (API.interp (res _)
                                        (map word.unsigned x)
                                        (map word.unsigned y)))
                 = bin_model (feval x) (feval y))
             (res_bounds : forall x y,
-                list_in_bounds bin_xbounds x ->
+                list_in_bounds (bin_xbounds F) x ->
                 list_in_bounds bin_ybounds y ->
                 list_in_bounds bin_outbounds (API.interp (res _) x y))
 
@@ -582,13 +586,13 @@ Section WithParameters.
           erewrite length_list_Z_bounded_by; [| eapply tight_bounds_tighter_than_max, res_bounds].
           cbv [max_bounds]. rewrite repeat_length. rewrite map_length.
           cbv [FElem Bignum.Bignum] in *. sepsimpl. auto.
-          lazymatch goal with
-          | H : _ ?m |- _ ?m => destruct H as [m1 [m2 [Hsplit [ Hmem Hmem2] ] ] ]
-          | _ => idtac
-          end.
-          do 2 eexists; split; [| split]; eauto.
-          eapply FElem_array_truncated_scalar_iff1 in Hmem. sepsimpl.
-          auto.
+          (* lazymatch goal with *)
+          (* | H : _ ?m |- _ ?m => destruct H as [m1 [m2 [Hsplit [ Hmem Hmem2] ] ] ] *)
+          (* | _ => idtac *)
+          (* end. *)
+          (* do 2 eexists; split; [| split]; eauto. *)
+          (* eapply FElem_array_truncated_scalar_iff1 in Hmem. sepsimpl. *)
+          (* auto. *)
         } }
       { postcondition_simplify; [ | | ].
         { (* output correctness *)
@@ -596,7 +600,7 @@ Section WithParameters.
         { (* output bounds *)
           cbn [bounded_by field_representation frep] in *.
           erewrite Util.map_unsigned_of_Z, MaxBounds.map_word_wrap_bounded
-            by eauto using relax_list_Z_bounded_by. cbv [AbstractField.tight_bounds]. simpl.
+            by eauto using relax_list_Z_bounded_by. cbv [Field.tight_bounds]. simpl.
           eauto. }
         { (* separation-logic postcondition *)
           eapply Proper_sep_iff1;
@@ -862,9 +866,9 @@ admit.
       reflexivity.
     Qed.
 
-    Lemma FElem_bytes_length p x R m : (AbstractField.FElemBytes p x * R)%sep m -> Datatypes.length x = encoded_felem_size_in_bytes.
+    Lemma FElem_bytes_length p x R m : (Field.FElemBytes p x * R)%sep m -> Datatypes.length x = encoded_felem_size_in_bytes.
     Proof.
-        intros; cbv [AbstractField.FElemBytes] in *; sepsimpl; auto.
+        intros; cbv [Field.FElemBytes] in *; sepsimpl; auto.
     Qed.
 
     Lemma to_bytes_correct f :

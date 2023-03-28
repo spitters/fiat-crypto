@@ -1,6 +1,6 @@
 Require Import Rupicola.Lib.Api. Import bedrock2.WeakestPrecondition.
 Require Import Crypto.Arithmetic.PrimeFieldTheorems.
-Require Import Crypto.Bedrock.Specs.AbstractField.
+Require Import Crypto.Bedrock.Specs.Field.
 (* Require Import Crypto.Bedrock.Specs.PrimeField. *)
 Require Import Crypto.Bedrock.Field.Interface.CompilationAbstract.
 Local Open Scope Z_scope.

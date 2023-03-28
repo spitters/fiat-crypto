@@ -1,25 +1,30 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Lib.Alloc.
-Require Import Crypto.Bedrock.Specs.AbstractField.
-Require Import Crypto.Bedrock.Specs.PrimeField.
+Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Arithmetic.PrimeFieldTheorems.
 Local Open Scope Z_scope.
 
 Section Compile.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
-  Context {locals: map.map String.string word}.
+  Context {locals: map.map string word}.
+  (* Check word.rep. *)
+  Check locals.
   Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
   Context {ext_spec: bedrock2.Semantics.ExtSpec}.
   Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
   Context {locals_ok : map.ok locals}.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
-  Context {prime_field_parameters : PrimeFieldParameters}.
 
-  Local Instance field_parameters : FieldParameters := PrimeField.prime_field_parameters.
+  Context {field_names : FieldNames}.
+  Context {prime_parameters : PrimeParameters}.
 
-  Context {field_representaton : FieldRepresentation}
-          {field_representation_ok : FieldRepresentation_ok}.
+  (* why is this instance not inferred? *)
+  Existing Instance prime_field_parameters.
+  Existing Instance prime_field_parameters_ok.
+  (* Check _ : FieldParameters _. *)
+  Context {field_representation : FieldRepresentation (F M_pos)}
+          {field_representation_ok : FieldRepresentation_ok (F M_pos)}.
 
   Definition maybe_bounded mbounds v :=
     match mbounds with
@@ -55,7 +60,7 @@ Section Compile.
   
   Lemma FElem'_from_bytes
     : forall px : word.rep,
-      Lift1Prop.iff1 (Placeholder px) (Lift1Prop.ex1 (FElem None px)).
+      Lift1Prop.iff1 (Placeholder (F M_pos) px) (Lift1Prop.ex1 (FElem None px)).
   Proof.
     unfold FElem.
     intros.
@@ -69,7 +74,6 @@ Section Compile.
     {
       destruct H as [? [? ?]].
       sepsimpl.
-      
       eapply FElem_to_bytes; eauto.
     }
   Qed.
@@ -103,10 +107,13 @@ Section Compile.
     end; eauto;
     sepsimpl; repeat straightline'; subst; eauto.
 
-  
-  Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_BinOp _ _ _ _ _ _ _ _ _ _)) : typeclass_instances.
-  Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_UnOp _ _ _ _ _ _ _ _ _ _)) : typeclass_instances.
+  Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_BinOp _ _ _ _ _ _ _ _ _ _ _)) : typeclass_instances.
+  Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_UnOp _ _ _ _ _ _ _ _ _ _ _)) : typeclass_instances.
 
+  (* Set Typeclasses Debug. *)
+  (* Set Typeclasses Debug Verbosity 2. *)
+
+  (* Check _ : Z. *)
   Lemma compile_binop {name} {op: BinOp name}
         {tr m l functions} x y:
     let v := bin_model x y in
@@ -232,9 +239,11 @@ Section Compile.
     ltac:(cleanup_op_lemma (@compile_unop _ op)) (only parsing).
 
   Definition compile_square := make_un_lemma un_square.
-  Definition compile_scmula24 := make_un_lemma un_scmula24.
+  (* Definition compile_scmula24 := make_un_lemma un_scmula24. *)
 
   Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_felem_copy _ _ _ _ _ _ _ _)) : typeclass_instances.
+  (* why is this needed *)
+  Local Hint Extern 1 (spec_of felem_copy) => exact spec_of_felem_copy : typeclass_instances.
   
   Lemma compile_felem_copy {tr m l functions} x : 
     let v := x in
@@ -280,7 +289,9 @@ Section Compile.
     eexists; sepsimpl; eauto.
   Qed.
 
-  Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_from_word _ _ _ _ _ _ _ _)) : typeclass_instances.
+  (* Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_from_word _ _ _ _ _ _ _ _)) : typeclass_instances. *)
+  (* why is this needed *)
+  Local Hint Extern 1 (spec_of from_word) => exact spec_of_from_word : typeclass_instances.
 
   Lemma compile_from_word {tr m l functions} x:
     let v := F.of_Z _ x in

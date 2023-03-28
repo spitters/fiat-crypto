@@ -1,9 +1,62 @@
 Require Import Crypto.Bedrock.Field.FieldExtensions.QuadraticFieldExtensionsSpecs.
 Require Import Rupicola.Lib.Api.
-Require Import Crypto.Bedrock.Specs.AbstractField.
-Require Import Crypto.Bedrock.Specs.PrimeField.
+Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.FieldExtensions.Theory.QuadraticExtensions.
 Require Import Crypto.Bedrock.Field.Interface.Compilation2.
+Require Export Crypto.Spec.ModularArithmetic.
+
+(*Move elsewhere*)
+Lemma firstn_skipn {A : Type} : forall (l : list A) n, (firstn n l) ++ (skipn n l) = l.
+Proof.
+  intros. generalize dependent n. induction l.
+  - destruct n; auto.
+  - intros. destruct n; simpl; auto.
+    rewrite IHl; auto.
+Qed.
+
+Lemma length_firstn {A: Type} : forall (l :list A) n, (length l >= n)%nat -> length (firstn n l) = n.
+Proof.
+  intros. generalize dependent n. induction l.
+  - intros. simpl in H. destruct n; try lia. simpl. auto.
+  - intros. destruct n; simpl; auto.
+    eapply f_equal. simpl in H. eapply IHl. lia.
+Qed.
+
+Lemma length_skipn {A: Type} : forall (l : list A) n, (length l = n + n)%nat -> length (skipn n l) = n.
+Proof.
+  intros. pose proof H. pose proof (firstn_skipn l n).
+  rewrite <- H1 in H.
+  rewrite app_length in H.
+  rewrite length_firstn in H; try lia.
+Qed.
+
+Lemma firstn_app {A : Type} : forall (a b : list A) n, (Datatypes.length a >= n)%nat -> firstn n (a ++ b) = firstn n a.
+Proof.
+  intros. generalize dependent n. induction a.
+  - intros. simpl. simpl in H. destruct n; try discriminate.
+    + simpl. auto.
+    + inversion H.
+  - intros. simpl. destruct n.
+    + simpl; auto.
+    + simpl. rewrite IHa; auto.
+      simpl in H. lia.
+Qed.
+
+Lemma skipn_app {A : Type} : forall (a b : list A) n, (Datatypes.length a = n)%nat -> skipn n (a ++ b) = b.
+Proof.
+  intros. generalize dependent n. induction a.
+  - intros; destruct n; try discriminate. auto.
+  - intros. simpl. destruct n; try discriminate. simpl in *. inversion H. rewrite H1. apply IHa. auto.
+Qed.
+
+Lemma firstn_app' {A : Type} : forall (a b : list A) n, (Datatypes.length a = n)%nat -> firstn n (a ++ b) = a.
+Proof.
+  intros. rewrite firstn_app; try lia.
+  generalize dependent n. induction a.
+  - intros. destruct n; simpl; auto.
+  - intros. destruct n; try discriminate. simpl in *. inversion H. rewrite H1. rewrite IHa; auto.
+Qed.
+(* end move elsewhere *)
 
 Section Fp2.
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
@@ -15,94 +68,47 @@ Section Fp2.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
-  Context {prime_field_parameters : PrimeFieldParameters}
-          {prime_field_parameters_ok : PrimeFieldParameters_ok}
+  Context {prime_parameters : PrimeParameters}
+          {prime_parameters_ok : PrimeParameters_ok}
           {M_mod : (Z.pos M_pos) mod 4 =? 3 = true}.
+  Context {F_names : FieldNames}.
 
-  Instance F_parameters : FieldParameters := QuadraticFieldExtensionsSpecs.F_parameters.
-  Instance F_parameters_ok : FieldParameters_ok := QuadraticFieldExtensionsSpecs.F_parameters_ok.
+  Existing Instance prime_field_parameters.
+  Context {F_representation : FieldRepresentation (F M_pos)}
+          {F_representation_ok : FieldRepresentation_ok (F M_pos)}.
 
-  Context {F_representation : @FieldRepresentation F_parameters _ _ _ _}
-          {F_representation_ok : FieldRepresentation_ok}.
+  (* Check _ : FieldParameters. *)
+  (* Instance prime_field_parameters. *)
+  (* Instance F_parameters : FieldParameters := QuadraticFieldExtensionsSpecs.F_parameters. *)
+  (* Instance F_parameters_ok : FieldParameters_ok := QuadraticFieldExtensionsSpecs.F_parameters_ok. *)
 
   Context {bounds_equiv : forall x, bounded_by loose_bounds x -> bounded_by tight_bounds x}.
 
-  Instance Fp2_parameters : FieldParameters := Fp2_parameters.
-  Instance Fp2_parameters_ok : FieldParameters_ok := @Fp2_parameters_ok prime_field_parameters prime_field_parameters_ok M_mod.
-  Instance Fp2_representation : FieldRepresentation := Fp2_representation.
-  Instance Fp2_representation_ok : FieldRepresentation_ok := Fp2_representation_ok.
+  Local Notation F := (F M_pos).
+  Local Notation Fp2 := ((F * F)%type).
 
-  Instance spec_of_mul : spec_of (@mul prime_field_parameters).
+  Local Arguments Field.FElem _ {_ _ _ _ _ _}.
+  Local Arguments felem_size_in_words _ {_ _ _ _ _ _}.
+  Local Arguments felem_size_in_bytes _ {_ _ _ _ _ _}.
+
+  Instance spec_of_mul : spec_of (@mul _).
   Proof.
     pose proof (binop_spec bin_mul). cbv [spec_of]. eapply X.
   Defined.
 
   Definition Fp2_add_F (x y : (ModularArithmetic.F.F M_pos) * (ModularArithmetic.F.F M_pos)) : (ModularArithmetic.F.F M_pos) * (ModularArithmetic.F.F M_pos) := addp2 M_pos x y.
 
-  (*Move elsewhere*)
-  Lemma firstn_skipn {A : Type} : forall (l : list A) n, (firstn n l) ++ (skipn n l) = l.
-  Proof.
-    intros. generalize dependent n. induction l.
-      - destruct n; auto.
-      - intros. destruct n; simpl; auto.
-        rewrite IHl; auto.
-  Qed.
-
-  Lemma length_firstn {A: Type} : forall (l :list A) n, (length l >= n)%nat -> length (firstn n l) = n.
-  Proof.
-    intros. generalize dependent n. induction l.
-      - intros. simpl in H. destruct n; try lia. simpl. auto.
-      - intros. destruct n; simpl; auto.
-        eapply f_equal. simpl in H. eapply IHl. lia.
-  Qed. 
-
-  Lemma length_skipn {A: Type} : forall (l : list A) n, (length l = n + n)%nat -> length (skipn n l) = n.
-  Proof.
-    intros. pose proof H. pose proof (firstn_skipn l n).
-    rewrite <- H1 in H.
-    rewrite app_length in H.
-    rewrite length_firstn in H; try lia.
-  Qed.
-
-  Lemma firstn_app {A : Type} : forall (a b : list A) n, (Datatypes.length a >= n)%nat -> firstn n (a ++ b) = firstn n a.
-  Proof.
-    intros. generalize dependent n. induction a.
-      - intros. simpl. simpl in H. destruct n; try discriminate.
-        + simpl. auto.
-        + inversion H.
-      - intros. simpl. destruct n.
-        + simpl; auto.
-        + simpl. rewrite IHa; auto.
-          simpl in H. lia.
-  Qed.
-
-  Lemma skipn_app {A : Type} : forall (a b : list A) n, (Datatypes.length a = n)%nat -> skipn n (a ++ b) = b.
-  Proof.
-    intros. generalize dependent n. induction a.
-      - intros; destruct n; try discriminate. auto.
-      - intros. simpl. destruct n; try discriminate. simpl in *. inversion H. rewrite H1. apply IHa. auto.
-  Qed.
-
-  Lemma firstn_app' {A : Type} : forall (a b : list A) n, (Datatypes.length a = n)%nat -> firstn n (a ++ b) = a.
-  Proof.
-    intros. rewrite firstn_app; try lia.
-    generalize dependent n. induction a.
-      - intros. destruct n; simpl; auto.
-      - intros. destruct n; try discriminate. simpl in *. inversion H. rewrite H1. rewrite IHa; auto.
-  Qed.
-
-
-  Lemma fst_felem_app : forall a b pa Ra m, ((@AbstractField.FElem F_parameters _ _ _ _ _) pa a * Ra)%sep m
+  Lemma fst_felem_app : forall a b pa Ra m, (Field.FElem F pa a * Ra)%sep m
     -> fst_felem (a ++ b) = a.
   Proof.
-    intros. cbv [AbstractField.FElem Bignum.Bignum] in *. sepsimpl.
+    intros. cbv [Field.FElem Bignum.Bignum] in *. sepsimpl.
     cbv [fst_felem]. rewrite firstn_app'; auto.
   Qed.
 
-  Lemma snd_felem_app : forall a b pa Ra m, ((@AbstractField.FElem F_parameters _ _ _ _ _) pa a * Ra)%sep m
+  Lemma snd_felem_app : forall a b pa Ra m, (Field.FElem F pa a * Ra)%sep m
   -> snd_felem (a ++ b) = b.
   Proof.
-    intros. cbv [AbstractField.FElem Bignum.Bignum] in *. sepsimpl.
+    intros. cbv [Field.FElem Bignum.Bignum] in *. sepsimpl.
     cbv [snd_felem]. rewrite skipn_app; auto.
   Qed.
 
@@ -111,35 +117,38 @@ Section Fp2.
     intros. cbv [fst_felem snd_felem]. rewrite firstn_skipn. auto.
   Qed.
 
-  Local Notation felem_offset := (Memory.bytes_per_word width * Z.of_nat (@felem_size_in_words F_parameters _ _ _ _ F_representation)).
+  Local Notation felem_offset := (Memory.bytes_per_word width * Z.of_nat (felem_size_in_words F)).
+  (* Local Notation felem_offset := (felem_size_in_bytes F). *)
   Local Notation felem_offset_word := (word.of_Z felem_offset).
 
-  Lemma Fp_FElem_to_Fp2_sep : forall px x m, ((@AbstractField.FElem F_parameters width BW word mem F_representation px (fst_felem x)) * (@AbstractField.FElem F_parameters width BW word mem F_representation (word.add px felem_offset_word) (snd_felem x)))%sep m ->
-  (@AbstractField.FElem Fp2_parameters width BW word mem Fp2_representation px x m).
+  Existing Instance Fp2_parameters.
+    (* : FieldParameters := Fp2_parameters. *)
+  Existing Instance Fp2_parameters_ok.
+    (* : FieldParameters_ok := @Fp2_parameters_ok prime_field_parameters prime_field_parameters_ok M_mod. *)
+  Existing Instance Fp2_representation.
+    (* : FieldRepresentation := Fp2_representation. *)
+  Existing Instance Fp2_representation_ok.
+    (* : FieldRepresentation_ok := Fp2_representation_ok. *)
+
+  Lemma Fp_FElem_to_Fp2_sep : forall px x m,
+    ((Field.FElem F px (fst_felem x)) * (Field.FElem F (word.add px felem_offset_word) (snd_felem x)))%sep m -> (Field.FElem Fp2 px x m).
   Proof.
-    intros. cbv [AbstractField.FElem Bignum.Bignum felem_size_in_words]. simpl. sepsimpl.
+    intros. cbv [Field.FElem Bignum.Bignum felem_size_in_words]. simpl. sepsimpl.
     1: {
-      cbv [AbstractField.FElem Bignum.Bignum] in H. sepsimpl.
+      cbv [Field.FElem Bignum.Bignum] in H. sepsimpl.
       cbv [fst_felem snd_felem] in *.
       pose proof H.
-      epose proof (firstn_skipn x (@felem_size_in_words F_parameters _ _ _ _ _)).
+      epose proof (firstn_skipn x (felem_size_in_words F)).
       rewrite <- H3.
       rewrite app_length.
-      assert ((@felem_size_in_words
-      (@QuadraticFieldExtensionsSpecs.F_parameters
-         prime_field_parameters) width BW word mem F_representation) =  (@felem_size_in_words F_parameters width BW word mem
-         F_representation)).
-         {
-           auto.
-         }
-         rewrite H4 in H. rewrite H.
-         rewrite H4 in H0. rewrite H0. rewrite Nat.add_0_r. auto.
+      rewrite H, H0.
+      auto.
     }
 
     pose proof (Fp2_list_decomp x).
     rewrite <- H0.
     eapply array_append.
-    cbv [AbstractField.FElem Bignum.Bignum] in H.
+    cbv [Field.FElem Bignum.Bignum] in H.
     sepsimpl.
     eapply sep_comm in H2.
     assert ( word.add px felem_offset_word =  (word.add px
@@ -148,8 +157,6 @@ Section Fp2.
         Z.of_nat (Datatypes.length (fst_felem x))))) ).
     {
       eapply f_equal.
-      Check word.of_Z_unsigned.
-      Search (word.of_Z ( _ * _)).
       rewrite word.ring_morph_mul. rewrite H.
       rewrite word.ring_morph_mul.
       rewrite word.of_Z_unsigned. auto.
@@ -158,18 +165,17 @@ Section Fp2.
   Qed.
 
   Lemma Fp_FElem_to_Fp2_R_sep : forall px x m R,
-    ((@AbstractField.FElem F_parameters width BW word mem F_representation px (fst_felem x)) * (@AbstractField.FElem F_parameters width BW word mem F_representation (word.add px felem_offset_word) (snd_felem x)) * R)%sep m ->
-    ((@AbstractField.FElem Fp2_parameters width BW word mem Fp2_representation px x * R)%sep m).
+    ((Field.FElem F px (fst_felem x)) * (Field.FElem F (word.add px felem_offset_word) (snd_felem x)) * R)%sep m -> ((Field.FElem Fp2 px x * R)%sep m).
   Proof.
     intros. destruct H, H, H, H0.
     eexists; eexists; split; eauto; split; eauto.
     apply Fp_FElem_to_Fp2_sep. auto.
   Qed.
 
-  Lemma Fp2_FElem_to_Fp_sep : forall px x m, (@AbstractField.FElem Fp2_parameters width BW word mem Fp2_representation px x m) ->
-    ((@AbstractField.FElem F_parameters width BW word mem F_representation px (fst_felem x)) * (@AbstractField.FElem F_parameters width BW word mem F_representation (word.add px felem_offset_word) (snd_felem x)))%sep m.
+  Lemma Fp2_FElem_to_Fp_sep : forall px x m,
+    (Field.FElem Fp2 px x m) -> ((Field.FElem F px (fst_felem x)) * (Field.FElem F (word.add px felem_offset_word) (snd_felem x)))%sep m.
   Proof.
-    intros. cbv [AbstractField.FElem Bignum.Bignum felem_size_in_words] in H. simpl in H.
+    intros. cbv [Field.FElem Bignum.Bignum felem_size_in_words] in H. simpl in H.
     rewrite Nat.add_0_r in H; sepsimpl.
     pose proof (Fp2_list_decomp x).
     rewrite <- H1 in H0.
@@ -184,7 +190,7 @@ Section Fp2.
      }
      rewrite H2 in H0.
      clear H1 H2.
-     cbv [AbstractField.FElem Bignum.Bignum]. sepsimpl.
+     cbv [Field.FElem Bignum.Bignum]. sepsimpl.
       - cbv [fst_felem]. eapply length_firstn. assert (forall n, (n + n >= n)%nat).
         {
           intros; lia.
@@ -194,8 +200,9 @@ Section Fp2.
       - eapply sep_comm. auto.
   Qed.
 
-  Lemma Fp2_FElem_to_Fp_R_sep : forall px x m R, ((@AbstractField.FElem Fp2_parameters width BW word mem Fp2_representation px x * R)%sep m) ->
-  ((@AbstractField.FElem F_parameters width BW word mem F_representation px (fst_felem x)) * (@AbstractField.FElem F_parameters width BW word mem F_representation (word.add px felem_offset_word) (snd_felem x)) * R)%sep m.
+  Lemma Fp2_FElem_to_Fp_R_sep : forall px x m R,
+    ((Field.FElem Fp2 px x * R)%sep m) ->
+    ((Field.FElem F px (fst_felem x)) * (Field.FElem F (word.add px felem_offset_word) (snd_felem x)) * R)%sep m.
   Proof.
     intros. destruct H, H, H, H0.
     eexists; eexists; split; eauto; split; eauto.
@@ -205,7 +212,9 @@ Section Fp2.
   Require Import bedrock2.NotationsCustomEntry.
   Require Import bedrock2.WeakestPrecondition.
   Import Syntax BinInt String List.ListNotations.
-Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
+  Local Open Scope string_scope.
+  Local Open Scope Z_scope.
+  Local Open Scope list_scope.
 
   Context (F_add_func : (list string * list string * Syntax.cmd))
           (F_copy_func : (list string * list string * Syntax.cmd))
@@ -213,54 +222,54 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
           (F_select_znz_func : (list string * list string * Syntax.cmd))
           (F_mul_func : (list string * list string * Syntax.cmd)).
   
-  Definition F_add : bedrock2.Syntax.func := (@AbstractField.add F_parameters, F_add_func).
+  Definition F_add : bedrock2.Syntax.func := (@add F_names, F_add_func).
 
-  Definition F_copy : bedrock2.Syntax.func := (@AbstractField.felem_copy F_parameters, F_copy_func).
+  Definition F_copy : bedrock2.Syntax.func := (@felem_copy F_names, F_copy_func).
 
-  Definition F_mul : bedrock2.Syntax.func := (@AbstractField.mul F_parameters, F_mul_func).
+  Definition F_mul : bedrock2.Syntax.func := (@mul F_names, F_mul_func).
 
-  Definition F_sub : bedrock2.Syntax.func := (@AbstractField.sub F_parameters, F_sub_func).
+  Definition F_sub : bedrock2.Syntax.func := (@sub F_names, F_sub_func).
 
-  Definition F_select_znz : bedrock2.Syntax.func := (@AbstractField.select_znz F_parameters, F_select_znz_func).
+  Definition F_select_znz : bedrock2.Syntax.func := (@select_znz F_names, F_select_znz_func).
 
-  Instance spec_of_add : spec_of (@AbstractField.add F_parameters).
+  (* Context {Fp2_names : FieldNames}. *)
+  Instance spec_of_add : spec_of (@add F_names).
   Proof.
-    Check @binop_spec.
-    pose proof (@binop_spec width BW word mem locals ext_spec F_parameters F_representation (@AbstractField.add F_parameters) bin_add). cbv [spec_of]. eapply X.
+    pose proof (@binop_spec width BW word mem locals ext_spec F _ _ add bin_add). cbv [spec_of]. eapply X.
   Defined.
 
-  Instance spec_of_F_copy : spec_of (@AbstractField.felem_copy F_parameters).
+  Instance spec_of_F_copy : spec_of (@felem_copy F_names).
   Proof.
-    exact (spec_of_felem_copy).
+    exact (spec_of_felem_copy (F:=F)).
   Defined.
 
-  Instance spec_of_F_mul : spec_of (@AbstractField.mul F_parameters).
+  Instance spec_of_F_mul : spec_of (@mul F_names).
   Proof.
-    pose proof (@binop_spec width BW word mem locals ext_spec F_parameters F_representation (@AbstractField.mul F_parameters) bin_mul).
+    pose proof (@binop_spec width BW word mem locals ext_spec F _ _ mul bin_mul).
     cbv [spec_of]. apply X.
   Defined.
 
-  Instance spec_of_F_sub : spec_of (@AbstractField.sub F_parameters).
+  Instance spec_of_F_sub : spec_of (@sub F_names).
   Proof.
-    pose proof (@binop_spec width BW word mem locals ext_spec F_parameters F_representation (@AbstractField.sub F_parameters) bin_sub).
+    pose proof (@binop_spec width BW word mem locals ext_spec F _ _ sub bin_sub).
     cbv [spec_of]. apply X.
   Defined.
 
-  Instance spec_of_F_select_znz : spec_of (@AbstractField.select_znz F_parameters).
+  Instance spec_of_F_select_znz : spec_of (@select_znz F_names).
   Proof.
-    pose proof (@spec_of_selectznz width BW word mem locals ext_spec F_parameters F_representation). apply X.
+    pose proof (@spec_of_selectznz width BW word mem locals ext_spec F _ _ _). apply X.
   Defined.
+
+  Check felem_offset.
 
   Definition expr_2nd_felem (x : Syntax.expr) := expr.op bopname.add x (expr.literal felem_offset).
 
-  Check @AbstractField.select_znz.
-  Check @AbstractField.add.
-
+  Context (Fp2_names : FieldNames).
 
   Definition Fp2_select_znz : bedrock2.Syntax.func :=
-    (@AbstractField.select_znz Fp2_parameters, (["out"; "c"; "inx"; "iny"], []:list String.string, bedrock_func_body:(
-       stackalloc felem_size_in_bytes as allocx;
-      stackalloc felem_size_in_bytes as allocy;
+    (@Field.select_znz Fp2_names, (["out"; "c"; "inx"; "iny"], []:list String.string, bedrock_func_body:(
+       stackalloc (felem_size_in_bytes Fp2) as allocx;
+      stackalloc (felem_size_in_bytes Fp2) as allocy;
       coq:(cmd.call [] (fst F_copy) [expr.var ("allocx"); expr.var ("inx")]);
       coq:(cmd.call [] (fst F_copy) [expr_2nd_felem (expr.var ("allocx")); expr_2nd_felem (expr.var ("inx"))]);
       coq:(cmd.call [] (fst F_copy) [expr.var ("allocy"); expr.var ("iny")]);
@@ -269,16 +278,16 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
       coq:(cmd.call [] ((fst F_select_znz)) [expr_2nd_felem (expr.var "out"); expr.var "c"; expr_2nd_felem (expr.var "allocx"); expr_2nd_felem (expr.var "allocy")])
     ))).
 
-  Instance spec_of_Fp2_select_znz : spec_of (@AbstractField.select_znz Fp2_parameters).
+  Instance spec_of_Fp2_select_znz : spec_of (@Field.select_znz Fp2_names).
   Proof.
     simpl.
-    pose proof (@spec_of_selectznz width BW word mem locals ext_spec Fp2_parameters Fp2_representation). cbv [spec_of]. eapply X.
+    pose proof (@spec_of_selectznz width BW word mem locals ext_spec Fp2 Fp2_parameters Fp2_names Fp2_representation). eapply X.
   Defined.
 
   Definition Fp2_add : bedrock2.Syntax.func :=
-    (@AbstractField.add Fp2_parameters, (["out"; "inx"; "iny"], []:list String.string, bedrock_func_body:(
-      stackalloc felem_size_in_bytes as allocx;
-      stackalloc felem_size_in_bytes as allocy;
+    (@Field.add Fp2_names, (["out"; "inx"; "iny"], []:list String.string, bedrock_func_body:(
+      stackalloc (felem_size_in_bytes Fp2) as allocx;
+      stackalloc (felem_size_in_bytes Fp2) as allocy;
       coq:(cmd.call [] (fst F_copy) [expr.var ("allocx"); expr.var ("inx")]);
       coq:(cmd.call [] (fst F_copy) [expr_2nd_felem (expr.var ("allocx")); expr_2nd_felem (expr.var ("inx"))]);
       coq:(cmd.call [] (fst F_copy) [expr.var ("allocy"); expr.var ("iny")]);
@@ -287,10 +296,10 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
       coq:(cmd.call [] ((fst F_add)) [expr_2nd_felem (expr.var "out"); expr_2nd_felem (expr.var "allocx"); expr_2nd_felem (expr.var "allocy")])
     ))).
 
-    Instance spec_of_Fp2_add : spec_of (@AbstractField.add Fp2_parameters).
+    Instance spec_of_Fp2_add : spec_of (@Field.add Fp2_names).
     Proof.
       simpl.
-      pose proof (@binop_spec width BW word mem locals ext_spec Fp2_parameters Fp2_representation (@AbstractField.add Fp2_parameters) bin_add). cbv [spec_of]. eapply X.
+      pose proof (@binop_spec width BW word mem locals ext_spec Fp2 _ _ (@Field.add Fp2_names) bin_add). cbv [spec_of]. eapply X.
     Defined.
 
     Ltac bind_body_of_function' f := (*using alternative bind_body that does not normalize body of funcction, as it is horribly slow.*)
@@ -310,28 +319,28 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
   bind_body_of_function' f;
   lazymatch goal with |- ?s _ => cbv beta delta [s] end.
 
-  Lemma alloc_to_FElem : forall a m, Memory.anybytes a felem_size_in_bytes m -> exists f, AbstractField.FElem a f m.
+  Lemma alloc_to_FElem : forall a m, Memory.anybytes a (felem_size_in_bytes Fp2) m -> exists f, Field.FElem Fp2 a f m.
   Proof.
     intros. eapply anybytes_to_array_1 in H. destruct H, H. cbv [felem_size_in_bytes] in *.
-    eapply (Bignum.Bignum_of_bytes felem_size_in_words) in H; try lia.
-    eexists. cbv [AbstractField.FElem]. eauto.
+    eapply (Bignum.Bignum_of_bytes (felem_size_in_words Fp2)) in H; try lia.
+    eexists. cbv [Field.FElem]. eauto.
   Qed.
 
-  Lemma alloc_to_FElem_F : forall a m, Memory.anybytes a (@felem_size_in_bytes F_parameters _ _ _ _ _) m -> exists f, (@AbstractField.FElem F_parameters _ _ _ _ _) a f m.
+  Lemma alloc_to_FElem_F : forall a m, Memory.anybytes a (felem_size_in_bytes F) m -> exists f, Field.FElem F a f m.
   Proof.
     intros. eapply anybytes_to_array_1 in H. destruct H, H. cbv [felem_size_in_bytes] in *.
-    eapply (Bignum.Bignum_of_bytes (@felem_size_in_words F_parameters _ _ _ _ _)) in H; try lia.
-    eexists. cbv [AbstractField.FElem]. eauto.
+    eapply (Bignum.Bignum_of_bytes (felem_size_in_words F)) in H; try lia.
+    eexists. cbv [Field.FElem]. eauto.
   Qed.
 
-  Lemma FElem_F_to_anybytes : forall pa a m, @AbstractField.FElem F_parameters _ _ _ _ _ pa a m -> Memory.anybytes pa (@felem_size_in_bytes F_parameters _ _ _ _ _) m.
+  Lemma FElem_F_to_anybytes : forall pa a m, Field.FElem F pa a m -> Memory.anybytes pa (felem_size_in_bytes F) m.
   Proof.
     intros.
-    cbv [AbstractField.FElem] in H.
+    cbv [Field.FElem] in H.
     eapply Bignum.Bignum_to_bytes in H.
     sepsimpl.
     eapply array_1_to_anybytes in H0.
-    assert (@felem_size_in_bytes F_parameters _ _ _ _ _ = (Z.of_nat
+    assert (felem_size_in_bytes F = (Z.of_nat
     (Datatypes.length
        (flat_map
           (fun w : word =>
@@ -348,14 +357,14 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
     rewrite <- H1 in H0. auto.
   Qed.
 
-  Lemma FElem_Fp2_to_anybytes : forall pa a m, @AbstractField.FElem Fp2_parameters _ _ _ _ _ pa a m -> Memory.anybytes pa (@felem_size_in_bytes Fp2_parameters _ _ _ _ _) m.
+  Lemma FElem_Fp2_to_anybytes : forall pa a m, Field.FElem Fp2 pa a m -> Memory.anybytes pa (felem_size_in_bytes Fp2) m.
   Proof.
     intros.
-    cbv [AbstractField.FElem] in H.
+    cbv [Field.FElem] in H.
     eapply Bignum.Bignum_to_bytes in H.
     sepsimpl.
     eapply array_1_to_anybytes in H0.
-    assert (felem_size_in_bytes = (Z.of_nat
+    assert (felem_size_in_bytes Fp2 = (Z.of_nat
     (Datatypes.length
        (flat_map
           (fun w : word =>
@@ -391,7 +400,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
     Proof.
       enter' Fp2_select_znz. clear H0 H1 H2. cbv [spec_of_selectznz] in *.
       intros. unfold1_call_goal. cbv match beta delta [call_body].
-      assert ((AbstractField.select_znz =? AbstractField.select_znz)%string = true) by auto.
+      assert ((select_znz =? select_znz)%string = true) by (rewrite eqb_refl; auto).
       rewrite H1.
       cbv match beta delta [func].
       repeat straightline.
@@ -424,10 +433,10 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
       straightline_call.
       1: {
         split; try ecancel_assumption.
-        remember ((AbstractField.FElem a (fst_felem x1))) as R1.
-        remember (AbstractField.FElem (word.add a felem_offset_word) (snd_felem x1)) as R2.
-        remember ((AbstractField.FElem a0 (fst_felem x0))) as R3.
-        remember (AbstractField.FElem (word.add a0 felem_offset_word) (snd_felem x0)) as R4.
+        remember ((Field.FElem _ a (fst_felem x1))) as R1.
+        remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x1)) as R2.
+        remember ((Field.FElem _ a0 (fst_felem x0))) as R3.
+        remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x0)) as R4.
         remember (R1 * R2)%sep as R1'.
         remember (R3 * R4)%sep as R2'.
         eapply sep_assoc in H8.
@@ -444,10 +453,10 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
       1: {
         split; try ecancel_assumption.
         cbv [id] in *.
-        remember ((AbstractField.FElem a (fst_felem x))) as R1.
-        remember (AbstractField.FElem (word.add a felem_offset_word) (snd_felem x1)) as R2.
-        remember ((AbstractField.FElem a0 (fst_felem x0))) as R3.
-        remember (AbstractField.FElem (word.add a0 felem_offset_word) (snd_felem x0)) as R4.
+        remember ((Field.FElem _ a (fst_felem x))) as R1.
+        remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x1)) as R2.
+        remember ((Field.FElem _ a0 (fst_felem x0))) as R3.
+        remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x0)) as R4.
         eapply sep_comm in H5.
         eapply sep_assoc in H5.
         remember (R2 * (R3 * R4) * R1)%sep as R1'.
@@ -463,10 +472,10 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
       1: {
         split; try ecancel_assumption.
         cbv [id] in *.
-        remember ((AbstractField.FElem a (fst_felem x))) as R1.
-        remember (AbstractField.FElem (word.add a felem_offset_word) (snd_felem x)) as R2.
-        remember ((AbstractField.FElem a0 (fst_felem x0))) as R3.
-        remember (AbstractField.FElem (word.add a0 felem_offset_word) (snd_felem x0)) as R4.
+        remember ((Field.FElem _ a (fst_felem x))) as R1.
+        remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x)) as R2.
+        remember ((Field.FElem _ a0 (fst_felem x0))) as R3.
+        remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x0)) as R4.
         eapply sep_comm in H7.
         eapply sep_assoc in H7.
         eapply sep_comm in H7.
@@ -487,10 +496,10 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
       1: {
         split; try ecancel_assumption.
         cbv [id] in *.
-        remember ((AbstractField.FElem a (fst_felem x))) as R1.
-        remember (AbstractField.FElem (word.add a felem_offset_word) (snd_felem x)) as R2.
-        remember ((AbstractField.FElem a0 (fst_felem y))) as R3.
-        remember (AbstractField.FElem (word.add a0 felem_offset_word) (snd_felem x0)) as R4.
+        remember ((Field.FElem _ a (fst_felem x))) as R1.
+        remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x)) as R2.
+        remember ((Field.FElem _ a0 (fst_felem y))) as R3.
+        remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x0)) as R4.
         eapply sep_comm in H9.
         eapply sep_assoc in H9.
         eapply sep_comm in H9.
@@ -511,10 +520,10 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 
       (*deconstructing sep hyp.*)
       cbv [id] in *.
-      remember ((AbstractField.FElem a (fst_felem x))) as R1.
-      remember (AbstractField.FElem (word.add a felem_offset_word) (snd_felem x)) as R2.
-      remember ((AbstractField.FElem a0 (fst_felem y))) as R3.
-      remember (AbstractField.FElem (word.add a0 felem_offset_word) (snd_felem y)) as R4.
+      remember ((Field.FElem _ a (fst_felem x))) as R1.
+      remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x)) as R2.
+      remember ((Field.FElem _ a0 (fst_felem y))) as R3.
+      remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem y)) as R4.
       rename H10 into H11.
       eapply sep_assoc in H11. eapply (sep_assoc (R4 * R3)%sep) in H11.
       eapply (sep_assoc (R4 * R3 * R2)%sep) in H11.
@@ -559,7 +568,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
       rewrite eq in H16.
 
 
-      eassert ((AbstractField.FElem a0 _  * _)%sep a8).
+      eassert ((Field.FElem _ a0 _  * _)%sep a8).
       {
         eapply Fp_FElem_to_Fp2_R_sep. ecancel_assumption.
       }
@@ -572,7 +581,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 
       clear H16 H12 H5 H0 H2 H11 H9 H7 H13 H14.
 
-      eassert ((AbstractField.FElem a _  * _)%sep x3).
+      eassert ((Field.FElem _ a _  * _)%sep x3).
       {
         eapply Fp_FElem_to_Fp2_R_sep. ecancel_assumption.
       }
@@ -609,7 +618,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
         rewrite eq in H16.
   
   
-        eassert ((AbstractField.FElem a0 _  * _)%sep a8).
+        eassert ((Field.FElem _ a0 _  * _)%sep a8).
         {
           eapply Fp_FElem_to_Fp2_R_sep. ecancel_assumption.
         }
@@ -622,7 +631,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
   
         clear H16 H12 H5 H0 H2 H11 H9 H7 H13 H14.
   
-        eassert ((AbstractField.FElem a _  * _)%sep x3).
+        eassert ((Field.FElem _ a _  * _)%sep x3).
         {
           eapply Fp_FElem_to_Fp2_R_sep. ecancel_assumption.
         }
@@ -649,7 +658,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
     Proof.
       enter' Fp2_add. clear H0 H1 H2. cbv [binop_spec] in *.
       intros. unfold1_call_goal. cbv match beta delta [call_body].
-      assert ((AbstractField.add =? AbstractField.add)%string = true) by auto.
+      assert ((Field.add =? Field.add)%string = true) by (rewrite eqb_refl; auto).
       rewrite H1.
       cbv match beta delta [func].
       repeat straightline.
@@ -680,10 +689,10 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
       straightline_call.
       1: {
         split; try ecancel_assumption.
-        remember ((AbstractField.FElem a (fst_felem x3))) as R1.
-        remember (AbstractField.FElem (word.add a felem_offset_word) (snd_felem x3)) as R2.
-        remember ((AbstractField.FElem a0 (fst_felem x2))) as R3.
-        remember (AbstractField.FElem (word.add a0 felem_offset_word) (snd_felem x2)) as R4.
+        remember ((Field.FElem _ a (fst_felem x3))) as R1.
+        remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x3)) as R2.
+        remember ((Field.FElem _ a0 (fst_felem x2))) as R3.
+        remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x2)) as R4.
         remember (R1 * R2)%sep as R1'.
         remember (R3 * R4)%sep as R2'.
         eapply sep_assoc in H9.
@@ -700,10 +709,10 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
       1: {
         split; try ecancel_assumption.
         cbv [id] in *.
-        remember ((AbstractField.FElem a (fst_felem x))) as R1.
-        remember (AbstractField.FElem (word.add a felem_offset_word) (snd_felem x3)) as R2.
-        remember ((AbstractField.FElem a0 (fst_felem x2))) as R3.
-        remember (AbstractField.FElem (word.add a0 felem_offset_word) (snd_felem x2)) as R4.
+        remember ((Field.FElem _ a (fst_felem x))) as R1.
+        remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x3)) as R2.
+        remember ((Field.FElem _ a0 (fst_felem x2))) as R3.
+        remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x2)) as R4.
         eapply sep_comm in H7.
         eapply sep_assoc in H7.
         remember (R2 * (R3 * R4) * R1)%sep as R1'.
@@ -719,10 +728,10 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
       1: {
         split; try ecancel_assumption.
         cbv [id] in *.
-        remember ((AbstractField.FElem a (fst_felem x))) as R1.
-        remember (AbstractField.FElem (word.add a felem_offset_word) (snd_felem x)) as R2.
-        remember ((AbstractField.FElem a0 (fst_felem x2))) as R3.
-        remember (AbstractField.FElem (word.add a0 felem_offset_word) (snd_felem x2)) as R4.
+        remember ((Field.FElem _ a (fst_felem x))) as R1.
+        remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x)) as R2.
+        remember ((Field.FElem _ a0 (fst_felem x2))) as R3.
+        remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x2)) as R4.
         eapply sep_comm in H8.
         eapply sep_assoc in H8.
         eapply sep_comm in H8.
@@ -743,10 +752,10 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
       1: {
         split; try ecancel_assumption.
         cbv [id] in *.
-        remember ((AbstractField.FElem a (fst_felem x))) as R1.
-        remember (AbstractField.FElem (word.add a felem_offset_word) (snd_felem x)) as R2.
-        remember ((AbstractField.FElem a0 (fst_felem y))) as R3.
-        remember (AbstractField.FElem (word.add a0 felem_offset_word) (snd_felem x2)) as R4.
+        remember ((Field.FElem _ a (fst_felem x))) as R1.
+        remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x)) as R2.
+        remember ((Field.FElem _ a0 (fst_felem y))) as R3.
+        remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x2)) as R4.
         eapply sep_comm in H10.
         eapply sep_assoc in H10.
         eapply sep_comm in H10.
@@ -767,10 +776,10 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 
       (*deconstructing sep hyp.*)
       cbv [id] in *.
-      remember ((AbstractField.FElem a (fst_felem x))) as R1.
-      remember (AbstractField.FElem (word.add a felem_offset_word) (snd_felem x)) as R2.
-      remember ((AbstractField.FElem a0 (fst_felem y))) as R3.
-      remember (AbstractField.FElem (word.add a0 felem_offset_word) (snd_felem y)) as R4.
+      remember ((Field.FElem _ a (fst_felem x))) as R1.
+      remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x)) as R2.
+      remember ((Field.FElem _ a0 (fst_felem y))) as R3.
+      remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem y)) as R4.
       eapply sep_assoc in H11. eapply (sep_assoc (R4 * R3)%sep) in H11.
       eapply (sep_assoc (R4 * R3 * R2)%sep) in H11.
       eapply sep_comm in H11.
@@ -811,7 +820,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
       }
 
       repeat straightline. (*mStack is not in scope in the below proof; should otherwise go through. destruct sep hyp before introducing evars.*)
-      eassert ((AbstractField.FElem a0 _  * _)%sep a8).
+      eassert ((Field.FElem _ a0 _  * _)%sep a8).
       {
         eapply Fp_FElem_to_Fp2_R_sep. ecancel_assumption.
       }
@@ -824,7 +833,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 
       clear H20 H14 H5 H10 H8 H7 H9.
 
-      eassert ((AbstractField.FElem a _  * _)%sep x7).
+      eassert ((Field.FElem _ a _  * _)%sep x7).
       {
         eapply Fp_FElem_to_Fp2_R_sep. ecancel_assumption.
       }
@@ -864,11 +873,11 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
     (*multiplication in Fp2*)
 
     Definition Fp2_mul : bedrock2.Syntax.func :=
-      (@AbstractField.mul Fp2_parameters, (["out"; "inx"; "iny"], []:list String.string, bedrock_func_body:(
-        stackalloc (@felem_size_in_bytes F_parameters _ _ _ _ _) as v0;
-        stackalloc (@felem_size_in_bytes F_parameters _ _ _ _ _) as v1;
-        stackalloc felem_size_in_bytes as allocx;
-        stackalloc felem_size_in_bytes as allocy;
+      (@Field.mul Fp2_names, (["out"; "inx"; "iny"], []:list String.string, bedrock_func_body:(
+        stackalloc (felem_size_in_bytes F) as v0;
+        stackalloc (felem_size_in_bytes F) as v1;
+        stackalloc (felem_size_in_bytes Fp2) as allocx;
+        stackalloc (felem_size_in_bytes Fp2) as allocy;
         coq:(cmd.call [] (fst F_copy) [expr.var ("allocx"); expr.var ("inx")]);
         coq:(cmd.call [] (fst F_copy) [expr_2nd_felem (expr.var ("allocx")); expr_2nd_felem (expr.var ("inx"))]);
         coq:(cmd.call [] (fst F_copy) [expr.var ("allocy"); expr.var ("iny")]);
@@ -883,22 +892,22 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
         coq:(cmd.call [] ((fst F_sub)) [expr.var "out"; expr.var "v0"; expr.var "v1"])
       ))).
 
-    Instance spec_of_Fp2_mul : spec_of (@AbstractField.mul Fp2_parameters).
+    Instance spec_of_Fp2_mul : spec_of (@Field.mul Fp2_names).
     Proof.
       simpl.
-      pose proof (@binop_spec width BW word mem locals ext_spec Fp2_parameters Fp2_representation (@AbstractField.mul Fp2_parameters) bin_mul). cbv [spec_of]. eapply X.
+      pose proof (@binop_spec width BW word mem locals ext_spec Fp2 Fp2_parameters Fp2_representation (@Field.mul Fp2_names) bin_mul). cbv [spec_of]. eapply X.
     Defined.
 
     Lemma M_pos_prime : Znumtheory.prime (Z.pos M_pos).
     Proof.
-      destruct prime_field_parameters_ok; auto.
+      destruct prime_parameters_ok; auto.
     Qed.
 
     Lemma Fp2_mul_ok : program_logic_goal_for_function! Fp2_mul.
     Proof.
       enter' Fp2_mul. clear H0 H1 H2 H3 H4 H5 H8 H9. cbv [binop_spec] in *.
       intros. unfold1_call_goal. cbv match beta delta [call_body].
-      assert ((AbstractField.mul =? AbstractField.mul)%string = true) by auto.
+      assert ((Field.mul =? Field.mul)%string = true) by (rewrite eqb_refl; auto).
       rewrite H1.
       cbv match beta delta [func].
       repeat straightline.
@@ -944,12 +953,12 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
       eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?].
       eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?]. *)
 
-      remember (AbstractField.FElem a x4) as R1.
-      remember (AbstractField.FElem a0 x5) as R2.
-      remember (AbstractField.FElem a1 (fst_felem x2)) as R3.
-      remember (AbstractField.FElem (word.add a1 felem_offset_word) (snd_felem x2)) as R4.
-      remember (AbstractField.FElem a2 (fst_felem x3)) as R5.
-      remember (AbstractField.FElem (word.add a2 felem_offset_word) (snd_felem x3)) as R6.
+      remember (Field.FElem _ a x4) as R1.
+      remember (Field.FElem _ a0 x5) as R2.
+      remember (Field.FElem _ a1 (fst_felem x2)) as R3.
+      remember (Field.FElem _ (word.add a1 felem_offset_word) (snd_felem x2)) as R4.
+      remember (Field.FElem _ a2 (fst_felem x3)) as R5.
+      remember (Field.FElem _ (word.add a2 felem_offset_word) (snd_felem x3)) as R6.
       eassert (( _ * (R1 * R2 * R3 * R4 * R5 * R6))%sep mCombined2) by ecancel_assumption.
       subst R1 R2 R3 R4 R5 R6.
 
@@ -961,7 +970,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
         eapply sep_and_l_fwd in H3; destruct H3 as [H3 ?].
         ecancel_assumption.
       }
-      repeat straightline. eapply sep_comm in H8. eapply (sep_assoc _ _ (AbstractField.FElem a1 _)) in H8.
+      repeat straightline. eapply sep_comm in H8. eapply (sep_assoc _ _ (Field.FElem _ a1 _)) in H8.
       
       eexists; split; [solve_locals5 l3 l2 l1 l0 l| ].
 
@@ -972,7 +981,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
         eapply sep_and_l_fwd in H8; destruct H8 as [H8 ?].
         ecancel_assumption.
       }
-      repeat straightline. eapply sep_comm in H9. eapply (sep_assoc _ _ (AbstractField.FElem (word.add a1 _) _)) in H9.
+      repeat straightline. eapply sep_comm in H9. eapply (sep_assoc _ _ (Field.FElem _ (word.add a1 _) _)) in H9.
       eexists; split; [solve_locals5 l3 l2 l1 l0 l| ].
 
       straightline_call.
@@ -983,7 +992,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
         eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?].
         ecancel_assumption.
       }
-      repeat straightline. eapply sep_comm in H11. eapply (sep_assoc _ _ (AbstractField.FElem a2 _)) in H11.
+      repeat straightline. eapply sep_comm in H11. eapply (sep_assoc _ _ (Field.FElem _ a2 _)) in H11.
       eexists; split; [solve_locals5 l3 l2 l1 l0 l| ].
 
       straightline_call.
@@ -993,7 +1002,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
         eapply sep_and_l_fwd in H11; destruct H11 as [H11 ?].
         ecancel_assumption.
       }
-      repeat straightline. eapply sep_comm in H12. eapply (sep_assoc _ _ (AbstractField.FElem (word.add a2 _) _)) in H12.
+      repeat straightline. eapply sep_comm in H12. eapply (sep_assoc _ _ (Field.FElem _ (word.add a2 _) _)) in H12.
       eexists; split; [solve_locals5 l3 l2 l1 l0 l |].
 
       (*deconstructing sep hyp.*)
@@ -1042,14 +1051,14 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
       let Hstack := (fresh "Hstack") in
       let Hsplit := (fresh "Hsplit") in
       let Hnew := (fresh "Hnew") in
-      eassert (Hstack : (AbstractField.FElem a2 _ * _)%sep a16) by (eapply Fp_FElem_to_Fp2_R_sep; ecancel_assumption);
+      eassert (Hstack : (Field.FElem _ a2 _ * _)%sep a16) by (eapply Fp_FElem_to_Fp2_R_sep; ecancel_assumption);
       destruct Hstack as [? [? [Hsplit [Hstack' Hnew]]]]; do 2 eexists; split; [eapply FElem_Fp2_to_anybytes; eauto| split; [eapply map.split_comm; eauto| ]].
 
       let Hstack := (fresh "Hstack") in
       let Htemp := (fresh "Htemp") in
       let Hsplit := (fresh "Hsplit") in
       let Hnew := (fresh "Hnew") in
-      eassert (Htemp : (AbstractField.FElem a1 _ * _)%sep x15) by (eapply Fp_FElem_to_Fp2_R_sep; ecancel_assumption);
+      eassert (Htemp : (Field.FElem _ a1 _ * _)%sep x15) by (eapply Fp_FElem_to_Fp2_R_sep; ecancel_assumption);
       destruct Htemp as [? [? [Hsplit [Hstack Hnew]]]]; do 2 eexists; split; [eapply FElem_Fp2_to_anybytes; eauto| split; [eapply map.split_comm; eauto| ]].
 
 
@@ -1057,14 +1066,14 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
       let Htemp := (fresh "Htemp") in
       let Hsplit := (fresh "Hsplit") in
       let Hnew := (fresh "Hnew") in
-      eassert (Htemp : ((@AbstractField.FElem F_parameters _ _ _ _ _) a0 _ * _)%sep x17) by (ecancel_assumption);
+      eassert (Htemp : ((Field.FElem F) a0 _ * _)%sep x17) by (ecancel_assumption);
       destruct Htemp as [? [? [Hsplit [Hstack Hnew]]]]; do 2 eexists; split; [eapply FElem_F_to_anybytes; eauto| split; [eapply map.split_comm; eauto| ]].
 
       let Hstack := (fresh "Hstack") in
       let Htemp := (fresh "Htemp") in
       let Hsplit := (fresh "Hsplit") in
       let Hnew := (fresh "Hnew") in
-      eassert (Htemp : ((@AbstractField.FElem F_parameters _ _ _ _ _) a _ * _)%sep x19) by (ecancel_assumption);
+      eassert (Htemp : ((Field.FElem F) a _ * _)%sep x19) by (ecancel_assumption);
       destruct Htemp as [? [? [Hsplit [Hstack Hnew]]]]; do 2 eexists; split; [eapply FElem_F_to_anybytes; eauto| split; [eapply map.split_comm; eauto| ]].
 
       repeat straightline. split; auto; split; auto.
@@ -1073,20 +1082,20 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
         simpl. erewrite fst_felem_app; try ecancel_assumption. erewrite snd_felem_app; try ecancel_assumption.
         eapply Prod.path_pair.
           - simpl.
-            assert (forall x, @feval
-            (@QuadraticFieldExtensionsSpecs.F_parameters prime_field_parameters)
-            width BW word mem F_representation x
-              = (@feval F_parameters width BW word mem F_representation x)) by auto.
-              rewrite H13.
+            (* assert (forall x, @feval *)
+            (* (@QuadraticFieldExtensionsSpecs.F_parameters prime_field_parameters) *)
+            (* width BW word mem F_representation x *)
+            (*   = (@feval F_parameters width BW word mem F_representation x)) by auto. *)
+              (* rewrite H13. *)
               rewrite H40.
               rewrite H16. rewrite H22.
               eassert (Quad_non_res M_pos = _).
               {
                 cbv [Quad_non_res]. assert (Z.pos M_pos mod 4 =? 3 = true) by lia.
-                rewrite H15.
+                rewrite H13.
                 eauto.
               }
-              rewrite H15.
+              rewrite H13.
               simpl.
               Local Infix "*p" := ModularArithmetic.F.mul (at level 90).
               Local Infix "-p" := ModularArithmetic.F.sub (at level 90).
@@ -1096,14 +1105,14 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
               remember (feval (fst_felem y)) as yr.
               remember (feval (snd_felem y)) as yi.
               rewrite F_mul_assoc; [| apply M_pos_prime]. (*admitted primality of M_pos*)
-              rewrite <- H15.
+              rewrite <- H13.
               rewrite <- mul_neg_1; eauto. apply M_pos_prime.
           - simpl.
-            assert (forall x, @feval
-              (@QuadraticFieldExtensionsSpecs.F_parameters prime_field_parameters)
-              width BW word mem F_representation x
-                = (@feval F_parameters width BW word mem F_representation x)) by auto.
-              rewrite H13.
+            (* assert (forall x, @feval *)
+            (*   (@QuadraticFieldExtensionsSpecs.F_parameters prime_field_parameters) *)
+            (*   width BW word mem F_representation x *)
+            (*     = (@feval F_parameters width BW word mem F_representation x)) by auto. *)
+            (*   rewrite H13. *)
               rewrite H37, H34, H31, H28, H25, H22, H16. simpl.
               remember (feval (fst_felem x)) as xr.
               remember (feval (snd_felem x)) as xi.
@@ -1123,9 +1132,9 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 
     (*subtraction in Fp2*)
     Definition Fp2_sub : bedrock2.Syntax.func :=
-      (@AbstractField.sub Fp2_parameters, (["out"; "inx"; "iny"], []:list String.string, bedrock_func_body:(
-        stackalloc felem_size_in_bytes as allocx;
-        stackalloc felem_size_in_bytes as allocy;
+      (@Field.sub Fp2_names, (["out"; "inx"; "iny"], []:list String.string, bedrock_func_body:(
+        stackalloc (felem_size_in_bytes Fp2) as allocx;
+        stackalloc (felem_size_in_bytes Fp2) as allocy;
         coq:(cmd.call [] (fst F_copy) [expr.var ("allocx"); expr.var ("inx")]);
         coq:(cmd.call [] (fst F_copy) [expr_2nd_felem (expr.var ("allocx")); expr_2nd_felem (expr.var ("inx"))]);
         coq:(cmd.call [] (fst F_copy) [expr.var ("allocy"); expr.var ("iny")]);
@@ -1134,10 +1143,10 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
         coq:(cmd.call [] ((fst F_sub)) [expr_2nd_felem (expr.var "out"); expr_2nd_felem (expr.var "allocx"); expr_2nd_felem (expr.var "allocy")])
       ))).
   
-    Instance spec_of_Fp2_sub : spec_of (@AbstractField.sub Fp2_parameters).
+    Instance spec_of_Fp2_sub : spec_of (@Field.sub Fp2_names).
     Proof.
       simpl.
-      pose proof (@binop_spec width BW word mem locals ext_spec Fp2_parameters Fp2_representation (@AbstractField.sub Fp2_parameters) bin_sub). cbv [spec_of]. eapply X.
+      pose proof (@binop_spec width BW word mem locals ext_spec _ Fp2_parameters Fp2_representation (@Field.sub Fp2_names) bin_sub). cbv [spec_of]. eapply X.
     Defined.
 
     
@@ -1145,7 +1154,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
     Proof.
       enter' Fp2_sub. clear H0 H1 H2 H4. cbv [binop_spec] in *.
       intros. unfold1_call_goal. cbv match beta delta [call_body].
-      assert ((AbstractField.sub =? AbstractField.sub)%string = true) by auto.
+      assert ((Field.sub =? Field.sub)%string = true) by (rewrite eqb_refl; auto).
       rewrite H1.
       cbv match beta delta [func].
       repeat straightline.
@@ -1180,10 +1189,10 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
       eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?].
       eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?]. *)
 
-      remember (AbstractField.FElem a (fst_felem x2)) as R1.
-      remember (AbstractField.FElem a0 (fst_felem x3)) as R2.
-      remember (AbstractField.FElem (word.add a felem_offset_word) (snd_felem x2)) as R3.
-      remember (AbstractField.FElem (word.add a0 felem_offset_word) (snd_felem x3)) as R4.
+      remember (Field.FElem _ a (fst_felem x2)) as R1.
+      remember (Field.FElem _ a0 (fst_felem x3)) as R2.
+      remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x2)) as R3.
+      remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x3)) as R4.
       eassert (( _ * (R1 * R2 * R3 * R4))%sep mCombined0) by ecancel_assumption.
       subst R1 R2 R3 R4. clear H8.
 
@@ -1195,7 +1204,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
         eapply sep_and_l_fwd in H4; destruct H4 as [H4 ?].
         ecancel_assumption.
       }
-      repeat straightline. eapply sep_comm in H7. eapply (sep_assoc _ _ (AbstractField.FElem a _)) in H7.
+      repeat straightline. eapply sep_comm in H7. eapply (sep_assoc _ _ (Field.FElem _ a _)) in H7.
       
       eexists; split; [solve_locals l1 l0 l| ].
 
@@ -1206,7 +1215,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
         eapply sep_and_l_fwd in H7; destruct H7 as [H7 ?].
         ecancel_assumption.
       }
-      repeat straightline. eapply sep_comm in H8. eapply (sep_assoc _ _ (AbstractField.FElem (word.add a _) _)) in H8.
+      repeat straightline. eapply sep_comm in H8. eapply (sep_assoc _ _ (Field.FElem _ (word.add a _) _)) in H8.
       eexists; split; [solve_locals l1 l0 l| ].
 
       straightline_call.
@@ -1217,7 +1226,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
         eapply sep_and_l_fwd in H8; destruct H8 as [H8 ?].
         ecancel_assumption.
       }
-      repeat straightline. eapply sep_comm in H9. eapply (sep_assoc _ _ (AbstractField.FElem a0 _)) in H9.
+      repeat straightline. eapply sep_comm in H9. eapply (sep_assoc _ _ (Field.FElem _ a0 _)) in H9.
       eexists; split; [solve_locals l1 l0 l| ].
 
       straightline_call.
@@ -1227,7 +1236,7 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
         eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?].
         ecancel_assumption.
       }
-      repeat straightline. eapply sep_comm in H10. eapply (sep_assoc _ _ (AbstractField.FElem (word.add a0 _) _)) in H10.
+      repeat straightline. eapply sep_comm in H10. eapply (sep_assoc _ _ (Field.FElem _ (word.add a0 _) _)) in H10.
       eexists; split; [solve_locals l1 l0 l |].
 
       (*deconstructing sep hyp.*)
@@ -1249,14 +1258,14 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
       let Hstack := (fresh "Hstack") in
       let Hsplit := (fresh "Hsplit") in
       let Hnew := (fresh "Hnew") in
-      eassert (Hstack : (AbstractField.FElem a0 _ * _)%sep a8) by (eapply Fp_FElem_to_Fp2_R_sep; ecancel_assumption);
+      eassert (Hstack : (Field.FElem _ a0 _ * _)%sep a8) by (eapply Fp_FElem_to_Fp2_R_sep; ecancel_assumption);
       destruct Hstack as [? [? [Hsplit [Hstack' Hnew]]]]; do 2 eexists; split; [eapply FElem_Fp2_to_anybytes; eauto| split; [eapply map.split_comm; eauto| ]].
 
       let Hstack := (fresh "Hstack") in
       let Htemp := (fresh "Htemp") in
       let Hsplit := (fresh "Hsplit") in
       let Hnew := (fresh "Hnew") in
-      eassert (Htemp : (AbstractField.FElem a _ * _)%sep x7) by (eapply Fp_FElem_to_Fp2_R_sep; ecancel_assumption);
+      eassert (Htemp : (Field.FElem _ a _ * _)%sep x7) by (eapply Fp_FElem_to_Fp2_R_sep; ecancel_assumption);
       destruct Htemp as [? [? [Hsplit [Hstack Hnew]]]]; do 2 eexists; split; [eapply FElem_Fp2_to_anybytes; eauto| split; [eapply map.split_comm; eauto| ]].
 
       repeat straightline. split; auto; split; auto.

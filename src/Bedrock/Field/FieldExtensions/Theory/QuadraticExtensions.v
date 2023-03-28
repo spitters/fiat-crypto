@@ -123,8 +123,10 @@ Section Fp2.
   Definition mulp2 (x1 x2 : Fp2) :  Fp2 :=
     (fst x1 *p fst x2 +p β *p snd x1 *p snd x2,
       fst x1 *p snd x2 +p snd x1 *p fst x2).
-    
+
   Definition oppp2 (x : Fp2) : Fp2 := (@F.opp p (fst x), @F.opp p (snd x)).
+
+  Definition of_Zp2 (x : Z) := (@F.zero p, @F.of_Z p x).
 
   Add Field F : field_theory_for_stdlib_tactic.
 

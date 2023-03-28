@@ -1,6 +1,6 @@
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Lib.Alloc.
-Require Import Crypto.Bedrock.Specs.AbstractField.
+Require Import Crypto.Bedrock.Specs.Field.
 Local Open Scope Z_scope.
 
 Section Compile.
@@ -13,8 +13,8 @@ Section Compile.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
   Context {field_parameters : FieldParameters}
-          {field_parameters_ok : FieldParameters_ok}.
-
+          {field_parameters_ok : FieldParameters_ok}
+          {field_names : FieldNames}.
   Context {field_representaton : FieldRepresentation}
           {field_representation_ok : FieldRepresentation_ok}.
 
@@ -228,10 +228,12 @@ Section Compile.
     ltac:(cleanup_op_lemma (@compile_unop _ op)) (only parsing).
 
   Definition compile_square := make_un_lemma un_square.
-  Definition compile_scmula24 := make_un_lemma un_scmula24.
+  (* Definition compile_scmula24 := make_un_lemma un_scmula24. *)
 
   Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_felem_copy _ _ _ _ _ _ _ _)) : typeclass_instances.
-  
+  (* why? *)
+  Local Hint Extern 1 (spec_of felem_copy) => exact spec_of_felem_copy : typeclass_instances.
+
   Lemma compile_felem_copy {tr m l functions} x : 
     let v := x in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
@@ -265,21 +267,23 @@ Section Compile.
     repeat straightline'.
     unfold FElem in *.
     sepsimpl.
+    sepsimpl; repeat straightline'; subst; eauto.
     prove_field_compilation.
     apply H3.
 
     sepsimpl. cbv [Lift1Prop.ex1].
     eexists. sepsimpl; eauto.
     eapply sep_comm. eapply sep_assoc.
-    destruct H10, H1, H1, H4.
+    destruct H8, H1, H1, H4.
     eexists; eexists. split; [eauto | split; eauto].
     eexists; sepsimpl; eauto.
   Qed.
-(* 
+
   Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_from_word _ _ _ _ _ _ _ _)) : typeclass_instances.
+  Local Hint Extern 1 (spec_of from_word) => exact spec_of_from_word : typeclass_instances.
 
   Lemma compile_from_word {tr m l functions} x:
-    let v := F.of_Z _ x in
+    let v := FofZ x in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
            R (wx : word) out out_ptr out_var out_bounds,
 
@@ -326,8 +330,7 @@ Section Compile.
       eexists;
         sepsimpl;
         eauto. 
-  Qed. *)
-
+  Qed.
 
   Section FromList.
     Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_from_list _ _ _ _ _ _ _ _ _)) : typeclass_instances.
@@ -398,8 +401,8 @@ Local Infix "+F" := Fadd (at level 100).
 Local Infix "-F" := Fsub (at level 100).
 Local Notation "x ^F2" := (Fmul x x) (at level 90).
 
-#[export] Hint Extern 6 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (a24 *F _) _))) =>
-simple eapply compile_scmula24; shelve : compiler.
+(* #[export] Hint Extern 6 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (a24 *F _) _))) => *)
+(* simple eapply compile_scmula24; shelve : compiler. *)
 
 #[export] Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ *F _) _))) =>
 simple eapply compile_mul; shelve : compiler.
