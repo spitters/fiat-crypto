@@ -12,43 +12,54 @@ Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 Require Import Crypto.Bedrock.Field.FieldExtensions.QuadraticFieldExtensionsSpecs.
 Require Import Rupicola.Lib.Api.
-Require Import Crypto.Bedrock.Specs.AbstractField.
-Require Import Crypto.Bedrock.Specs.PrimeField.
+Require Import Crypto.Bedrock.Specs.Field.
+Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.FieldExtensions.Theory.QuadraticExtensions.
 Require Import Crypto.Bedrock.Field.Interface.Compilation2.
 Require Import Crypto.Arithmetic.UniformWeight.
 Require Import Crypto.Bedrock.Field.Translation.Parameters.Defaults64.
 Require Import Crypto.Bedrock.Field.FieldExtensions.QuadraticFieldExtensionsSpecs.
+Require Import Crypto.Spec.ModularArithmetic.
 
 Section bls12_G2.
 
     Existing Instances Defaults64.default_parameters Defaults64.default_parameters_ok.
 
-    Instance prime_field_parameters : PrimeField.PrimeFieldParameters.
-    Proof.
-        exact bls12_prime.field_parameters.
-    Defined.
+    Instance prime_parameters : PrimeParameters := prime_parameters.
+    Local Notation F := (F M_pos).
+    Local Notation Fp2 := (F * F)%type.
 
-    Instance prime_field_representation : (@FieldRepresentation PrimeField.prime_field_parameters 64 Bitwidth64.BW64 BasicC64Semantics.word BasicC64Semantics.mem).
-    Proof.
-        exact (field_representation M).
-    Defined.
+    Instance F_names : FieldNames := field_names.
+    Instance F_parameters : FieldParameters F := field_parameters.
+    Instance F_representation : FieldRepresentation F := field_representation M.
+    Instance Fp2_parameters : FieldParameters Fp2 := Fp2_parameters.
+    Instance Fp2_representation : FieldRepresentation Fp2 := Fp2_representation.
 
-    Instance field_parameters : AbstractField.FieldParameters.
-    Proof.
-        exact Fp2_parameters.
-    Defined.
+    (* Instance prime_field_parameters : Field.FieldParameters. *)
+    (* Proof. *)
+    (*     exact bls12_prime.field_parameters. *)
+    (* Defined. *)
 
-    Instance field_representation : @AbstractField.FieldRepresentation field_parameters _ _ _ _.
-    Proof.
-        exact (@Fp2_representation _ _ _ _ prime_field_parameters prime_field_representation).
-    Defined.
+    (* Instance prime_field_representation : (@FieldRepresentation Field.prime_field_parameters 64 Bitwidth64.BW64 BasicC64Semantics.word BasicC64Semantics.mem). *)
+    (* Proof. *)
+    (*     exact (field_representation M). *)
+    (* Defined. *)
+
+    (* Instance field_parameters : Field.FieldParameters. *)
+    (* Proof. *)
+    (*     exact Fp2_parameters. *)
+    (* Defined. *)
+
+    (* Instance field_representation : @Field.FieldRepresentation field_parameters _ _ _ _. *)
+    (* Proof. *)
+    (*     exact (@Fp2_representation _ _ _ _ prime_field_parameters prime_field_representation). *)
+    (* Defined. *)
 
     Check @ladderstep_body. (*Give Proper Name!!!!!!!!*)
     Check ladderstep_body.
 
     Definition bls12_G2_add := ladderstep_body.
-    (*make AbstractField.field_representation from rep in WordByWordMontgomery.*)
+    (*make Field.field_representation from rep in WordByWordMontgomery.*)
 
     Definition mpos : positive.
     Proof.
@@ -66,8 +77,8 @@ Section bls12_G2.
     Definition three_bi_list := Partition.partition uw 6 three_bi.
 
     Definition word := BasicC64Semantics.word.
-    Definition three_br_mont := @WordByWordMontgomery.to_montgomerymod 64 6 m (@m' prime_field_parameters 64) three_br_list.
-    Definition three_bi_mont := @WordByWordMontgomery.to_montgomerymod 64 6 m (@m' prime_field_parameters 64) three_bi_list.
+    Definition three_br_mont := @WordByWordMontgomery.to_montgomerymod 64 6 m (@m' _ 64) three_br_list.
+    Definition three_bi_mont := @WordByWordMontgomery.to_montgomerymod 64 6 m (@m' _ 64) three_bi_list.
     Definition three_br_words := List.map (@word.of_Z 64 word) three_br_mont.
     Definition three_bi_words := List.map (@word.of_Z 64 word) three_bi_mont.
 
@@ -75,6 +86,8 @@ Section bls12_G2.
     Proof. exact spec_of_bls12_Fp2_add. Defined.
         (* exact (@spec_of_add _ _ _ _ _ _ field_parameters (WordByWordMontgomery.field_representation m)).
     Defined. *)
+
+    Compute fst bls12_Fp2_sub.
 
     Instance spec_of_bls12_Fp2_sub : spec_of (fst bls12_Fp2_sub).
     Proof. exact spec_of_bls12_Fp2_sub. Defined.
@@ -94,17 +107,38 @@ Section bls12_G2.
         exact (spec_of_ladderstep (three_br_words ++ three_bi_words)).
     Defined.
 
-    Definition three_b_F : (@F field_parameters).
+    Definition three_b_F : Fp2.
     Proof.
         exact (ModularArithmetic.F.of_Z M_pos three_br, ModularArithmetic.F.of_Z M_pos three_bi).
     Defined.
 
     Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_from_list_Fp2.
+    Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_from_list_F.
 
-    Instance spec_of_from_list : spec_of "Fp2_from_list".
-    Proof.
-        exact (spec_of_from_list).
-    Defined.
+    Let prefix := "bls12_Fp2".
+    Instance Fp2_names : FieldNames := field_names_prefixed prefix.
+
+    Locate spec_of_from_list.
+
+    Existing Instance spec_of_bls12_mul.
+    Existing Instance spec_of_bls12_add.
+    Existing Instance spec_of_bls12_sub.
+    Existing Instance bls12_from_list_F.spec_of_from_list.
+    (* Proof. *)
+    (*     exact (@Field.spec_of_from_list _ _ _ _ _ _ F F_parameters F_names F_representation _) . *)
+    (* Defined. *)
+
+    Instance spec_of_from_list_Fp2 : spec_of (@from_list Fp2_names) := bls12_from_list_Fp2.spec_of_from_list.
+    (* Proof. *)
+    (*     exact (@Field.spec_of_from_list _ _ _ _ _ _ Fp2 Fp2_parameters Fp2_names Fp2_representation three_b_Fp2) . *)
+    (* Defined. *)
+
+    (* Instance spec_of_from_list : spec_of "Fp2_from_list". *)
+    (* Proof. *)
+    (*     exact (spec_of_from_list). *)
+    (* Defined. *)
+
+    Check spec_of_from_list.
 
     Lemma bls12_G2_ok : program_logic_goal_for_function! bls12_G2_add. (*Why does this take 7 minutes??!?!?*)
     pose proof ladderstep_correct. cbv [spec_of_G2_add].

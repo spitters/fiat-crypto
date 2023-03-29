@@ -8,8 +8,8 @@ Require Import Crypto.Spec.ModularArithmetic.
 Require Import Crypto.Arithmetic.ModularArithmeticTheorems.
 Require Import Crypto.Arithmetic.UniformWeight.
 Require Import Crypto.Arithmetic.WordByWordMontgomery.
-Require Import Crypto.Bedrock.Specs.AbstractField.
-Require Import Crypto.Bedrock.Specs.PrimeField.
+Require Import Crypto.Bedrock.Specs.Field.
+Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.Common.Types.
 Require Import Crypto.Bedrock.Field.Common.Util.
 Require Import Crypto.Bedrock.Field.Common.Arrays.ByteBounds.
@@ -33,39 +33,40 @@ Class word_by_word_Montgomery_ops
   {from_mont to_mont : string}
   {width BW word mem locals env ext_spec varname_gen error}
   {parameters_sentinel : @parameters width BW word mem locals env ext_spec varname_gen error}
-  {prime_field_parameters : PrimeFieldParameters}
+  {prime_parameters : PrimeParameters}
+  {field_names : FieldNames}
   {n m} : Type :=
   { mul_op :
       computed_op
-        (WordByWordMontgomery.mul m width) (@AbstractField.mul PrimeField.prime_field_parameters)
+        (WordByWordMontgomery.mul m width) Field.mul
         list_binop_insizes list_binop_outsizes (list_binop_inlengths n);
     add_op :
       computed_op
-        (WordByWordMontgomery.add m width) (@AbstractField.add PrimeField.prime_field_parameters)
+        (WordByWordMontgomery.add m width) Field.add
         list_binop_insizes list_binop_outsizes (list_binop_inlengths n);
     sub_op :
       computed_op
-        (WordByWordMontgomery.sub m width) (@AbstractField.sub PrimeField.prime_field_parameters)
+        (WordByWordMontgomery.sub m width) Field.sub
         list_binop_insizes list_binop_outsizes (list_binop_inlengths n);
     opp_op :
       computed_op
-        (WordByWordMontgomery.opp m width) (@AbstractField.opp PrimeField.prime_field_parameters)
+        (WordByWordMontgomery.opp m width) Field.opp
         list_unop_insizes list_unop_outsizes (list_unop_inlengths n);
     square_op :
       computed_op
         (WordByWordMontgomery.square m width)
-        (@AbstractField.square PrimeField.prime_field_parameters)
+        Field.square
         list_unop_insizes list_unop_outsizes (list_unop_inlengths n);
     from_bytes_op :
       computed_op
         (WordByWordMontgomery.from_bytes m width)
-        (@AbstractField.from_bytes PrimeField.prime_field_parameters)
+        Field.from_bytes
         from_bytes_insizes from_bytes_outsizes (from_bytes_inlengths
                                                   (n_bytes m));
     to_bytes_op :
       computed_op
         (WordByWordMontgomery.to_bytes m width)
-        (@AbstractField.to_bytes PrimeField.prime_field_parameters)
+        Field.to_bytes
         to_bytes_insizes to_bytes_outsizes (to_bytes_inlengths n);
     from_mont_op :
       computed_op
@@ -80,11 +81,11 @@ Class word_by_word_Montgomery_ops
     select_znz_op : 
         computed_op
         (WordByWordMontgomery.selectznz m width)
-        (@AbstractField.select_znz PrimeField.prime_field_parameters)
+        Field.select_znz
         list_selectznz_insizes list_selectznz_outsizes (list_selectznz_inlengths n)
   }.
 
-Arguments word_by_word_Montgomery_ops {_ _ _ _ _ _ _ _ _ _ _ _ _} n.
+Arguments word_by_word_Montgomery_ops {_ _ _ _ _ _ _ _ _ _ _ _ _ _} n.
 
 (** We need to tell [check_args] that we are requesting these functions in order to get the relevant properties out *)
 Notation necessary_requests := ["to_bytes"; "from_bytes"]%string (only parsing).
@@ -93,10 +94,13 @@ Section WordByWordMontgomery.
   Context
   {width BW word mem locals env ext_spec error}
   {parameters_sentinel : @parameters width BW word mem locals env ext_spec default_varname_gen error}
-  {prime_field_parameters : PrimeFieldParameters}
+  {prime_parameters : PrimeParameters}
+  {field_names : FieldNames}
   {ok : Types.ok}.
 
-  Local Instance field_parameters : FieldParameters := PrimeField.prime_field_parameters.
+  Local Notation F := (F M_pos).
+
+  Local Instance field_parameters : FieldParameters F := Field.prime_field_parameters.
 
   Context (m : Z)
           (M_eq : M = m)
@@ -104,7 +108,7 @@ Section WordByWordMontgomery.
              check_args m width necessary_requests (ErrorT.Success tt)
              = ErrorT.Success tt)
                                  .
-  Definition r' := @PrimeField.r' prime_field_parameters width.
+  Definition r' := @Field.r' prime_parameters width.
 
   Lemma m_big : (2 < m)%Z.
   Proof.
@@ -134,7 +138,7 @@ Section WordByWordMontgomery.
 
   Lemma r'_correct : ((2 ^ (width) * r' ) mod M = 1)%Z. (*Not very elegant proof...*)
   Proof.
-    cbv [r' PrimeField.r' PrimeField.r].
+    cbv [r' Field.r' Field.r].
     assert (H1mod : (1 = 1 mod M)%Z).
     {
       rewrite Zmod_small; split; try lia; rewrite M_eq; eapply use_curve_good; eauto.
@@ -178,7 +182,7 @@ Section WordByWordMontgomery.
           (to_bytes_func_eq : to_bytes_func = b2_func to_bytes_op)
           (from_mont_func_eq : from_mont_func = b2_func from_mont_op)
           (to_mont_func_eq : to_mont_func = b2_func to_mont_op)
-          (select_znz_func_eq : select_znz_func = b2_func (@select_znz_op from_mont to_mont _ _ _ _ _ _ _ _ _ _ _ _ _ _)).
+          (select_znz_func_eq : select_znz_func = b2_func (@select_znz_op from_mont to_mont _ _ _ _ _ _ _ _ _ _ _ _ _ _ _)).
 
   Local Notation weight := (uweight width) (only parsing).
   Definition eval_trans := (WordByWordMontgomery.from_montgomerymod width n m (WordByWordMontgomery.m' m width)).
@@ -195,7 +199,7 @@ Section WordByWordMontgomery.
     | bytelist => WordByWordMontgomery.valid 8 (n_bytes m) m x
     end.
 
-  Local Instance field_representation_raw : FieldRepresentation
+  Local Instance field_representation_raw : FieldRepresentation F
   := Signature.field_representation
       n (n_bytes m) weight bounds_type
       wordlist
@@ -203,7 +207,7 @@ Section WordByWordMontgomery.
       bytelist
       list_in_bounds eval_raw.
 
-  Local Instance field_representation : FieldRepresentation
+  Local Instance field_representation : FieldRepresentation F
     := field_representation
          n (n_bytes m) weight bounds_type
          wordlist
@@ -212,7 +216,7 @@ Section WordByWordMontgomery.
          list_in_bounds eval_trans.
   
   Local Ltac specialize_correctness_hyp Hcorrect :=
-    cbv [feval feval_bytes bounded_by bytes_in_bounds AbstractField.loose_bounds
+    cbv [feval feval_bytes bounded_by bytes_in_bounds Field.loose_bounds
                field_representation Signature.field_representation
                Representation.frep Representation.eval_bytes
                Representation.eval_words
@@ -232,9 +236,9 @@ Section WordByWordMontgomery.
       end
     end.
 
-  Lemma loose_bounds_eq : AbstractField.loose_bounds = wordlist.
+  Lemma loose_bounds_eq : Field.loose_bounds = wordlist.
   Proof using Type. reflexivity. Qed.
-  Lemma tight_bounds_eq : AbstractField.tight_bounds = wordlist.
+  Lemma tight_bounds_eq : Field.tight_bounds = wordlist.
   Proof. reflexivity. Qed.
 
   (* TODO: move to coqutil.Datatypes.List *)
@@ -281,8 +285,8 @@ Section WordByWordMontgomery.
             let e := lazymatch goal with | |- forall res, ?e = _ -> API.Wf _ => e end in
             idtac "Warning: Falling back to manually proving pipeline well-formedness for" e;
             PipelineTactics.prove_pipeline_wf ()
-       | |- context [AbstractField.tight_bounds] => rewrite tight_bounds_eq
-       | |- context [AbstractField.loose_bounds] => rewrite loose_bounds_eq
+       | |- context [Field.tight_bounds] => rewrite tight_bounds_eq
+       | |- context [Field.loose_bounds] => rewrite loose_bounds_eq
        | _ => idtac
        end;
        lazymatch goal with
@@ -347,7 +351,7 @@ Qed.
     {   
     (* output *value* is correct *)
       intros. cbv [feval]. simpl. cbv [Representation.eval_words]. simpl. 
-      cbv [feval feval_bytes bounded_by bytes_in_bounds AbstractField.loose_bounds
+      cbv [feval feval_bytes bounded_by bytes_in_bounds Field.loose_bounds
                field_representation Signature.field_representation
                Representation.frep Representation.eval_bytes
                Representation.eval_words
@@ -378,7 +382,7 @@ Qed.
       handle_side_conditions; [ | | apply valid_max_bounds | apply valid_length ].
     { (* output *value* is correct *)
     intros. cbv [feval]. simpl. cbv [Representation.eval_words]. simpl. 
-    cbv [feval feval_bytes bounded_by bytes_in_bounds AbstractField.loose_bounds
+    cbv [feval feval_bytes bounded_by bytes_in_bounds Field.loose_bounds
              field_representation Signature.field_representation
              Representation.frep Representation.eval_bytes
              Representation.eval_words
@@ -409,7 +413,7 @@ Qed.
     handle_side_conditions; [ | | apply valid_max_bounds | apply valid_length ].
     { (* output *value* is correct *)
     intros. cbv [feval]. simpl. cbv [Representation.eval_words]. simpl. 
-    cbv [feval feval_bytes bounded_by bytes_in_bounds AbstractField.loose_bounds
+    cbv [feval feval_bytes bounded_by bytes_in_bounds Field.loose_bounds
              field_representation Signature.field_representation
              Representation.frep Representation.eval_bytes
              Representation.eval_words
@@ -441,7 +445,7 @@ Qed.
     handle_side_conditions; [ | | apply valid_max_bounds| apply valid_length ].
     { (* output *value* is correct *)
     intros. cbv [feval]. simpl. cbv [Representation.eval_words]. simpl. 
-    cbv [feval feval_bytes bounded_by bytes_in_bounds AbstractField.loose_bounds
+    cbv [feval feval_bytes bounded_by bytes_in_bounds Field.loose_bounds
              field_representation Signature.field_representation
              Representation.frep Representation.eval_bytes
              Representation.eval_words
@@ -473,7 +477,7 @@ Qed.
       handle_side_conditions; [ | | apply valid_max_bounds | apply valid_length ].
     { (* output *value* is correct *)
     intros. cbv [feval]. simpl. cbv [Representation.eval_words]. simpl. 
-    cbv [feval feval_bytes bounded_by bytes_in_bounds AbstractField.loose_bounds
+    cbv [feval feval_bytes bounded_by bytes_in_bounds Field.loose_bounds
              field_representation Signature.field_representation
              Representation.frep Representation.eval_bytes
              Representation.eval_words
@@ -495,7 +499,7 @@ Qed.
   Lemma from_bytes_func_correct :
     valid_func (res from_bytes_op _) ->
     forall functions,
-      (@spec_of_from_bytes _ _ _ _ _ _ _ field_representation_raw) (from_bytes_func :: functions).
+      (@spec_of_from_bytes _ _ _ _ _ _ _ _ _ field_representation_raw) (from_bytes_func :: functions).
   Proof using M_eq check_args_ok from_bytes_func_eq ok.
     intros. cbv [spec_of_from_bytes]. rewrite from_bytes_func_eq.
     pose proof from_bytes_correct
@@ -505,7 +509,7 @@ Qed.
       handle_side_conditions; [ apply valid_max_bounds | apply valid_length | | ].
     { (* output *value* is correct *)
     intros. cbv [feval]. simpl. cbv [Representation.eval_words]. simpl. 
-    cbv [feval feval_bytes bounded_by bytes_in_bounds AbstractField.loose_bounds
+    cbv [feval feval_bytes bounded_by bytes_in_bounds Field.loose_bounds
              field_representation Signature.field_representation
              Representation.frep Representation.eval_bytes
              Representation.eval_words
@@ -537,7 +541,7 @@ Proof using check_args_ok.
   clear - check_args_ok. apply use_curve_good in check_args_ok; rename check_args_ok into H.
   vm_compute Primitives.request_present in H.
   destruct_head'_and.
-  specialize_by reflexivity. cbv [uweight] in *. Search ModOps.weight.
+  specialize_by reflexivity. cbv [uweight] in *.
   {
     assert (m <= s m)%Z by lia. split; try lia.
   }
@@ -546,7 +550,7 @@ Qed. (*Copied from UnsaturatedSolinas.v; move to common location*)
   Lemma to_bytes_func_correct :
     valid_func (res to_bytes_op _) ->
     forall functions,
-      (@spec_of_to_bytes _ _ _ _ _ _ _ field_representation_raw) (to_bytes_func :: functions).
+      (@spec_of_to_bytes _ _ _ _ _ _ _ _ _ field_representation_raw) (to_bytes_func :: functions).
   Proof using M_eq check_args_ok ok to_bytes_func_eq.
     intros. cbv [spec_of_to_bytes]. rewrite to_bytes_func_eq.
     pose proof to_bytes_correct
@@ -566,7 +570,7 @@ Qed. (*Copied from UnsaturatedSolinas.v; move to common location*)
     }
     { (* output *value* is correct *)
     intros. cbv [feval]. simpl. 
-    cbv [feval feval_bytes bounded_by bytes_in_bounds AbstractField.loose_bounds
+    cbv [feval feval_bytes bounded_by bytes_in_bounds Field.loose_bounds
              field_representation Signature.field_representation
              Representation.frep Representation.eval_bytes
              Representation.eval_words
@@ -640,7 +644,7 @@ Qed. (*Copied from UnsaturatedSolinas.v; move to common location*)
   Lemma from_mont_func_correct :
   valid_func (res from_mont_op _) ->
   forall functions,
-    (@spec_of_UnOp _ _ _ _ _ _ _ _ from_mont) un_from_mont (from_mont_func :: functions).
+    (@spec_of_UnOp _ _ _ _ _ _ _ _ _ from_mont) un_from_mont (from_mont_func :: functions).
     Proof using M_eq check_args_ok ok from_mont_func_eq.
     intros. cbv [spec_of_UnOp unop_spec un_from_mont]. rewrite from_mont_func_eq.
     pose proof from_montgomery_correct
@@ -654,7 +658,7 @@ Qed. (*Copied from UnsaturatedSolinas.v; move to common location*)
       - handle_side_conditions.
       - handle_side_conditions.
       - intros. cbv [feval]. simpl. cbv [Representation.eval_words]. simpl. 
-      cbv [feval feval_bytes bounded_by bytes_in_bounds AbstractField.loose_bounds
+      cbv [feval feval_bytes bounded_by bytes_in_bounds Field.loose_bounds
               field_representation Signature.field_representation
               Representation.frep Representation.eval_bytes
               Representation.eval_words
@@ -666,7 +670,7 @@ Qed. (*Copied from UnsaturatedSolinas.v; move to common location*)
       2: {
         eapply valid_max_bounds; eauto. destruct Hcorrect; eauto.
       }
-      destruct Hcorrect. FtoZ. pose proof (WordByWordMontgomery.from_montgomerymod_correct width n m (@PrimeField.r' prime_field_parameters width) (m' m width)) as Hcorrect.
+      destruct Hcorrect. FtoZ. pose proof (WordByWordMontgomery.from_montgomerymod_correct width n m (@Field.r' prime_parameters width) (m' m width)) as Hcorrect.
       cbv [WordByWordMontgomery.eval] in *.
       edestruct Hcorrect as [Hvalue Hvalid]; [| | | | | | eapply H2| ]; try eapply use_curve_good; try eassumption; [pose proof r'_correct as Htemp; cbv [r' M] in Htemp; rewrite M_eq in Htemp; eauto |].
       simpl in Hvalue. simpl.  cbv [res]. destruct from_mont_op. simpl in *.
@@ -686,7 +690,7 @@ Qed. (*Copied from UnsaturatedSolinas.v; move to common location*)
       symmetry. rewrite Z.mul_mod; try apply m_nz. cbv [list_in_bounds] in *. clear H2.
       edestruct Hcorrect as [Hvalue' _]; [| | | | | | eapply H0 |]; try eapply use_curve_good; try eassumption; [pose proof r'_correct as Htemp; cbv [r' M] in Htemp; rewrite M_eq in Htemp; eauto |].
       rewrite Hvalue'. rewrite <- Z.mul_mod; try apply m_nz.
-      cbv [PrimeField.r' PushButtonSynthesis.WordByWordMontgomery.r' PrimeField.r r M felem_size_in_words]. rewrite M_eq.
+      cbv [Field.r' PushButtonSynthesis.WordByWordMontgomery.r' Field.r r M felem_size_in_words]. rewrite M_eq.
       auto.
       - intros. apply Hcorrect. auto.
       - intros; eapply valid_max_bounds; auto.
@@ -697,7 +701,7 @@ Qed. (*Copied from UnsaturatedSolinas.v; move to common location*)
   Lemma to_mont_func_correct :
   valid_func (res to_mont_op _) ->
   forall functions,
-    (@spec_of_UnOp _ _ _ _ _ _ _ _ to_mont) un_to_mont (to_mont_func :: functions).
+    (@spec_of_UnOp _ _ _ _ _ _ _ _ _ to_mont) un_to_mont (to_mont_func :: functions).
     Proof using M_eq check_args_ok ok to_mont_func_eq.
     intros. cbv [spec_of_UnOp un_to_mont]. rewrite to_mont_func_eq.
     pose proof to_montgomery_correct
@@ -711,7 +715,7 @@ Qed. (*Copied from UnsaturatedSolinas.v; move to common location*)
       - handle_side_conditions.
       - handle_side_conditions.
       - intros. cbv [feval]. simpl. cbv [Representation.eval_words]. simpl. 
-      cbv [feval feval_bytes bounded_by bytes_in_bounds AbstractField.loose_bounds
+      cbv [feval feval_bytes bounded_by bytes_in_bounds Field.loose_bounds
               field_representation Signature.field_representation
               Representation.frep Representation.eval_bytes
               Representation.eval_words
@@ -736,7 +740,7 @@ Qed. (*Copied from UnsaturatedSolinas.v; move to common location*)
                   (map Interface.word.unsigned x))) mod m)%Z) by reflexivity.
       rewrite <- H3.
       rewrite H1.
-      pose proof (WordByWordMontgomery.from_montgomerymod_correct width n m (@PrimeField.r' prime_field_parameters width) (m' m width)) as Hcorrect.
+      pose proof (WordByWordMontgomery.from_montgomerymod_correct width n m (@Field.r' prime_parameters width) (m' m width)) as Hcorrect.
       cbv [WordByWordMontgomery.eval] in *.
       edestruct Hcorrect as [Hvalue _]; [ | | | | | | apply H0 |]; try eapply use_curve_good; try eassumption;
       [pose proof r'_correct as Htemp; cbv [r' M] in Htemp; rewrite M_eq in Htemp; auto| ].
@@ -749,7 +753,7 @@ Qed. (*Copied from UnsaturatedSolinas.v; move to common location*)
         {
           pose proof (r'_correct) as Htemp. rewrite <- Z.pow_mul_l. rewrite PullPush.Z.mod_pow_full.
           rewrite Z.mul_comm.
-          cbv [PrimeField.r]. cbv [r' M] in Htemp. rewrite M_eq in Htemp.
+          cbv [Field.r]. cbv [r' M] in Htemp. rewrite M_eq in Htemp.
           rewrite Htemp. rewrite Z.pow_1_l; auto with zarith.
         }
         rewrite Hr'. assert (H1' : (1 mod m = 1)%Z).
@@ -784,7 +788,6 @@ Qed.
 
 End WordByWordMontgomery.
 
-
 (* Prototyping full pipeline: *)
 
 Require Import Coq.Strings.String.
@@ -792,26 +795,6 @@ Require Import Crypto.Bedrock.Field.Translation.Parameters.Defaults64.
 Require Import Crypto.Bedrock.Field.Translation.Proofs.ValidComputable.Func.
 
 Local Open Scope string_scope.
-
-(* TODO: move somewhere common *)
-Definition field_parameters_prefixed
-           M_pos a24 (prefix: string) : PrimeFieldParameters :=
-  Build_PrimeFieldParameters
-    M_pos a24
-    (prefix ++ "mul")
-    (prefix ++ "add")
-    (prefix ++ "sub")
-    (prefix ++ "opp")
-    (prefix ++ "square")
-    (prefix ++ "scmula24")
-    (prefix ++ "inv")
-    (prefix ++ "from_bytes")
-    (prefix ++ "to_bytes")
-    (prefix ++ "select_znz")
-    (prefix ++ "felem_copy")
-    (prefix ++ "small_literal")
-    (prefix ++ "from_list")
-.
 
 
 Require Import bedrock2.ProgramLogic.

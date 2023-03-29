@@ -1,18 +1,17 @@
 Require Import Rupicola.Lib.Api. Import bedrock2.WeakestPrecondition.
 Require Import Crypto.Arithmetic.PrimeFieldTheorems.
-Require Import Crypto.Bedrock.Specs.AbstractField.
-(* Require Import Crypto.Bedrock.Specs.PrimeField. *)
+Require Import Crypto.Bedrock.Specs.Field.
+(* Require Import Crypto.Bedrock.Specs.Field. *)
 Require Import Crypto.Bedrock.Field.Interface.CompilationAbstract.
 Local Open Scope Z_scope.
 
 Section Gallina.
 
 Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
-Context {field_parameters : AbstractField.FieldParameters}
-        {field_parameters_ok : AbstractField.FieldParameters_ok}.
-
-Context {field_representation : FieldRepresentation}
-        {field_representation_ok : FieldRepresentation_ok}
+Context {F : Type} {field_parameters : Field.FieldParameters F}
+        {field_parameters_ok : Field.FieldParameters_ok F}.
+Context {field_representation : FieldRepresentation F}
+        {field_representation_ok : FieldRepresentation_ok F}
         {three_b : felem}.
 
     Local Infix "+F" := Fadd (at level 100).
@@ -69,18 +68,19 @@ Section __.
   Context {locals_ok : map.ok locals}.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
-  Context {field_parameters : AbstractField.FieldParameters}
-          {field_parameters_ok : AbstractField.FieldParameters_ok}.
-  
-  Context {field_representation : FieldRepresentation}
-          {field_representation_ok : FieldRepresentation_ok}.
+  Context {F : Type} {field_parameters : Field.FieldParameters F}
+          {field_parameters_ok : Field.FieldParameters_ok F}.
+  Context {field_names : FieldNames}.
+
+  Context {field_representation : FieldRepresentation F}
+          {field_representation_ok : FieldRepresentation_ok F}.
 
   Hint Resolve relax_bounds : compiler.
   Existing Instance felem_alloc.
-  Instance my_field_representation : FieldRepresentation.
-  Proof.
-      exact field_representation.
-  Defined.
+  (* Instance my_field_representation : FieldRepresentation F. *)
+  (* Proof. *)
+  (*     exact field_representation. *)
+  (* Defined. *)
 
   Context (Hbounds_eq : loose_bounds = tight_bounds).
   Context (three_b : felem).
@@ -104,7 +104,7 @@ Section __.
         tr = tr'
         /\ exists Xout Yout Zout (* output values *)
                   : F ,
-                  (@ladderstep_gallina _ _ _ _ _ _ three_b X1 X2 Y1 Y2 Z1 Z2
+                  (@ladderstep_gallina _ _ _ _ _ _ _ three_b X1 X2 Y1 Y2 Z1 Z2
            = \<Xout, Yout, Zout\>)
           /\ (FElem (Some tight_bounds) pX1 X1
                 * FElem (Some tight_bounds) pX2 X2
@@ -118,7 +118,7 @@ Section __.
 
   Lemma compile_ladderstep {tr m l functions}
         (x1 x2 y1 y2 z1 z2 xout1 yout1 zout1 : F) :
-    let v := @ladderstep_gallina _ _ _ _ _ _ three_b x1 x2 y1 y2 z1 z2 in
+    let v := @ladderstep_gallina _ _ _ _ _ _ _ three_b x1 x2 y1 y2 z1 z2 in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
            Rout
            X1_ptr X1_var X2_ptr X2_var Y1_ptr Y1_var Y2_ptr Y2_var
@@ -144,7 +144,7 @@ Section __.
 
       (let v := v in
        forall (* output values *) m',
-       let '\<Xout', Yout', Zout'\> := @ladderstep_gallina _ _ _ _ _ _ three_b x1 x2 y1 y2 z1 z2 in
+       let '\<Xout', Yout', Zout'\> := @ladderstep_gallina _ _ _ _ _ _ _ three_b x1 x2 y1 y2 z1 z2 in
             (FElem (Some tight_bounds) X1_ptr x1 * FElem (Some tight_bounds) X2_ptr x2 *
             FElem (Some tight_bounds) Y1_ptr y1 * FElem (Some tight_bounds) Y2_ptr y2 *
             FElem (Some tight_bounds) Z1_ptr z1 * FElem (Some tight_bounds) Z2_ptr z2 *
@@ -184,7 +184,7 @@ Section __.
 
   (*Why must these instances be included?*)
 
-  Instance spec_of_mul : spec_of (@mul field_parameters).
+  Instance spec_of_mul : spec_of mul.
   Proof.
     pose proof (binop_spec bin_mul). cbv [spec_of]. eapply X.
   Defined.
@@ -194,17 +194,17 @@ Section __.
     pose proof (unop_spec un_square). cbv [spec_of]. eapply X.
   Defined. *)
 
-  Instance spec_of_add : spec_of (@add field_parameters).
+  Instance spec_of_add : spec_of add.
   Proof.
     pose proof (binop_spec bin_add). cbv [spec_of]. eapply X.
   Defined.
 
-  Instance spec_of_sub : spec_of (@sub field_parameters).
+  Instance spec_of_sub : spec_of sub.
   Proof.
     pose proof (binop_spec bin_sub). cbv [spec_of]. eapply X.
   Defined.
 
-  Instance spec_of_from_list : spec_of (@from_list field_parameters).
+  Instance spec_of_from_list : spec_of from_list.
   Proof.
     pose proof (spec_of_from_list (feval three_b)). exact X.
   Defined.
@@ -235,27 +235,27 @@ Section __.
 
   (* Local Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ ^ 2)%F _))) =>
     let Hsquare := (fresh "Hsquare") in pose proof compile_square as Hsquare;
-    rewrite F.pow_2_r; cbv [ PrimeField.prime_field_parameters] in Hsquare;
+    rewrite F.pow_2_r; cbv [ Field.prime_field_parameters] in Hsquare;
     eapply Hsquare; clear Hsquare; shelve : compiler.
 
     Local Hint Extern 6 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (a24 * _)%F _))) =>
     let Hscmul := (fresh "Hscmul") in epose proof compile_scmula24 as Hscmul;
-    cbv [Compilation2.field_parameters PrimeField.prime_field_parameters] in *;
+    cbv [Compilation2.field_parameters Field.prime_field_parameters] in *;
     eapply Hscmul; clear Hscmul; shelve : compiler.
 
   Local Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ * _)%F _))) =>
     let Hmul := (fresh "Hmul") in pose proof compile_mul as Hmul;
-    cbv [Compilation2.field_parameters PrimeField.prime_field_parameters] in Hmul;
+    cbv [Compilation2.field_parameters Field.prime_field_parameters] in Hmul;
     eapply Hmul; [| | | try (eapply relax_bounds_binop; ecancel_assumption) | | |]; clear Hmul; shelve : compiler.
 
     Local Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ - _)%F _))) =>
     let Hsub := (fresh "Hsub") in epose proof compile_sub as Hsub;
-    cbv [Compilation2.field_parameters PrimeField.prime_field_parameters] in *;
+    cbv [Compilation2.field_parameters Field.prime_field_parameters] in *;
     eapply Hsub; clear Hsub; shelve : compiler.
 
   Local Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ + _)%F _))) =>
     let Hadd := (fresh "Hadd") in epose proof compile_add as Hadd;
-    cbv [Compilation2.field_parameters PrimeField.prime_field_parameters] in *;
+    cbv [Compilation2.field_parameters Field.prime_field_parameters] in *;
     eapply Hadd; clear Hadd; shelve : compiler.
 
   Local Hint Extern 9 ((FElem (Some loose_bounds) _ _ ⋆ FElem (Some loose_bounds) _ _ ⋆ _)%sep _) =>
@@ -300,8 +300,8 @@ Section __.
   Derive ladderstep_body SuchThat
          (defn! "ladderstep" ("X1", "X2", "Y1", "Y2", "Z1", "Z2", "Xout", "Yout", "Zout")
               { ladderstep_body },
-           implements @ladderstep_gallina _ _ _ _ _ _ three_b
-                      using [@mul field_parameters;@add field_parameters;@sub field_parameters; @from_list field_parameters])
+           implements @ladderstep_gallina _ _ _ _ _ _ _ three_b
+                      using [mul; add; sub; from_list])
          As ladderstep_correct.
   Proof.
     assert (1 + 1 = 2) by lia. 

@@ -341,17 +341,17 @@ Section WithParameters.
             (res_valid :
                valid_func (res (fun _ : API.type => unit)))
             (res_Wf : API.Wf res).
-    Context F name (bop : BinOp F name)
+    Context name (bop : BinOp name)
             (res_eq : forall x y : list word,
-                bounded_by (bin_xbounds F) x ->
-                bounded_by (bin_ybounds F) y ->
+                bounded_by (bin_xbounds) x ->
+                bounded_by (bin_ybounds) y ->
                 feval (map word.of_Z
                            (API.interp (res _)
                                        (map word.unsigned x)
                                        (map word.unsigned y)))
                 = bin_model (feval x) (feval y))
             (res_bounds : forall x y,
-                list_in_bounds (bin_xbounds F) x ->
+                list_in_bounds (bin_xbounds) x ->
                 list_in_bounds bin_ybounds y ->
                 list_in_bounds bin_outbounds (API.interp (res _) x y))
 

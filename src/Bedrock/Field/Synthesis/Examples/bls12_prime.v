@@ -6,8 +6,8 @@ Require Import Crypto.Bedrock.Field.Interface.Representation.
 Require Import Crypto.Bedrock.Field.Synthesis.New.ComputedOp.
 Require Import Crypto.Bedrock.Field.Synthesis.New.WordByWordMontgomery.
 Require Import Crypto.Bedrock.Field.Translation.Parameters.Defaults64.
-Require Import Crypto.Bedrock.Specs.AbstractField.
-Require Import Crypto.Bedrock.Specs.PrimeField.
+Require Import Crypto.Bedrock.Specs.Field.
+Require Import Crypto.Bedrock.Specs.Field.
 Import ListNotations.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.WeakestPrecondition.
@@ -37,25 +37,30 @@ Section Field.
   Existing Instances no_select_size split_mul_to split_multiret_to.
   Definition prefix : string := "bls12_"%string.
 
-  (* Define bls12 field *)
-  Instance field_parameters : PrimeFieldParameters.
+  Instance prime_parameters : PrimeParameters.
   Proof using Type.
     let M := (eval vm_compute in (Z.to_pos (m))) in
-    (* curve 'A' parameter *)
-    let a := constr:(F.of_Z M (m - 3)) in
-    let prefix := constr:("bls12_"%string) in
-    eapply
-      (field_parameters_prefixed
-         M ((a - F.of_Z _ 2) / F.of_Z _ 4)%F prefix).
+    exact (Build_PrimeParameters M).
+    (* (* curve 'A' parameter *) *)
+    (* let a := constr:(F.of_Z M (m - 3)) in *)
+    (* let prefix := constr:("bls12_"%string) in *)
+    (* eapply *)
+    (*   (field_parameters_prefixed *)
+    (*      M ((a - F.of_Z _ 2) / F.of_Z _ 4)%F prefix). *)
   Defined.
+
+  Local Notation F := (F (Z.to_pos m)).
+
+  Instance field_names : FieldNames := field_names_prefixed prefix.
+  Instance field_parameters : FieldParameters F := prime_field_parameters.
+  (* Existing Instance prime_field_parameters. *)
 
   Definition to_mont_string := prefix ++ "to_mont".
   Definition from_mont_string := prefix ++ "from_mont".
 
   (* Call fiat-crypto pipeline on all field operations *)
-  Instance bls12_ops : @word_by_word_Montgomery_ops from_mont_string to_mont_string _ _ _ _ _ _ _ _ _ _ _ (WordByWordMontgomery.n m machine_wordsize) m.
-  Proof using Type. Time constructor; make_computed_op. Defined.
-
+Instance bls12_ops : @word_by_word_Montgomery_ops from_mont_string to_mont_string _ _ _ _ _ _ _ _ _ _ _ _ (WordByWordMontgomery.n m machine_wordsize) m.
+Proof using Type. Time constructor; make_computed_op. Defined.
 
   (**** Translate each field operation into bedrock2 and apply bedrock2 backend
         field pipeline proofs to prove the bedrock2 functions are correct. ****)

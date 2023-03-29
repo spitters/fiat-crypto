@@ -11,8 +11,8 @@ Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
 Require Import Crypto.Bedrock.Field.FieldExtensions.QuadraticFieldExtensionsSpecs.
 Require Import Rupicola.Lib.Api.
-Require Import Crypto.Bedrock.Specs.AbstractField.
-Require Import Crypto.Bedrock.Specs.PrimeField.
+Require Import Crypto.Bedrock.Specs.Field.
+Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.FieldExtensions.Theory.QuadraticExtensions.
 Require Import Crypto.Bedrock.Field.Interface.Compilation2.
 Require Import Crypto.Arithmetic.UniformWeight.
@@ -23,17 +23,22 @@ Section bls12_Fp2.
 
     Existing Instances Defaults64.default_parameters Defaults64.default_parameters_ok.
 
-    Instance prime_field_parameters : PrimeField.PrimeFieldParameters.
+    Instance prime_field_parameters : Field.PrimeFieldParameters.
     Proof.
         exact bls12_prime.field_parameters.
     Defined.
 
-    Instance field_parameters : AbstractField.FieldParameters.
+    Instance field_parameters : Field.FieldParameters.
     Proof.
-        exact (@PrimeField.prime_field_parameters prime_field_parameters).
+        exact (@Field.prime_field_parameters prime_field_parameters).
     Defined.
 
-    Instance field_representation : @AbstractField.FieldRepresentation field_parameters _ _ _ _.
+    Instance field_names : FieldNames.
+    Proof.
+        exact field_names.
+    Defined.
+
+    Instance field_representation : @Field.FieldRepresentation field_parameters _ _ _ _.
     Proof.
         exact (WordByWordMontgomery.field_representation m).
     Defined.
@@ -41,7 +46,7 @@ Section bls12_Fp2.
     Check @ladderstep_body. (*Give Proper Name!!!!!!!!*)
 
     Definition bls12_G1_add := ladderstep_body.
-    (*make AbstractField.field_representation from rep in WordByWordMontgomery.*)
+    (*make Field.field_representation from rep in WordByWordMontgomery.*)
 
     Definition mpos : positive.
     Proof.
@@ -156,13 +161,6 @@ Section bls12_Fp2.
 
       Print outx_mont.
       Print outy_mont.
-
-      
-
-
-
-
-
 
     Instance spec_of_bls12_add : spec_of (fst bls12_add).
     Proof. exact spec_of_add. Defined.
@@ -283,8 +281,8 @@ Section bls12_Fp2.
 Qed. *)
 
 End bls12_Fp2.
-    (* From bedrock2 Require Import ToCString Bytedump.
-    Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_from_list_F.
-    Definition c_mod := (c_module (bls12_mul :: nil)).
+    (* From bedrock2 Require Import ToCString Bytedump. *)
+    (* Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_from_list_F. *)
+    (* Definition c_mod := (c_module (bls12_mul :: nil)). *)
 
-    Redirect "blstest.c" Eval compute in c_mod. *)
+    (* Redirect "blstest.c" Eval compute in c_mod. *)

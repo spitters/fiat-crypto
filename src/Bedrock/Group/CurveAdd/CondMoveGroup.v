@@ -1,7 +1,6 @@
 Require Import Rupicola.Lib.Api. Import bedrock2.WeakestPrecondition.
 Require Import Crypto.Arithmetic.PrimeFieldTheorems.
 Require Import Crypto.Bedrock.Specs.Field.
-(* Require Import Crypto.Bedrock.Specs.PrimeField. *)
 Require Import Crypto.Bedrock.Field.Interface.CompilationAbstract.
 Local Open Scope Z_scope.
 
@@ -14,14 +13,16 @@ Section __.
   Context {locals_ok : map.ok locals}.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
-  Context {field_parameters : AbstractField.FieldParameters}
-          {field_parameters_ok : AbstractField.FieldParameters_ok}.
-  
+  Context {field_parameters : Field.FieldParameters}
+          {field_parameters_ok : Field.FieldParameters_ok}.
+  Context {field_names : FieldNames}.
   Context {field_representation : FieldRepresentation}
           {field_representation_ok : FieldRepresentation_ok}
           {group_cmov : string}.
 
-  Instance spec_of_select_znz : spec_of (@select_znz field_parameters).
+  Notation F_cmov := select_znz.
+
+  Instance spec_of_select_znz : spec_of select_znz.
   Proof.
       exact spec_of_selectznz.
   Defined.
@@ -83,15 +84,15 @@ Section __.
     Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
     
     Definition cmov_func : bedrock2.Syntax.func :=
-        ("group_cmov", (["outx"; "outy"; "outz"; "x1"; "y1"; "z1"; "x2"; "y2"; "z2"; "pc"], []:list String.string, bedrock_func_body:(
-            coq:(cmd.call [] ("F_cmov") [expr.var ("outx"); expr.load access_size.word (expr.var ("pc")); expr.var ("x1"); expr.var("x2")]);
-            coq:(cmd.call [] ("F_cmov") [expr.var ("outy"); expr.load access_size.word (expr.var ("pc")); expr.var ("y1"); expr.var("y2")]);
-            coq:(cmd.call [] ("F_cmov") [expr.var ("outz"); expr.load access_size.word (expr.var ("pc")); expr.var ("z1"); expr.var("z2")])
+        (group_cmov, (["outx"; "outy"; "outz"; "x1"; "y1"; "z1"; "x2"; "y2"; "z2"; "pc"], []:list String.string, bedrock_func_body:(
+            coq:(cmd.call [] (F_cmov) [expr.var ("outx"); expr.load access_size.word (expr.var ("pc")); expr.var ("x1"); expr.var("x2")]);
+            coq:(cmd.call [] (F_cmov) [expr.var ("outy"); expr.load access_size.word (expr.var ("pc")); expr.var ("y1"); expr.var("y2")]);
+            coq:(cmd.call [] (F_cmov) [expr.var ("outz"); expr.load access_size.word (expr.var ("pc")); expr.var ("z1"); expr.var("z2")])
         ))).
 
-        From bedrock2 Require Import ToCString Bytedump.
-        Definition c_mod := (c_module (cmov_func :: nil)).
-        Eval native_compute in c_mod.
+    From bedrock2 Require Import ToCString Bytedump.
+    Definition c_mod := (c_module (cmov_func :: nil)).
+    Eval native_compute in c_mod.
 
     Ltac solve_locals l1 :=
         subst l1; repeat (erewrite map.get_put_diff; [| intros contra; discriminate]); eapply map.get_put_same.
@@ -255,9 +256,9 @@ Section __.
             split; [repeat (try split)| ].
                 - rewrite eq in H14.
                   destruct H14, H13, H13, H14.
-                  eassert ((AbstractField.FElem pYout _ * _)%sep x9) by ecancel_assumption. clear H15.
+                  eassert ((Field.FElem pYout _ * _)%sep x9) by ecancel_assumption. clear H15.
                   destruct H16, H15, H15, H16.
-                  eassert ((AbstractField.FElem pXout _ * _)%sep x11) by ecancel_assumption. clear H17.
+                  eassert ((Field.FElem pXout _ * _)%sep x11) by ecancel_assumption. clear H17.
                   destruct H18, H17, H17, H18.
                 eassert (((FElem (Some tight_bounds) pXout _ * FElem (Some tight_bounds) pYout _ * FElem (Some tight_bounds) pZout _ * _)%sep) a3).
                 { (*should be automated!!*)
@@ -430,9 +431,9 @@ Section __.
                 - split; try reflexivity. split; reflexivity.
                 - rewrite eq in H14.
                   destruct H14, H13, H13, H14.
-                  eassert ((AbstractField.FElem pYout _ * _)%sep x9) by ecancel_assumption. clear H15.
+                  eassert ((Field.FElem pYout _ * _)%sep x9) by ecancel_assumption. clear H15.
                   destruct H16, H15, H15, H16.
-                  eassert ((AbstractField.FElem pXout _ * _)%sep x11) by ecancel_assumption. clear H17.
+                  eassert ((Field.FElem pXout _ * _)%sep x11) by ecancel_assumption. clear H17.
                   destruct H18, H17, H17, H18.
                 eassert (((FElem (Some tight_bounds) pXout _ * FElem (Some tight_bounds) pYout _ * FElem (Some tight_bounds) pZout _ * _)%sep) a3).
                 { (*should be automated!!*)

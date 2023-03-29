@@ -12,11 +12,11 @@ Section Compile.
   Context {locals_ok : map.ok locals}.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
-  Context {field_parameters : FieldParameters}
-          {field_parameters_ok : FieldParameters_ok}
+  Context {F : Type} {field_parameters : FieldParameters F}
+          {field_parameters_ok : FieldParameters_ok F}
           {field_names : FieldNames}.
-  Context {field_representaton : FieldRepresentation}
-          {field_representation_ok : FieldRepresentation_ok}.
+  Context {field_representaton : FieldRepresentation F}
+          {field_representation_ok : FieldRepresentation_ok F}.
 
   Definition maybe_bounded mbounds v :=
     match mbounds with
@@ -52,7 +52,7 @@ Section Compile.
   
   Lemma FElem'_from_bytes
     : forall px : word.rep,
-      Lift1Prop.iff1 (Placeholder px) (Lift1Prop.ex1 (FElem None px)).
+      Lift1Prop.iff1 (Placeholder F px) (Lift1Prop.ex1 (FElem None px)).
   Proof.
     unfold FElem.
     intros.
@@ -101,8 +101,8 @@ Section Compile.
     sepsimpl; repeat straightline'; subst; eauto.
 
   
-  Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_BinOp _ _ _ _ _ _ _ _ _ _)) : typeclass_instances.
-  Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_UnOp _ _ _ _ _ _ _ _ _ _)) : typeclass_instances.
+  Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_BinOp _ _ _ _ _ _ _ _ _ _ _)) : typeclass_instances.
+  Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_UnOp _ _ _ _ _ _ _ _ _ _ _)) : typeclass_instances.
 
   Lemma compile_binop {name} {op: BinOp name}
         {tr m l functions} x y:

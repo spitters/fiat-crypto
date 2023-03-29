@@ -1,7 +1,7 @@
 Require Import Rupicola.Lib.Api.
+Require Import Crypto.Arithmetic.PrimeFieldTheorems.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_prime.
-Require Import Crypto.Bedrock.Specs.PrimeField.
-Require Import Crypto.Bedrock.Specs.AbstractField.
+Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.Synthesis.New.WordByWordMontgomery.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.ArrayUtil.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.ScalarsUtil.
@@ -11,11 +11,14 @@ Section FelemCopy.
     Existing Instances Defaults64.default_parameters
     Defaults64.default_parameters_ok.
 
-    Existing Instance bls12_prime.field_parameters.
+    Local Notation F := (F M_pos).
 
-    Instance bls12_field_parameters : FieldParameters := PrimeField.prime_field_parameters.
+    Existing Instance bls12_prime.prime_parameters.
+    Existing Instance field_names.
 
-    Instance field_representation : FieldRepresentation := field_representation M.
+    Instance bls12_field_parameters : FieldParameters F := Field.prime_field_parameters.
+
+    Instance field_representation : FieldRepresentation F := field_representation M.
 
     Require Import bedrock2.NotationsCustomEntry.
     Require Import bedrock2.WeakestPrecondition.
@@ -39,14 +42,14 @@ Section FelemCopy.
 
     Instance spec_of_felem_copy : spec_of (felem_copy).
     Proof.
-        pose (@spec_of_felem_copy _ _ _ _ _ _ bls12_field_parameters field_representation).
+        pose (@spec_of_felem_copy _ _ _ _ _ _ F bls12_field_parameters _ field_representation).
         simpl in s.  cbv [spec_of_felem_copy] in s. exact s.
     Defined.
 
     Ltac collect H1 H2 := let Hnew := (fresh "Hnew") in
     eassert (Hnew : id (fun m => (_ m) /\ (_ m)) _) by (cbv [id]; split; [eapply H1| eapply H2]); clear H1 H2.
 
-      (* Lemma Naive_rep_eq : forall x y, x mod (Z.pow_pos 2 64) = y mod (Z.pow_pos 2 64) -> @Naive.wrap 64 y = Naive.wrap x.
+        (* Lemma Naive_rep_eq : forall x y, x mod (Z.pow_pos 2 64) = y mod (Z.pow_pos 2 64) -> @Naive.wrap 64 y = Naive.wrap x.
       Proof.
         intros. eapply Naive.eq_unsigned. simpl. auto.
       Qed.
@@ -153,9 +156,9 @@ Section FelemCopy.
 
     Lemma felem_copy_ok : program_logic_goal_for_function! felem_copy_func. (*Why does this take 5 minutes???!???*)
     Proof.
-        cbv [spec_of_felem_copy AbstractField.spec_of_felem_copy]. cbv [program_logic_goal_for].
+        cbv [spec_of_felem_copy Field.spec_of_felem_copy]. cbv [program_logic_goal_for].
         intros.
-        
+
         cbv [felem_copy_func]. simpl.
         repeat straightline.
 
@@ -177,7 +180,7 @@ Section FelemCopy.
         rewrite Hlist in H1; eapply array_append_R' in H1. rewrite H0 in H1. rewrite <- Heqw2 in H1.
         rewrite Hlist in H1; eapply array_append_R' in H1. rewrite H0 in H1. rewrite <- Heqw2 in H1.
         rewrite Hlist in H1; eapply array_append_R' in H1. rewrite H0 in H1. rewrite <- Heqw2 in H1.
-        
+
         (*modifying H*)
         eapply sep_assoc in H. eapply sep_comm in H. eapply (sep_assoc _ R _) in H.
         cbv [FElem Bignum.Bignum] in H. sepsimpl. clear H. eapply sep_assoc in H2. sepsimpl_hyps.
@@ -189,8 +192,8 @@ Section FelemCopy.
         rewrite Hlist in H2. eapply array_append_R' in H2. rewrite H0 in H2. rewrite <- Heqw2 in H2.
         rewrite Hlist in H2. eapply array_append_R' in H2. rewrite H0 in H2. rewrite <- Heqw2 in H2.
         rewrite Hlist in H2. eapply array_append_R' in H2. rewrite H0 in H2. rewrite <- Heqw2 in H2.
-        remember (array scalar w1 px x) as Fx.        
-        
+        remember (array scalar w1 px x) as Fx.
+
         cbv [array] in H1, H2. sepsimpl.
         subst Fx.
         eassert ((array scalar w1 px x * _)%sep mem) by ecancel_assumption. clear H2. rename H3 into H2.
@@ -245,7 +248,7 @@ Section FelemCopy.
           clear H5; ecancel_assumption.
         }
         1: {
-          clear H6; ecancel_assumption. 
+          clear H6; ecancel_assumption.
         }
 
         do 6 straightline'.
@@ -253,7 +256,7 @@ Section FelemCopy.
           clear H7; ecancel_assumption.
         }
         1: {
-          clear H8; ecancel_assumption. 
+          clear H8; ecancel_assumption.
         }
 
         do 6 straightline'.
@@ -261,7 +264,7 @@ Section FelemCopy.
           clear H9; ecancel_assumption.
         }
         1: {
-          clear H10; ecancel_assumption. 
+          clear H10; ecancel_assumption.
         }
 
         do 6 straightline'.
@@ -269,7 +272,7 @@ Section FelemCopy.
           clear H11; ecancel_assumption.
         }
         1: {
-          clear H12; ecancel_assumption. 
+          clear H12; ecancel_assumption.
         }
         do 2 straightline'.
 
@@ -296,13 +299,9 @@ Section FelemCopy.
         assert (Htemp : 8 + 16 = 24) by auto. rewrite Htemp. clear Htemp.
         assert (Htemp : 8 + 24 = 32) by auto. rewrite Htemp. clear Htemp.
         assert (Htemp : 8 + 32 = 40) by auto. rewrite Htemp. clear Htemp.
-        
+
         subst v. subst a3 a2 a1 a0 a.
         - ecancel_assumption.
     Qed.
 
 End FelemCopy.
-
-
-
-

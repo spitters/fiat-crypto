@@ -1,7 +1,8 @@
 Require Import Rupicola.Lib.Api.
+Require Import Crypto.Arithmetic.PrimeFieldTheorems.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_prime.
-Require Import Crypto.Bedrock.Specs.PrimeField.
-Require Import Crypto.Bedrock.Specs.AbstractField.
+Require Import Crypto.Bedrock.Specs.Field.
+Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.Synthesis.New.WordByWordMontgomery.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.ArrayUtil.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.ScalarsUtil.
@@ -21,11 +22,12 @@ Section FromListF.
     Existing Instances Defaults64.default_parameters
     Defaults64.default_parameters_ok.
 
-    Existing Instance bls12_prime.field_parameters.
+    Existing Instance bls12_prime.prime_parameters.
 
-    Instance bls12_field_parameters : FieldParameters := @PrimeField.prime_field_parameters bls12_prime.field_parameters.
+    Local Notation F := (F M_pos).
+    Instance bls12_field_parameters : FieldParameters F := Field.prime_field_parameters.
 
-    Instance field_representation : FieldRepresentation := field_representation M.
+    Instance field_representation : FieldRepresentation F := field_representation M.
 
     (*curve-defining parameter b*)
     Definition b := 4.
@@ -34,13 +36,13 @@ Section FromListF.
     Definition n := felem_size_in_words.
     Definition three_b_list := Partition.partition uw n three_b.
     Definition word := BasicC64Semantics.word.
-    Definition three_b_mont := Eval vm_compute in (@WordByWordMontgomery.to_montgomerymod 64 n m (@m' bls12_prime.field_parameters 64) three_b_list).
+    Definition three_b_mont := Eval vm_compute in (@WordByWordMontgomery.to_montgomerymod 64 n m (@m' _ 64) three_b_list).
     Definition three_b_words := List.map (@word.of_Z 64 word) three_b_mont.
     Definition wo := @word.of_Z 64 word 0.
 
     Check WordByWordMontgomery.r'.
     (*Few lemmas about curve parameters*)
-    Lemma r'_correct : (2 ^ 64 * (@WordByWordMontgomery.r' 64 bls12_prime.field_parameters) mod M = 1).
+    Lemma r'_correct : (2 ^ 64 * (@WordByWordMontgomery.r' 64 _) mod M = 1).
     Proof.
         auto.
     Qed.
@@ -103,7 +105,7 @@ Section FromListF.
         eapply valid_max_bounds. eapply H.
     Qed.
 
-    Lemma three_b_mont_eq : three_b_mont = (@WordByWordMontgomery.to_montgomerymod 64 n m (@m' bls12_prime.field_parameters 64) three_b_list).
+    Lemma three_b_mont_eq : three_b_mont = (@WordByWordMontgomery.to_montgomerymod 64 n m (@m' _ 64) three_b_list).
     Proof. vm_compute; auto. Qed.
 
     Lemma three_b_list_valid : WordByWordMontgomery.valid 64 n m three_b_list.
@@ -127,7 +129,7 @@ Section FromListF.
 
     Lemma three_b_mont_mod : (WordByWordMontgomery.from_montgomerymod 64
             (WordByWordMontgomery.n M 64) M (WordByWordMontgomery.m' M 64)
-            (List.map word.unsigned three_b_words)) = three_b_list.
+            (List.map Naive.unsigned three_b_words)) = three_b_list.
     Proof.
         cbv [three_b_words]. rewrite three_b_mont_eq. eapply eval_inj_list.
         2: eapply three_b_list_valid.
@@ -146,6 +148,10 @@ Section FromListF.
         eapply three_b_list_valid.
     Qed.
 
+    Instance field_names : FieldNames := field_names.
+
+    Compute nth 1 three_b_mont 0.
+
     Definition from_list_func : Syntax.func := (from_list, (["out"], (nil : list string), bedrock_func_body:(
       coq:(cmd.store access_size.word (expr.var "out") (expr.literal (nth 0 three_b_mont 0)));
       coq:(cmd.store access_size.word (expr.op bopname.add (expr.var "out") (expr.literal (8))) (nth 1 three_b_mont 0));
@@ -159,13 +165,13 @@ Section FromListF.
     From bedrock2 Require Import ToCString Bytedump.
     Definition c_mod := (c_module (from_list_func :: nil)).
 
-    Unset Printing Notations.
+    (* Unset Printing Notations. *)
 
     Eval compute in c_mod.
 
     Instance spec_of_from_list : spec_of (from_list).
     Proof.
-        exact (@spec_of_from_list _ _ _ _ _ _ bls12_field_parameters field_representation (ModularArithmetic.F.of_Z M_pos three_b)) .
+        exact (@spec_of_from_list _ _ _ _ _ _ F bls12_field_parameters _ _ (ModularArithmetic.F.of_Z M_pos three_b)) .
     Defined.
 
     Ltac collect H1 H2 := let Hnew := (fresh "Hnew") in
@@ -176,7 +182,7 @@ Section FromListF.
 
     Lemma felem_copy_ok : program_logic_goal_for_function! from_list_func. (*Why does this take 5 minutes???!???*)
     Proof.
-        cbv [spec_of_from_list AbstractField.spec_of_from_list]. cbv [program_logic_goal_for].
+        cbv [spec_of_from_list Field.spec_of_from_list]. cbv [program_logic_goal_for].
         intros.
         
         cbv [from_list_func]. simpl.
@@ -308,7 +314,7 @@ Section FromListF.
             pose proof three_b_mont_mod.
             (*Apply lemma!!!*)
             cbv [three_b]. cbv [Representation.eval_words]. cbv [eval_trans].
-            eapply f_equal. unfold word in H7. rewrite H7.
+            eapply f_equal. rewrite H7.
             cbv [three_b_list].
             rewrite eval_partition; [| eapply uwprops; lia].
             cbv [three_b n felem_size_in_words]; simpl; cbv [WordByWordMontgomery.n]. simpl.
