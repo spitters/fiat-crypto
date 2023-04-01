@@ -16,15 +16,17 @@ Section Compile.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
-  Context {field_names : FieldNames}.
   Context {prime_parameters : PrimeParameters}.
-
-  (* why is this instance not inferred? *)
   Existing Instance prime_field_parameters.
   Existing Instance prime_field_parameters_ok.
+
+  Local Notation F := (F M_pos).
+  Context {field_names : FieldNames F}
+          {field_representation : FieldRepresentation F}
+          {field_representation_ok : FieldRepresentation_ok F}.
+
+  (* why is this instance not inferred? *)
   (* Check _ : FieldParameters _. *)
-  Context {field_representation : FieldRepresentation (F M_pos)}
-          {field_representation_ok : FieldRepresentation_ok (F M_pos)}.
 
   Definition maybe_bounded mbounds v :=
     match mbounds with
@@ -60,7 +62,7 @@ Section Compile.
   
   Lemma FElem'_from_bytes
     : forall px : word.rep,
-      Lift1Prop.iff1 (Placeholder (F M_pos) px) (Lift1Prop.ex1 (FElem None px)).
+      Lift1Prop.iff1 (Placeholder F px) (Lift1Prop.ex1 (FElem None px)).
   Proof.
     unfold FElem.
     intros.

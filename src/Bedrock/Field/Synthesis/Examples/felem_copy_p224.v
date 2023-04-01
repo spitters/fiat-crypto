@@ -5,26 +5,29 @@ Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.Synthesis.New.WordByWordMontgomery.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.ArrayUtil.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.ScalarsUtil.
+Require Import bedrock2.NotationsCustomEntry.
+Require Import bedrock2.WeakestPrecondition.
+
+Import Syntax BinInt String List.ListNotations.
+
+Local Open Scope string_scope.
+Local Open Scope Z_scope.
+Local Open Scope list_scope.
+Local Open Scope sep_scope.
 
 Section FelemCopy.
 
-    Existing Instances Defaults64.default_parameters
-    Defaults64.default_parameters_ok.
+    Existing Instances
+      Defaults64.default_parameters
+      Defaults64.default_parameters_ok.
 
     Local Notation F := (F M_pos).
 
-    Existing Instance bls12_prime.prime_parameters.
-    Existing Instance field_names.
+    Existing Instance bls12_prime_parameters.
+    Existing Instance bls12_field_names.
 
-    Instance bls12_field_parameters : FieldParameters F := Field.prime_field_parameters.
-
-    Instance field_representation : FieldRepresentation F := field_representation M.
-
-    Require Import bedrock2.NotationsCustomEntry.
-    Require Import bedrock2.WeakestPrecondition.
-    Import Syntax BinInt String List.ListNotations.
-    Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_scope.
-    Local Open Scope sep_scope.
+    Existing Instance bls12_field_parameters. (* : FieldParameters F := prime_field_parameters. *)
+    Existing Instance bls12_field_representation. (* : FieldRepresentation F := field_representation M. *)
 
     Definition felem_copy_func : Syntax.func := (felem_copy, (["out"; "in"], (nil : list string), bedrock_func_body:(
       coq:(cmd.store access_size.word (expr.var "out") (expr.load access_size.word (expr.var "in")));
@@ -35,16 +38,9 @@ Section FelemCopy.
       coq:(cmd.store access_size.word (expr.op bopname.add (expr.var "out") (expr.literal (40))) (expr.load access_size.word (expr.op bopname.add (expr.var "in") (expr.literal (40)))))
     ))).
 
-        From bedrock2 Require Import ToCString Bytedump.
+    From bedrock2 Require Import ToCString Bytedump.
     Definition c_mod := (c_module (felem_copy_func :: nil)).
-
     Eval compute in c_mod.
-
-    Instance spec_of_felem_copy : spec_of (felem_copy).
-    Proof.
-        pose (@spec_of_felem_copy _ _ _ _ _ _ F bls12_field_parameters _ field_representation).
-        simpl in s.  cbv [spec_of_felem_copy] in s. exact s.
-    Defined.
 
     Ltac collect H1 H2 := let Hnew := (fresh "Hnew") in
     eassert (Hnew : id (fun m => (_ m) /\ (_ m)) _) by (cbv [id]; split; [eapply H1| eapply H2]); clear H1 H2.
@@ -153,12 +149,48 @@ Section FelemCopy.
     Local Infix "+w" := word.add (at level 80).
     Local Infix "*w" := word.mul (at level 70).
 
+    (* Existing Instance spec_of_felem_copy. *)
+    (* Print Instances spec_of. *)
+
+    (* Proof. *)
+    (*     pose (@spec_of_felem_copy _ _ _ _ _ _ F bls12_field_parameters _ field_representation). *)
+    (*     simpl in s.  cbv [spec_of_felem_copy] in s. exact s. *)
+    (* Defined. *)
+
+    (* Set Typeclasses Debug. *)
+    (* Set Typeclasses Debug Verbosity 2. *)
+    (* Compute felem_copy. *)
+
+
+  (* Local Hint Extern 1 (spec_of _) => (unfold felem_copy; eapply spec_of_felem_copy) : typeclass_instances. *)
+  (* Local Hint Extern 1 (spec_of felem_copy) => exact spec_of_felem_copy : typeclass_instances. *)
+  (* Local Hint Extern 2 (spec_of felem_copy) => simple eapply spec_of_felem_copy : typeclass_instances. *)
+
+    (* Declare Reduction red_name := cbv match beta delta [fst]. *)
+    (* Ltac normalize_name_of_function proc ::= match proc with pair a _ => a end. *)
+    (* Eval let fname _ := felem_copy_func in idtac fname. *)
+
+    (* Goal (spec_of "bls12_felem_copy"). *)
+        (* simple eapply spec_of_felem_copy. *)
+        (* simple refine spec_of_felem_copy. *)
+    (*     exact _. *)
+    (*     simple eapply spec_of_felem_copy. *)
+    (*     reflexivity. *)
+
+    (* Ltac normalize_name_of_function proc ::= eval cbv delta [fst proc] beta iota in (fst proc). *)
+    (* Existing Instance spec_of_flem_copy. *)
+    (* Goal FieldRepresentation F. *)
+        (* exact _. *)
+    Instance bls12_felem_copy : spec_of felem_copy := spec_of_felem_copy.
+
+    (* Local Hint Extern 1 (spec_of ?a) => (cbv [a]; exact _) : typeclass_instances. *)
+    (* Check felem_copy_func. *)
 
     Lemma felem_copy_ok : program_logic_goal_for_function! felem_copy_func. (*Why does this take 5 minutes???!???*)
     Proof.
-        cbv [spec_of_felem_copy Field.spec_of_felem_copy]. cbv [program_logic_goal_for].
+        cbv [bls12_felem_copy Field.spec_of_felem_copy]. cbv [program_logic_goal_for].
         intros.
-
+        simpl.
         cbv [felem_copy_func]. simpl.
         repeat straightline.
 

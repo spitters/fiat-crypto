@@ -87,7 +87,7 @@ Section WithParameters.
     {width BW word mem locals env ext_spec varname_gen error}
    `{parameters_sentinel : @parameters width BW word mem locals env ext_spec varname_gen error}.
   Context {ok : Types.ok}
-          {prime_field_parameters : PrimeParameters}.
+          {prime_parameters : PrimeParameters}.
   Context (n n_bytes : nat) (weight : nat -> Z)
           (bounds : Type)
           (loose_bounds tight_bounds byte_bounds : bounds)
@@ -101,16 +101,15 @@ Section WithParameters.
              disjoint default_inname_gen varname_gen)
           (outname_gen_varname_gen_disjoint :
              disjoint default_outname_gen varname_gen).
-  Context {field_names : FieldNames}.
 
-  (* Existing Instance prime_field_parameters. *)
-  (* Existing Instance frep. *)
-  (* Existing Instance frep_ok. *)
+  Local Notation F := (F M_pos).
 
-  Local Instance field_parameters : FieldParameters (F M_pos) := Field.prime_field_parameters.
+  Context {field_names : FieldNames F}.
 
-  Local Instance field_representation : FieldRepresentation (F M_pos)
-    := @frep _ BW _ _ _ field_parameters n n_bytes weight bounds list_in_bounds loose_bounds tight_bounds
+  Existing Instance prime_field_parameters.
+
+  Local Instance field_representation : FieldRepresentation F
+    := @frep _ BW _ _ _ _ n n_bytes weight bounds list_in_bounds loose_bounds tight_bounds
              byte_bounds eval_transformation.
   (* Local Instance field_representation_ok : FieldRepresentation_ok *)
   (*   := frep_ok n n_bytes weight bounds list_in_bounds loose_bounds tight_bounds byte_bounds *)

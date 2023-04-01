@@ -2,7 +2,6 @@ Require Import Rupicola.Lib.Api.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_prime.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_Fp2.
 Require Import Crypto.Bedrock.Specs.Field.
-Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.Synthesis.New.WordByWordMontgomery.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.ArrayUtil.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.ScalarsUtil.
@@ -21,32 +20,19 @@ Require Import Crypto.Bedrock.Field.FieldExtensions.QuadraticFieldExtensionsSpec
 
 Section FromListFp2.
 
-    Existing Instances Defaults64.default_parameters
-    Defaults64.default_parameters_ok.
+    Existing Instances
+        Defaults64.default_parameters
+        Defaults64.default_parameters_ok
+        bls12_prime_parameters
+        (* bls12_field_parameters *)
+        bls12_field_names
+        bls12_field_representation
+        bls12_Fp2_field_names
+        bls12_Fp2_field_parameters
+        bls12_Fp2_field_representation.
 
-    Instance prime_parameters : PrimeParameters := prime_parameters.
     Local Notation F := (F M_pos).
     Local Notation Fp2 := (F * F)%type.
-
-    Instance F_names : FieldNames := field_names.
-    Instance F_parameters : FieldParameters F := field_parameters.
-    Instance F_representation : FieldRepresentation F := field_representation M.
-    Instance Fp2_parameters : FieldParameters Fp2 := Fp2_parameters.
-    Instance Fp2_representation : FieldRepresentation Fp2 := Fp2_representation.
-
-    (* Existing Instance Fp2_parameters. *)
-    (* Existing Instance Fp2_representation. *)
-
-    (* Instance bls12_Fp2_parameters : FieldParameters F. *)
-    (* Proof. *)
-    (*     exact bls12_prime.field_parameters. *)
-    (* Defined. *)
-
-    (* Check @Field.FieldRepresentation. *)
-    (* Instance field_representation : (@Field.FieldRepresentation bls12_Fp2_parameters _ _ _ _). *)
-    (* Proof. *)
-    (*     exact (@Fp2_representation _ _ _ _ bls12_prime.field_parameters (@field_representation _ _ _ _ (bls12_prime.field_parameters) (@M bls12_prime.field_parameters))). *)
-    (* Defined. *)
 
     (*curve-defining parameter b*)
     Definition br := 4.
@@ -54,19 +40,16 @@ Section FromListFp2.
     Definition three_br := 12.
     Definition three_bi := 12.
     Definition uw := (uweight 64).
-    Definition n := (@WordByWordMontgomery.n m 64).
+    Definition n := (@WordByWordMontgomery.n M 64).
     Definition three_br_list := Partition.partition uw n three_br.
     Definition three_bi_list := Partition.partition uw n three_bi.
     Definition word := BasicC64Semantics.word.
-    Definition three_br_mont := Eval vm_compute in (@WordByWordMontgomery.to_montgomerymod 64 n m (@m' _ 64) three_br_list).
-    Definition three_bi_mont := Eval vm_compute in (@WordByWordMontgomery.to_montgomerymod 64 n m (@m' _ 64) three_bi_list).
+    Definition three_br_mont := Eval vm_compute in (@WordByWordMontgomery.to_montgomerymod 64 n M (@m' _ 64) three_br_list).
+    Definition three_bi_mont := Eval vm_compute in (@WordByWordMontgomery.to_montgomerymod 64 n M (@m' _ 64) three_bi_list).
     Definition three_br_words := List.map (@word.of_Z 64 word) three_br_mont.
     Definition three_bi_words := List.map (@word.of_Z 64 word) three_bi_mont.
     Definition wo := @word.of_Z 64 word 0.
 
-    Locate prime_parameters.
-    Check WordByWordMontgomery.r'.
-    (* Existing Instance bls12_prime.field_parameters. *)
     (*Few lemmas about curve parameters*)
     Lemma r'_correct : (2 ^ 64 * (@WordByWordMontgomery.r' 64 _) mod M = 1).
     Proof.
@@ -75,19 +58,19 @@ Section FromListFp2.
 
     Lemma m'_correct : ((M * WordByWordMontgomery.m' M 64) mod 2 ^ 64 = -1 mod 2 ^ 64).
     Proof.
-        cbv [WordByWordMontgomery.m']. cbv [WordByWordMontgomery.r]. assert (m = M) by auto. rewrite <- H.
-            assert (m = (-1) * (-m))%Z by auto.
-            remember (ModInv.Z.modinv (- m) (2 ^ 64)) as x.
-            rewrite H0. subst x. rewrite H. rewrite <- Z.mul_assoc.
+        cbv [WordByWordMontgomery.m']. cbv [WordByWordMontgomery.r].
+            assert (M = (-1) * (-M))%Z by auto.
+            remember (ModInv.Z.modinv (- M) (2 ^ 64)) as x.
+            rewrite H. subst x. rewrite <- Z.mul_assoc.
             rewrite Z.mul_mod.
             1: {
                 pose proof (ModInv.Z.modinv_correct (- M) (2 ^ 64)).
                 assert (0 < 2 ^ 64) by lia.
-                specialize (H1 H2).
+                specialize (H0 H1).
                 assert (Z.gcd (Z.abs (-M)) (2 ^ 64) = 1) by auto.
-                specialize (H1 H3).
-                destruct H1.
-                rewrite H1. rewrite <- Z.mul_mod; try lia.
+                specialize (H0 H2).
+                destruct H0.
+                rewrite H0. rewrite <- Z.mul_mod; try lia.
             }
             lia.
     Qed.
@@ -100,7 +83,7 @@ Section FromListFp2.
     Lemma bw_big : 0 < 64.
     Proof. lia. Qed.
 
-    Lemma m_big : 1 < m.
+    Lemma m_big : 1 < M.
     Proof.
         cbv. auto.
     Qed.
@@ -110,20 +93,13 @@ Section FromListFp2.
         cbv [n felem_size_in_words]; simpl. cbv [WordByWordMontgomery.n]; simpl; lia.
     Qed.
 
-    Lemma m_small : (m < (2 ^ 64) ^ Z.of_nat (n)).
-    Proof.
-        cbv [n felem_size_in_words m]. simpl. lia.
-    Qed.
+    Definition from_mont_correct := WordByWordMontgomery.from_montgomerymod_correct 64 n M r' m' r'_correct m'_correct bw_big m_big n_nz M_small.
+    Definition to_mont_correct :=  WordByWordMontgomery.to_montgomerymod_correct 64 n M r' m' r'_correct m'_correct bw_big m_big n_nz M_small.
 
-    Check WordByWordMontgomery.to_montgomerymod_correct.
-
-    Definition from_mont_correct := WordByWordMontgomery.from_montgomerymod_correct 64 n m r' m' r'_correct m'_correct bw_big m_big n_nz m_small.
-    Definition to_mont_correct :=  WordByWordMontgomery.to_montgomerymod_correct 64 n m r' m' r'_correct m'_correct bw_big m_big n_nz m_small.
-
-    Ltac param_hammer := cbv [m m' M M_pos r' n]; simpl; try eapply M_small; try eapply m'_correct; try eapply r'_correct; try lia; auto.
+    Ltac param_hammer := cbv [M m' M M_pos r' n]; simpl; try eapply M_small; try eapply m'_correct; try eapply r'_correct; try lia; auto.
 
     (*Move this lemma elsewhere*)
-    Lemma unsigned_of_Z_valid : forall (l : list Z), WordByWordMontgomery.valid 64 n m l -> List.map word.unsigned (List.map (@word.of_Z 64 word) l) = l.
+    Lemma unsigned_of_Z_valid : forall (l : list Z), WordByWordMontgomery.valid 64 n M l -> List.map word.unsigned (List.map (@word.of_Z 64 word) l) = l.
     Proof.
         intros.
         erewrite Util.map_unsigned_of_Z. eapply MaxBounds.map_word_wrap_bounded'.
@@ -131,13 +107,13 @@ Section FromListFp2.
         eapply valid_max_bounds. eapply H.
     Qed.
 
-    Lemma three_br_mont_eq : three_br_mont = (@WordByWordMontgomery.to_montgomerymod 64 n m (@m' _ 64) three_br_list).
+    Lemma three_br_mont_eq : three_br_mont = (@WordByWordMontgomery.to_montgomerymod 64 n M (@m' _ 64) three_br_list).
     Proof. vm_compute; auto. Qed.
 
-    Lemma three_bi_mont_eq : three_bi_mont = (@WordByWordMontgomery.to_montgomerymod 64 n m (@m' _ 64) three_bi_list).
+    Lemma three_bi_mont_eq : three_bi_mont = (@WordByWordMontgomery.to_montgomerymod 64 n M (@m' _ 64) three_bi_list).
     Proof. vm_compute; auto. Qed.
 
-    Lemma three_br_list_valid : WordByWordMontgomery.valid 64 n m three_br_list.
+    Lemma three_br_list_valid : WordByWordMontgomery.valid 64 n M three_br_list.
     Proof.
         split.
         1: {
@@ -145,11 +121,10 @@ Section FromListFp2.
             cbv [n felem_size_in_words]. simpl; lia.
         }
         unfold three_br_list.
-        erewrite <- WordByWordMontgomery.WordByWordMontgomery.m_enc_correct_montgomery; try lia; cbv [three_br m]; try lia.
-        cbv [n felem_size_in_words]. simpl; lia.
+        erewrite <- WordByWordMontgomery.WordByWordMontgomery.m_enc_correct_montgomery; try lia; cbv [three_br M]; simpl; try lia.
     Qed.
 
-    Lemma three_bi_list_valid : WordByWordMontgomery.valid 64 n m three_bi_list.
+    Lemma three_bi_list_valid : WordByWordMontgomery.valid 64 n M three_bi_list.
     Proof.
         split.
         1: {
@@ -157,18 +132,17 @@ Section FromListFp2.
             cbv [n felem_size_in_words]. simpl; lia.
         }
         unfold three_bi_list.
-        erewrite <- WordByWordMontgomery.WordByWordMontgomery.m_enc_correct_montgomery; try lia; cbv [three_bi m]; try lia.
-        cbv [n felem_size_in_words]. simpl; lia.
+        erewrite <- WordByWordMontgomery.WordByWordMontgomery.m_enc_correct_montgomery; try lia; cbv [three_bi M]; simpl; try lia.
     Qed.
 
-    Lemma three_br_mont_valid : WordByWordMontgomery.valid 64 n m three_br_mont.
+    Lemma three_br_mont_valid : WordByWordMontgomery.valid 64 n M three_br_mont.
     Proof.
         rewrite three_br_mont_eq.
         eapply to_mont_correct.
         eapply three_br_list_valid.
     Qed.
 
-    Lemma three_bi_mont_valid : WordByWordMontgomery.valid 64 n m three_bi_mont.
+    Lemma three_bi_mont_valid : WordByWordMontgomery.valid 64 n M three_bi_mont.
     Proof.
         rewrite three_bi_mont_eq.
         eapply to_mont_correct.
@@ -191,8 +165,8 @@ Section FromListFp2.
         1: eapply r'_correct.
         1: lia.
         1: cbv [n felem_size_in_words]; simpl; cbv [WordByWordMontgomery.n]; simpl; lia.
-        1: cbv [m n felem_size_in_words]; simpl; cbv [WordByWordMontgomery.n]; lia.
-        1: cbv [m]; lia.
+        1: cbv [M n felem_size_in_words]; simpl; cbv [WordByWordMontgomery.n]; lia.
+        1: cbv [M]; simpl; lia.
         eapply three_br_list_valid.
     Qed.
 
@@ -212,15 +186,12 @@ Section FromListFp2.
         1: eapply r'_correct.
         1: lia.
         1: cbv [n felem_size_in_words]; simpl; cbv [WordByWordMontgomery.n]; simpl; lia.
-        1: cbv [m n felem_size_in_words]; simpl; cbv [WordByWordMontgomery.n]; lia.
-        1: cbv [m]; lia.
+        1: cbv [M n felem_size_in_words]; simpl; cbv [WordByWordMontgomery.n]; lia.
+        1: cbv [M]; simpl; lia.
         eapply three_bi_list_valid.
     Qed.
 
-    Let prefix := "bls12_Fp2".
-    Instance Fp2_names : FieldNames := field_names_prefixed prefix.
-
-    Definition from_list_func : Syntax.func := (@from_list Fp2_names, (["out"], (nil : list string), bedrock_func_body:(
+    Definition bls12_Fp2_from_list : Syntax.func := (from_list (F:=Fp2), (["out"], (nil : list string), bedrock_func_body:(
       coq:(cmd.store access_size.word (expr.var "out") (expr.literal (nth 0 three_br_mont 0)));
       coq:(cmd.store access_size.word (expr.op bopname.add (expr.var "out") (expr.literal (8))) (nth 1 three_br_mont 0));
       coq:(cmd.store access_size.word (expr.op bopname.add (expr.var "out") (expr.literal (16))) (nth 2 three_br_mont 0));
@@ -246,10 +217,7 @@ Section FromListFp2.
         exact (ModularArithmetic.F.of_Z M_pos three_br,ModularArithmetic.F.of_Z M_pos three_bi).
     Defined.
 
-    Instance spec_of_from_list : spec_of (@from_list Fp2_names).
-    Proof.
-        exact (@spec_of_from_list _ _ _ _ _ _ Fp2 Fp2_parameters Fp2_names Fp2_representation three_b_Fp2) .
-    Defined.
+    Instance spec_of_bls12_Fp2_from_list : spec_of (from_list (F:=Fp2)) := spec_of_from_list three_b_Fp2.
 
     Ltac collect H1 H2 := let Hnew := (fresh "Hnew") in
     eassert (Hnew : id (fun m => (_ m) /\ (_ m)) _) by (cbv [id]; split; [eapply H1| eapply H2]); clear H1 H2.
@@ -257,12 +225,12 @@ Section FromListFp2.
     Local Infix "+w" := word.add (at level 80).
     Local Infix "*w" := word.mul (at level 70).
 
-    Lemma felem_copy_ok : program_logic_goal_for_function! from_list_func. (*Why does this take 5 minutes???!???*)
+    Lemma felem_copy_ok : program_logic_goal_for_function! bls12_Fp2_from_list. (*Why does this take 5 minutes???!???*)
     Proof.
-        cbv [spec_of_from_list Field.spec_of_from_list]. cbv [program_logic_goal_for].
+        cbv [spec_of_bls12_Fp2_from_list Field.spec_of_from_list]. cbv [program_logic_goal_for].
         intros.
         
-        cbv [from_list_func]. simpl.
+        cbv [bls12_Fp2_from_list]. simpl.
         repeat straightline.
 
         cbv [FElem Bignum.Bignum] in H.
@@ -494,7 +462,7 @@ Section FromListFp2.
             (*Apply lemma!!!*)
             cbv [three_br]. cbv [Representation.eval_words]. cbv [eval_trans].
             eapply f_equal. unfold word in H13.
-            assert (@QuadraticFieldExtensionsSpecs.fst_felem _ _ _ _ prime_parameters F_representation (three_br_words ++ three_bi_words) = three_br_words).
+            assert (QuadraticFieldExtensionsSpecs.fst_felem (three_br_words ++ three_bi_words) = three_br_words).
             {
                 simpl. cbv [QuadraticFieldExtensionsSpecs.fst_felem firstn]. simpl.
                 cbv [three_br_words three_br_mont]. simpl. auto.
@@ -503,6 +471,8 @@ Section FromListFp2.
             (* Set Printing Implicit. *)
             (* cbv [word] in H14. *)
             (* cbv [word]. *)
+            Set Printing All.
+            cbv [word] in *.
             rewrite H14.
             rewrite H13.
             (* cbv [three_br_words]. *)
@@ -519,13 +489,13 @@ Section FromListFp2.
             (*Apply lemma!!!*)
             cbv [three_bi]. cbv [Representation.eval_words]. cbv [eval_trans].
             eapply f_equal. unfold word in H13.
-            assert (@QuadraticFieldExtensionsSpecs.snd_felem _ _ _ _ _ F_representation (three_br_words ++ three_bi_words) = three_bi_words).
+            assert (QuadraticFieldExtensionsSpecs.snd_felem (three_br_words ++ three_bi_words) = three_bi_words).
             {
                 simpl. cbv [QuadraticFieldExtensionsSpecs.fst_felem firstn]. simpl.
                 cbv [three_br_words three_br_mont]. simpl. auto.
             }
             (* unfold word in H14.  *)
-            (* unfold word. *)
+            unfold word in *.
             rewrite H14.
             rewrite H13.
             cbv [three_bi_list].
@@ -535,7 +505,7 @@ Section FromListFp2.
         }
 
         split.
-            - assert (@QuadraticFieldExtensionsSpecs.fst_felem _ _ _ _ prime_parameters F_representation (three_br_words ++ three_bi_words) = three_br_words).
+            - assert (fst_felem (three_br_words ++ three_bi_words) = three_br_words).
             {
                 simpl. cbv [QuadraticFieldExtensionsSpecs.fst_felem firstn]. simpl.
                 cbv [three_br_words three_br_mont]. simpl. auto.
@@ -543,7 +513,7 @@ Section FromListFp2.
             unfold word in *.
             rewrite H13.
             cbv [three_br_words]. rewrite unsigned_of_Z_valid; eapply three_br_mont_valid.
-            - assert (@QuadraticFieldExtensionsSpecs.snd_felem _ _ _ _ prime_parameters F_representation (three_br_words ++ three_bi_words) = three_bi_words).
+            - assert (snd_felem (three_br_words ++ three_bi_words) = three_bi_words).
             {
                 simpl. cbv [QuadraticFieldExtensionsSpecs.snd_felem firstn]. simpl. auto.
             }

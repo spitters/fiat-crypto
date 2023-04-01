@@ -14,7 +14,7 @@ Section Compile.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
   Context {F : Type} {field_parameters : FieldParameters F}
           {field_parameters_ok : FieldParameters_ok F}
-          {field_names : FieldNames}.
+          {field_names : FieldNames F}.
   Context {field_representaton : FieldRepresentation F}
           {field_representation_ok : FieldRepresentation_ok F}.
 

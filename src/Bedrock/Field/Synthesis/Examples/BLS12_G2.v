@@ -23,17 +23,26 @@ Require Import Crypto.Spec.ModularArithmetic.
 
 Section bls12_G2.
 
-    Existing Instances Defaults64.default_parameters Defaults64.default_parameters_ok.
+    Existing Instances
+        Defaults64.default_parameters
+        Defaults64.default_parameters_ok
+        bls12_prime_parameters
+        (* bls12_field_parameters *)
+        bls12_field_names
+        bls12_field_representation
+        bls12_Fp2_field_names
+        bls12_Fp2_field_parameters
+        bls12_Fp2_field_representation.
 
-    Instance prime_parameters : PrimeParameters := prime_parameters.
     Local Notation F := (F M_pos).
     Local Notation Fp2 := (F * F)%type.
 
-    Instance F_names : FieldNames := field_names.
-    Instance F_parameters : FieldParameters F := field_parameters.
-    Instance F_representation : FieldRepresentation F := field_representation M.
-    Instance Fp2_parameters : FieldParameters Fp2 := Fp2_parameters.
-    Instance Fp2_representation : FieldRepresentation Fp2 := Fp2_representation.
+    (* Instance F_names : FieldNames := field_names. *)
+    (* Instance F_parameters : FieldParameters F := field_parameters. *)
+    (* Instance F_representation : FieldRepresentation F := field_representation M. *)
+    (* Instance Fp2_names : FieldNames := Fp2_names. *)
+    (* Instance Fp2_parameters : FieldParameters Fp2 := Fp2_parameters. *)
+    (* Instance Fp2_representation : FieldRepresentation Fp2 := Fp2_representation. *)
 
     (* Instance prime_field_parameters : Field.FieldParameters. *)
     (* Proof. *)
@@ -55,10 +64,10 @@ Section bls12_G2.
     (*     exact (@Fp2_representation _ _ _ _ prime_field_parameters prime_field_representation). *)
     (* Defined. *)
 
-    Check @ladderstep_body. (*Give Proper Name!!!!!!!!*)
-    Check ladderstep_body.
+    (* Check @ladderstep_body. (*Give Proper Name!!!!!!!!*) *)
+    (* Check ladderstep_body. *)
 
-    Definition bls12_G2_add := ladderstep_body.
+    Definition bls12_G2_add := ladderstep_body (F:=Fp2).
     (*make Field.field_representation from rep in WordByWordMontgomery.*)
 
     Definition mpos : positive.
@@ -77,35 +86,39 @@ Section bls12_G2.
     Definition three_bi_list := Partition.partition uw 6 three_bi.
 
     Definition word := BasicC64Semantics.word.
-    Definition three_br_mont := @WordByWordMontgomery.to_montgomerymod 64 6 m (@m' _ 64) three_br_list.
-    Definition three_bi_mont := @WordByWordMontgomery.to_montgomerymod 64 6 m (@m' _ 64) three_bi_list.
+    Definition three_br_mont := @WordByWordMontgomery.to_montgomerymod 64 6 M (@m' _ 64) three_br_list.
+    Definition three_bi_mont := @WordByWordMontgomery.to_montgomerymod 64 6 M (@m' _ 64) three_bi_list.
     Definition three_br_words := List.map (@word.of_Z 64 word) three_br_mont.
     Definition three_bi_words := List.map (@word.of_Z 64 word) three_bi_mont.
 
-    Instance spec_of_bls12_Fp2_add : spec_of (fst bls12_Fp2_add).
-    Proof. exact spec_of_bls12_Fp2_add. Defined.
+    Existing Instance spec_of_bls12_Fp2_add.
+    Existing Instance spec_of_bls12_Fp2_sub.
+    Existing Instance spec_of_bls12_Fp2_mul.
+
+    (* Instance spec_of_bls12_Fp2_add : spec_of (fst bls12_Fp2_add). *)
+    (* Proof. exact spec_of_bls12_Fp2_add. Defined. *)
         (* exact (@spec_of_add _ _ _ _ _ _ field_parameters (WordByWordMontgomery.field_representation m)).
     Defined. *)
 
-    Compute fst bls12_Fp2_sub.
+    (* Compute fst bls12_Fp2_sub. *)
 
-    Instance spec_of_bls12_Fp2_sub : spec_of (fst bls12_Fp2_sub).
-    Proof. exact spec_of_bls12_Fp2_sub. Defined.
+    (* Instance spec_of_bls12_Fp2_sub : spec_of (fst bls12_Fp2_sub). *)
+    (* Proof. exact spec_of_bls12_Fp2_sub. Defined. *)
         (* exact (@spec_of_sub _ _ _ _ _ _ field_parameters (WordByWordMontgomery.field_representation m)).
     Defined. *)
 
-    Instance spec_of_bls12_Fp2_mul : spec_of (fst bls12_Fp2_mul).
-    Proof. exact spec_of_bls12_Fp2_mul. Defined.
+    (* Instance spec_of_bls12_Fp2_mul : spec_of (fst bls12_Fp2_mul). *)
+    (* Proof. exact spec_of_bls12_Fp2_mul. Defined. *)
         (* exact (@spec_of_mul _ _ _ _ _ _ field_parameters (WordByWordMontgomery.field_representation m)).
     Defined. *)
 
     (* Instance spec_of_bls12_square : spec_of (fst bls12_square).
     Proof. exact spec_of_square. Defined. *)
 
-    Instance spec_of_G2_add : spec_of "ladderstep".
-    Proof.
-        exact (spec_of_ladderstep (three_br_words ++ three_bi_words)).
-    Defined.
+    Instance spec_of_G2_add : spec_of "ladderstep" := (spec_of_ladderstep (three_br_words ++ three_bi_words)).
+    (* Proof. *)
+    (*     exact (spec_of_ladderstep (three_br_words ++ three_bi_words)). *)
+    (* Defined. *)
 
     Definition three_b_F : Fp2.
     Proof.
@@ -115,20 +128,22 @@ Section bls12_G2.
     Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_from_list_Fp2.
     Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_from_list_F.
 
-    Let prefix := "bls12_Fp2".
-    Instance Fp2_names : FieldNames := field_names_prefixed prefix.
+    (* Let prefix := "bls12_Fp2". *)
+    (* Instance Fp2_names : FieldNames := field_names_prefixed prefix. *)
 
-    Locate spec_of_from_list.
+    (* Locate spec_of_from_list. *)
 
-    Existing Instance spec_of_bls12_mul.
-    Existing Instance spec_of_bls12_add.
-    Existing Instance spec_of_bls12_sub.
-    Existing Instance bls12_from_list_F.spec_of_from_list.
+    (* Existing Instance spec_of_bls12_mul. *)
+    (* Existing Instance spec_of_bls12_add. *)
+    (* Existing Instance spec_of_bls12_sub. *)
+    (* Existing Instance bls12_from_list_F.spec_of_from_list. *)
     (* Proof. *)
     (*     exact (@Field.spec_of_from_list _ _ _ _ _ _ F F_parameters F_names F_representation _) . *)
     (* Defined. *)
 
-    Instance spec_of_from_list_Fp2 : spec_of (@from_list Fp2_names) := bls12_from_list_Fp2.spec_of_from_list.
+    Existing Instance spec_of_bls12_Fp2_from_list.
+
+    (* Instance spec_of_from_list_Fp2 : spec_of (@from_list Fp2_names) := bls12_from_list_Fp2.spec_of_from_list. *)
     (* Proof. *)
     (*     exact (@Field.spec_of_from_list _ _ _ _ _ _ Fp2 Fp2_parameters Fp2_names Fp2_representation three_b_Fp2) . *)
     (* Defined. *)
@@ -142,11 +157,12 @@ Section bls12_G2.
 
     Lemma bls12_G2_ok : program_logic_goal_for_function! bls12_G2_add. (*Why does this take 7 minutes??!?!?*)
     pose proof ladderstep_correct. cbv [spec_of_G2_add].
+    Check spec_of_ladderstep.
     cbv [bls12_G2_add].
     cbv [program_logic_goal_for]. intros.
-    eapply H.
+    apply H.
         1: simpl; auto.
-        3: auto.
+        3: apply H1.
         3: cbv [spec_of_bls12_add] in H4; apply H4.
         3: cbv [spec_of_bls12_sub] in H13; apply H13.
         2: {
@@ -154,21 +170,22 @@ Section bls12_G2.
         }
         2: {
             cbv [CurveAdd.spec_of_from_list]. cbv [spec_of_from_list] in H0.
-            pose proof H0. cbv [bls12_from_list_Fp2.spec_of_from_list] in H34.
+            pose proof H0. cbv [spec_of_bls12_Fp2_from_list] in H34.
             cbv [three_b_Fp2] in H34.
             
             assert (three_b_Fp2 = feval (bls12_G2.three_br_words ++ bls12_G2.three_bi_words)).
             {
                 cbv [three_b_Fp2]. cbv [F].
-                unfold feval. cbv [bls12_G2.field_representation].
-                cbv [Fp2_representation].
+                unfold feval.
+                cbv [bls12_Fp2_field_representation].
+                cbv [Fp2_field_representation].
 
                 Lemma three_br_list_valid : WordByWordMontgomery.valid 64 6 M bls12_G2.three_br_list.
                 Proof.
                     cbv [bls12_G2.three_br_list].
                     eapply WordByWordMontgomeryUtil.valid_partition_small.
                     7: {
-                        erewrite Zmod_small; try lia. cbv [bls12_G2.three_br M M_pos field_parameters]. simpl. lia.
+                        erewrite Zmod_small; try lia. cbv [bls12_G2.three_br M]. simpl. lia.
                     }
                     all: try lia.
                     4: cbv [M]; simpl; lia.
@@ -183,10 +200,11 @@ Section bls12_G2.
                     eapply WordByWordMontgomeryUtil.valid_to_mont.
                     7: apply three_br_list_valid.
                     all: try lia.
-                    4: cbv [m]; lia.
-                    3: cbv [m WordByWordMontgomeryUtil.r]; try lia.
+                    4: cbv [M]; simpl; lia.
+                    3: cbv [M WordByWordMontgomeryUtil.r]; try lia.
                     2: eapply m'_correct.
                     apply r'_correct.
+                    simpl; lia.
                 Qed.
 
                 Lemma fst_felem_three_b : fst_felem (bls12_G2.three_br_words ++ bls12_G2.three_bi_words) = bls12_G2.three_br_words.
@@ -207,7 +225,7 @@ Section bls12_G2.
                     cbv [bls12_G2.three_bi_list].
                     eapply WordByWordMontgomeryUtil.valid_partition_small.
                     7: {
-                        erewrite Zmod_small; try lia. cbv [bls12_G2.three_bi M M_pos field_parameters]. simpl. lia.
+                        erewrite Zmod_small; try lia. cbv [bls12_G2.three_bi M]. simpl. lia.
                     }
                     all: try lia.
                     4: cbv [M]; simpl; lia.
@@ -222,10 +240,11 @@ Section bls12_G2.
                     eapply WordByWordMontgomeryUtil.valid_to_mont.
                     7: apply three_bi_list_valid.
                     all: try lia.
-                    4: cbv [m]; lia.
-                    3: cbv [m WordByWordMontgomeryUtil.r]; try lia.
+                    4: cbv [M]; simpl; lia.
+                    3: cbv [M WordByWordMontgomeryUtil.r]; try lia.
                     2: eapply m'_correct.
                     apply r'_correct.
+                    simpl; lia.
                 Qed.
 
                 Lemma snd_felem_three_b : snd_felem (bls12_G2.three_br_words ++ bls12_G2.three_bi_words) = bls12_G2.three_bi_words.
@@ -237,7 +256,6 @@ Section bls12_G2.
                         rewrite map_length.
                         eapply WordByWordMontgomery.length_small. eapply three_br_mont_valid.
                     }
-                    Search skipn.
                     rewrite QuadraticFieldExtensions.skipn_app; [reflexivity| ].
                     rewrite H. simpl. cbv [WordByWordMontgomery.n].
                     cbv [WordByWordMontgomery.s]. simpl. clear H. auto.
@@ -246,47 +264,51 @@ Section bls12_G2.
                 pose proof fst_felem_three_b. cbv [bls12_G2.word] in *. rewrite H35.
                 pose proof snd_felem_three_b. cbv [bls12_G2.word] in *. rewrite H36.
                 clear H35 H36.
-                
-                simpl. eapply Prod.path_pair.
+
+                eapply Prod.path_pair.
                 1: {
-                    simpl. cbv [bls12_G2.three_br_words eval_trans bls12_G2.three_br_mont Representation.eval_words].
-                    eapply f_equal.
+                cbv [feval bls12_field_representation field_representation Signature.field_representation Representation.frep Representation.eval_words prime_field_parameters FofZ].
+                eapply f_equal.
+                    (* bls12_G2.three_br_words. *)
+                    cbv [bls12_G2.three_br_words eval_trans bls12_G2.three_br_mont Representation.eval_words].
+                    (* apply f_equal. *)
                     rewrite unsigned_of_Z_valid.
                     2: {
                         eapply WordByWordMontgomeryUtil.valid_to_mont.
                         7: eapply three_br_list_valid.
                         all: try lia.
-                        4: cbv [m]; lia.
-                        3: cbv [m WordByWordMontgomeryUtil.r]; lia.
+                        4: cbv [M]; simpl; lia.
+                        3: cbv [M WordByWordMontgomeryUtil.r]; simpl; lia.
                         2: apply m'_correct.
                         apply r'_correct.
                         }
                     erewrite WordByWordMontgomeryUtil.from_to_mont_inv; try lia.
                     6: apply three_br_list_valid.
-                    5: cbv [m]; lia.
-                    4: cbv [m WordByWordMontgomeryUtil.r]; lia.
+                    5: cbv [M]; simpl; lia.
+                    4: cbv [M WordByWordMontgomeryUtil.r]; simpl; lia.
                     3: apply m'_correct.
                     2: apply r'_correct.
                     cbv [bls12_G2.three_br_list].
                     rewrite eval_partition; auto.
                     apply uwprops. lia.
                 }
-                simpl. cbv [bls12_G2.three_bi_words eval_trans bls12_G2.three_bi_mont Representation.eval_words].
+                cbv [feval bls12_field_representation field_representation Signature.field_representation Representation.frep Representation.eval_words prime_field_parameters FofZ].
+                cbv [feval bls12_G2.three_bi_words eval_trans bls12_G2.three_bi_mont Representation.eval_words].
                 eapply f_equal.
                 rewrite unsigned_of_Z_valid.
                 2: {
                     eapply WordByWordMontgomeryUtil.valid_to_mont.
                     7: eapply three_bi_list_valid.
                     all: try lia.
-                    4: cbv [m]; lia.
-                    3: cbv [m WordByWordMontgomeryUtil.r]; lia.
+                    4: cbv [M]; simpl; lia.
+                    3: cbv [M WordByWordMontgomeryUtil.r]; simpl; lia.
                     2: apply m'_correct.
                     apply r'_correct.
                     }
                 erewrite WordByWordMontgomeryUtil.from_to_mont_inv; try lia.
                 6: apply three_bi_list_valid.
-                5: cbv [m]; lia.
-                4: cbv [m WordByWordMontgomeryUtil.r]; lia.
+                5: cbv [M]; simpl; lia.
+                4: cbv [M WordByWordMontgomeryUtil.r]; simpl; lia.
                 3: apply m'_correct.
                 2: apply r'_correct.
                 cbv [bls12_G2.three_bi_list].
@@ -301,23 +323,26 @@ Section bls12_G2.
         cbv [CompilationAbstract.maybe_bounded]. split.
         1: {
             pose proof fst_felem_three_b.
-            cbv [bounded_by loose_bounds prime_field_representation WordByWordMontgomery.field_representation Signature.field_representation Representation.frep].
-            cbv [my_field_representation bls12_G2.field_representation Fp2_representation].
-            cbv [loose_bounds prime_field_representation WordByWordMontgomery.field_representation Signature.field_representation Representation.frep].
+            cbv [bounded_by loose_bounds bls12_field_representation WordByWordMontgomery.field_representation Signature.field_representation Representation.frep].
+            cbv [bls12_Fp2_field_representation Fp2_field_representation].
+            cbv [bounded_by loose_bounds bls12_field_representation WordByWordMontgomery.field_representation Signature.field_representation Representation.frep].
+            (* cbv [loose_bounds prime_field_representation WordByWordMontgomery.field_representation Signature.field_representation Representation.frep]. *)
             cbv [list_in_bounds].
-            Set Printing All. cbv [bls12_G2.word] in *.
-            cbv [fst_felem felem_size_in_words] in *. cbv [prime_field_representation WordByWordMontgomery.field_representation Signature.field_representation Representation.frep] in H34.
+            cbv [bls12_G2.word] in *.
+            cbv [fst_felem felem_size_in_words] in *.
+            cbv [bls12_field_representation WordByWordMontgomery.field_representation Signature.field_representation Representation.frep] in *.
             rewrite H34.
             cbv [bls12_G2.three_br_words].
             rewrite unsigned_of_Z_valid; apply three_br_mont_valid.
         }
         pose proof snd_felem_three_b.
-        cbv [bounded_by loose_bounds prime_field_representation WordByWordMontgomery.field_representation Signature.field_representation Representation.frep].
-        cbv [my_field_representation bls12_G2.field_representation Fp2_representation].
-        cbv [loose_bounds prime_field_representation WordByWordMontgomery.field_representation Signature.field_representation Representation.frep].
+        cbv [bounded_by loose_bounds bls12_field_representation WordByWordMontgomery.field_representation Signature.field_representation Representation.frep].
+        cbv [bls12_Fp2_field_representation Fp2_field_representation].
+        cbv [loose_bounds bls12_field_representation WordByWordMontgomery.field_representation Signature.field_representation Representation.frep].
         cbv [list_in_bounds].
         cbv [bls12_G2.word] in *.
-        cbv [snd_felem felem_size_in_words] in *. cbv [prime_field_representation WordByWordMontgomery.field_representation Signature.field_representation Representation.frep] in H34.
+        cbv [snd_felem felem_size_in_words] in *.
+        cbv [bls12_field_representation WordByWordMontgomery.field_representation Signature.field_representation Representation.frep] in H34.
         rewrite H34.
         cbv [bls12_G2.three_bi_words].
         rewrite unsigned_of_Z_valid; apply three_bi_mont_valid.

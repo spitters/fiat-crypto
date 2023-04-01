@@ -70,17 +70,13 @@ Section __.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
   Context {F : Type} {field_parameters : Field.FieldParameters F}
           {field_parameters_ok : Field.FieldParameters_ok F}.
-  Context {field_names : FieldNames}.
+  Context {field_names : FieldNames F}.
 
   Context {field_representation : FieldRepresentation F}
           {field_representation_ok : FieldRepresentation_ok F}.
 
   Hint Resolve relax_bounds : compiler.
   Existing Instance felem_alloc.
-  (* Instance my_field_representation : FieldRepresentation F. *)
-  (* Proof. *)
-  (*     exact field_representation. *)
-  (* Defined. *)
 
   Context (Hbounds_eq : loose_bounds = tight_bounds).
   Context (three_b : felem).

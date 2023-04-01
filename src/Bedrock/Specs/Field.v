@@ -31,7 +31,7 @@ Section FieldSpecs.
       (* fe_copy := (@id (F)); *)
       }.
 
-  Class FieldNames :=
+  Class FieldNames (F : Type) :=
     {
       (** function names **)
       mul : string;
@@ -58,9 +58,9 @@ Section FieldSpecs.
       from_list : string;
     }.
 
-  Definition field_names_prefixed
-  (prefix: string) : FieldNames :=
-    Build_FieldNames
+  Definition field_names_prefixed F
+  (prefix: string) : FieldNames F :=
+    Build_FieldNames F
     (prefix ++ "mul")
     (prefix ++ "add")
     (prefix ++ "sub")
@@ -193,7 +193,7 @@ Section FieldSpecs.
     (* Context {field_data : FieldData}. *)
     Context {F : Type}
             {field_parameters : FieldParameters F}
-            {field_names : FieldNames}
+            {field_names : FieldNames F}
             {field_representation : FieldRepresentation F}.
 
     Local Definition Fsquare (x : F) := Fmul x x.
@@ -390,7 +390,7 @@ Section Field.
 
   Section Specialized.
     Context {params : PrimeParameters}
-            {names : FieldNames}
+            {names : FieldNames (F M_pos)}
             {params_ok : PrimeParameters_ok}
             {width: Z}
             {BW: Bitwidth width}
@@ -418,7 +418,6 @@ Section Field.
 
     Context {field_representation : FieldRepresentation (F M_pos)}
             {field_representation_ok : FieldRepresentation_ok (F M_pos)}.
-
 
 (*     (* Parameters for word-by-word Montgomery arithmetic*) *)
       Definition r := 2 ^ width.

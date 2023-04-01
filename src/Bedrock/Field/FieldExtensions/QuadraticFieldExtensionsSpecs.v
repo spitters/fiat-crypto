@@ -36,7 +36,7 @@ Section QuadraticExtension.
 
   Local Notation Fp2 := ((F M_pos) * (F M_pos))%type.
 
-  Instance Fp2_parameters : FieldParameters Fp2.
+  Instance Fp2_field_parameters : FieldParameters Fp2.
   Proof.
       econstructor.
         - exact (zerop2 M_pos).
@@ -51,7 +51,7 @@ Section QuadraticExtension.
         - eapply eq_dec_Fp2.
   Defined.
 
-  Instance Fp2_parameters_ok : FieldParameters_ok Fp2.
+  Instance Fp2_field_parameters_ok : FieldParameters_ok Fp2.
   Proof.
     econstructor;
     exact (@std_to_fiatCrypto_field _ _ _ _ _ _ _ _ _ (FFp2 M_pos M_prime M_big M_mod)).
@@ -63,7 +63,7 @@ Section QuadraticExtension.
   Definition fst_felem_bytes (Fp2_list : list byte) : list byte := firstn (Z.to_nat felem_size_in_bytes) Fp2_list.
   Definition snd_felem_bytes (Fp2_list : list byte) : list byte := skipn (Z.to_nat felem_size_in_bytes) Fp2_list.
 
-  Instance Fp2_representation : FieldRepresentation Fp2.
+  Instance Fp2_field_representation : FieldRepresentation Fp2.
   Proof.
     econstructor.
       - exact (fun y => (feval (fst_felem y), feval (snd_felem y))).
@@ -76,7 +76,7 @@ Section QuadraticExtension.
       - exact tight_bounds.
   Defined.
 
-  Instance Fp2_representation_ok : FieldRepresentation_ok Fp2.
+  Instance Fp2_field_representation_ok : FieldRepresentation_ok Fp2.
   Proof.
     econstructor; destruct field_representation_ok; intros.
     split; eapply relax_bounds; apply H.
