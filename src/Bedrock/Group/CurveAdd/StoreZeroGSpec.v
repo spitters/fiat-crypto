@@ -1,7 +1,6 @@
 Require Import Rupicola.Lib.Api.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_prime.
-Require Import Crypto.Bedrock.Specs.PrimeField.
-Require Import Crypto.Bedrock.Specs.AbstractField.
+Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.Synthesis.New.WordByWordMontgomery.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.ArrayUtil.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.ScalarsUtil.
@@ -27,15 +26,15 @@ Section __.
       Context {locals_ok : map.ok locals}.
       Context {env_ok : map.ok env}.
       Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
-      Context {field_parameters : AbstractField.FieldParameters}
-            {field_parameters_ok : AbstractField.FieldParameters_ok}.
+      Context {F : Type} {field_parameters : Field.FieldParameters F}
+            {field_parameters_ok : Field.FieldParameters_ok F}.
 
-      Context {field_representation : FieldRepresentation}
-            {field_representation_ok : FieldRepresentation_ok}
+      Context {field_representation : FieldRepresentation F}
+            {field_representation_ok : FieldRepresentation_ok F}
             {group_cmov : string}
             {store_zero : string}.
 
-    (*curve-defining parameter b*)
+    (* curve-defining parameter b *)
     (* Definition three_b := 0.
     Definition uw := (uweight 64).
     Definition n := felem_size_in_words.

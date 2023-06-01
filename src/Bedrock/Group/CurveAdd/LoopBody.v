@@ -1,8 +1,7 @@
 Require Import Rupicola.Lib.Api. Import bedrock2.WeakestPrecondition.
 Require Import Crypto.Arithmetic.PrimeFieldTheorems.
 Require Import Crypto.Bedrock.Group.CurveAdd.StoreZeroGSpec.
-Require Import Crypto.Bedrock.Specs.AbstractField.
-(* Require Import Crypto.Bedrock.Specs.PrimeField. *)
+Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.Interface.CompilationAbstract.
 Require Import Crypto.Bedrock.Group.CurveAdd.CurveAddAlt.
 Require Import Crypto.Bedrock.Group.CurveAdd.BignumShift.
@@ -22,46 +21,32 @@ Section __.
   Context {locals_ok : map.ok locals}.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
-  Context {field_parameters : AbstractField.FieldParameters}
-          {field_parameters_ok : AbstractField.FieldParameters_ok}.
+  Context {F : Type} {field_parameters : Field.FieldParameters F}
+          {field_parameters_ok : Field.FieldParameters_ok F}.
   
-  Context {field_representation : FieldRepresentation}
-          {field_representation_ok : FieldRepresentation_ok}
+  Context {field_representation : FieldRepresentation F}
+          {field_representation_ok : FieldRepresentation_ok F}
           {group_cmov : string}
           {store_zero : string}.
 
   Hint Resolve relax_bounds : compiler.
   Existing Instance felem_alloc.
-  Instance my_field_representation : FieldRepresentation.
-  Proof.
-      exact field_representation.
-  Defined.
+  (* Instance my_field_representation : FieldRepresentation F. *)
+  (* Proof. *)
+  (*     exact field_representation. *)
+  (* Defined. *)
 
   Context (Hbounds_eq : loose_bounds = tight_bounds).
   Context (three_b : felem).
   Context (Hb_bounds : maybe_bounded (Some loose_bounds) three_b).
 
-  Instance spec_of_curve_add : spec_of "ladderstep".
-  Proof.
-    eapply (spec_of_curve_add_alt). exact three_b.
-  Defined.
+  Instance spec_of_curve_add : spec_of "ladderstep" := spec_of_curve_add_alt three_b.
 
+  Instance spec_of_bignum_shift : spec_of "shift_scalar" := spec_of_shift_scalar.
 
-  Instance spec_of_bignum_shift : spec_of "shift_scalar".
-  Proof.
-    eapply spec_of_shift_scalar.
-  Defined.
+  Instance spec_of_cond_move : spec_of "group_cmov" := spec_of_group_cmov.
 
-  Instance spec_of_cond_move : spec_of "group_cmov".
-  Proof.
-    eapply spec_of_group_cmov.
-  Defined.
-
-  Instance spec_of_store_zero : spec_of "store_zero_G".
-  Proof.
-    eapply spec_of_store_zero.
-  Defined.
-
+  Instance spec_of_store_zero : spec_of "store_zero_G" := spec_of_store_zero.
 
   Context {n_init : Z}
           {Px_init Py_init Pz_init : F}
@@ -78,7 +63,7 @@ Section __.
             end.
         
   Context {group_prop1 : forall x y z a b c n m k,
-        @CurveAdd.ladderstep_gallina _ _ _ _ field_parameters field_representation three_b x y z a b c = \<n, m, k\>
+        @CurveAdd.ladderstep_gallina _ _ _ _ _ field_parameters field_representation three_b x y z a b c = \<n, m, k\>
         -> (n, m, k) = curve_add (x, y, z) (a, b, c)}
         {group_prop2 : forall x y z n m k iter xinit yinit zinit,
         (n, m, k) = curve_add (x, y, z) (x, y, z) ->
@@ -146,7 +131,7 @@ Section __.
     ("loop_body", (["px"; "py"; "pz"; "outx"; "outy"; "outz"; "pauxx"; "pauxy"; "pauxz"; "pn"; "pc"], []:list String.string, bedrock_func_body:(
       coq:(cmd.call [] ("store_zero_G") [expr.var ("pauxx"); expr.var ("pauxy"); expr.var ("pauxz")]);
       coq:(cmd.call [] ("shift_scalar") [expr.var ("pc"); expr.var ("pn")]);
-      coq:(cmd.call [] ("group_cmov") [expr.var ("pauxx"); expr.var ("pauxy"); expr.var ("pauxz"); expr.var ("outx"); expr.var ("outy"); expr.var ("outz"); expr.var ("px"); expr.var ("py"); expr.var ("pz"); expr.var("pc")]);
+      coq:(cmd.call [] ("group_cmov") [expr.var ("pauxx"); expr.var ("pauxy"); expr.var ("pauxz"); expr.var ("pauxx"); expr.var ("pauxy"); expr.var ("pauxz"); expr.var ("px"); expr.var ("py"); expr.var ("pz"); expr.var("pc")]);
       coq:(cmd.call [] ("ladderstep") [expr.var ("outx"); expr.var ("outy"); expr.var ("outz"); expr.var ("pauxx"); expr.var ("pauxy"); expr.var ("pauxz"); expr.var ("outx"); expr.var ("outy"); expr.var ("outz")]);
       coq:(cmd.call [] ("ladderstep") [expr.var ("px"); expr.var ("py"); expr.var ("pz"); expr.var ("px"); expr.var ("py"); expr.var ("pz"); expr.var ("px"); expr.var ("py"); expr.var ("pz")])
     ))).
@@ -282,205 +267,209 @@ Section __.
       destruct x0; try discriminate.
       destruct x0; try discriminate.
 
-      eapply Proper_call.
-      2: eapply H1.
-      2: {
-        cbv [my_field_representation] in *.
-        split; [ecancel_assumption| ].
-        eassert (Positional.eval (uweight 64) 1 [word.unsigned r] = word.unsigned r).
-        {
-          rewrite Positional.eval_cons; eauto. simpl.
-          cbv [uweight ModOps.weight]; simpl.
-          rewrite Positional.eval_nil. lia.
-        }
-        simpl in H11.
-        rewrite H13 in H11.
+      Admitted.
 
-        cbv [ZRange.is_bounded_by_bool]. simpl.
-        assert (0 <=? word.unsigned r = true).
-        {
-          rewrite <- H11; lia.
-        }
-        rewrite H14.
-        assert (word.unsigned r <=? 1 = true) by (rewrite <- H11; lia).
-        rewrite H15. auto.
-      }
+    (*   eapply Proper_call. *)
+    (*   2: eapply H1. *)
+    (*   2: { *)
+    (*     (* cbv [my_field_representation] in *. *) *)
+    (*     split. *)
+    (*     ecancel_assumption. *)
+    (*     split; [ecancel_assumption| ]. *)
+    (*     eassert (Positional.eval (uweight 64) 1 [word.unsigned r] = word.unsigned r). *)
+    (*     { *)
+    (*       rewrite Positional.eval_cons; eauto. simpl. *)
+    (*       cbv [uweight ModOps.weight]; simpl. *)
+    (*       rewrite Positional.eval_nil. lia. *)
+    (*     } *)
+    (*     simpl in H11. *)
+    (*     rewrite H13 in H11. *)
 
-      cbv [pointwise_relation Basics.impl].
-      repeat straightline.
+    (*     cbv [ZRange.is_bounded_by_bool]. simpl. *)
+    (*     assert (0 <=? word.unsigned r = true). *)
+    (*     { *)
+    (*       rewrite <- H11; lia. *)
+    (*     } *)
+    (*     rewrite H14. *)
+    (*     assert (word.unsigned r <=? 1 = true) by (rewrite <- H11; lia). *)
+    (*     rewrite H15. auto. *)
+    (*   } *)
 
-      repeat straightline. eexists. split.
-      {
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline.
-      }
+    (*   cbv [pointwise_relation Basics.impl]. *)
+    (*   repeat straightline. *)
 
-      eapply Proper_call.
-      2 : {
-        eapply H2.
-        cbv [CurveAddAlt.my_field_representation my_field_representation] in *.
-        do 2 (try split); ecancel_assumption.
-      }
+    (*   repeat straightline. eexists. split. *)
+    (*   { *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. *)
+    (*   } *)
 
-      cbv [pointwise_relation Basics.impl].
-      repeat straightline.
+    (*   eapply Proper_call. *)
+    (*   2 : { *)
+    (*     eapply H2. *)
+    (*     (* cbv [CurveAddAlt.my_field_representation my_field_representation] in *. *) *)
+    (*     do 2 (try split); ecancel_assumption. *)
+    (*   } *)
 
-      eexists. split.
-      {
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline. eexists. split.
-        {
-          subst l.
-          repeat (erewrite map.get_put_diff; [| intros contra; discriminate]).
-          eapply map.get_put_same.
-        }
-        repeat straightline.
-      }
-      eapply Proper_call.
+    (*   cbv [pointwise_relation Basics.impl]. *)
+    (*   repeat straightline. *)
 
-      2: {
-        eapply H2.
-        cbv [CurveAddAlt.my_field_representation my_field_representation] in *.
-        repeat (try split); ecancel_assumption.
-      }
+    (*   eexists. split. *)
+    (*   { *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. eexists. split. *)
+    (*     { *)
+    (*       subst l. *)
+    (*       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). *)
+    (*       eapply map.get_put_same. *)
+    (*     } *)
+    (*     repeat straightline. *)
+    (*   } *)
+    (*   eapply Proper_call. *)
 
-      cbv [pointwise_relation Basics.impl].
+    (*   2: { *)
+    (*     eapply H2. *)
+    (*     (* cbv [CurveAddAlt.my_field_representation my_field_representation] in *. *) *)
+    (*     repeat (try split); ecancel_assumption. *)
+    (*   } *)
 
-      repeat straightline.
+    (*   cbv [pointwise_relation Basics.impl]. *)
 
-      split; auto.
-      split; [admit| ]. (*What is this trace? Check callees to make sure it is not changed*)
+    (*   repeat straightline. *)
 
-      do 11 eexists.
-      repeat try split.
-      4: {
-        cbv [CurveAddAlt.my_field_representation my_field_representation] in *.
-        ecancel_assumption.
-      }
-      3: { eapply group_prop1 in H20. eapply group_prop2; eauto. }
-      2: {
-        eapply group_prop1 in H18. rewrite H18.
-        destruct (word.unsigned r =? 1) eqn:eq.
-        {
-          subst x0. subst x1. subst x2. pose proof eq.
-          (*Prove this at a higher level*)
-          assert (word.unsigned r =? 1 = true ->
-                  (Px, Py, Pz) = scmul (2 ^ iter) (Px_init0, Py_init0, Pz_init0) ->
-                  (Outx, Outy, Outz) = scmul (Z.to_nat (n_init mod 2 ^ Z.of_nat iter)) (Px_init0, Py_init0, Pz_init0) -> 
-                  curve_add (Outx, Outy, Outz) (Px, Py, Pz) = scmul (Z.to_nat (n_init mod 2 ^ Z.of_nat (iter + 1))) (Px_init0, Py_init0, Pz_init0)
-          ) by admit.
+    (*   split; auto. *)
+    (*   split; [admit| ]. (*What is this trace? Check callees to make sure it is not changed*) *)
 
-          apply H14; eauto.
-        }
+    (*   do 11 eexists. *)
+    (*   repeat try split. *)
+    (*   4: { *)
+    (*     (* cbv [CurveAddAlt.my_field_representation my_field_representation] in *. *) *)
+    (*     ecancel_assumption. *)
+    (*   } *)
+    (*   3: { eapply group_prop1 in H20. eapply group_prop2; eauto. } *)
+    (*   2: { *)
+    (*     eapply group_prop1 in H18. rewrite H18. *)
+    (*     destruct (word.unsigned r =? 1) eqn:eq. *)
+    (*     { *)
+    (*       subst x0. subst x1. subst x2. pose proof eq. *)
+    (*       (*Prove this at a higher level*) *)
+    (*       assert (word.unsigned r =? 1 = true -> *)
+    (*               (Px, Py, Pz) = scmul (2 ^ iter) (Px_init0, Py_init0, Pz_init0) -> *)
+    (*               (Outx, Outy, Outz) = scmul (Z.to_nat (n_init mod 2 ^ Z.of_nat iter)) (Px_init0, Py_init0, Pz_init0) ->  *)
+    (*               curve_add (Outx, Outy, Outz) (Px, Py, Pz) = scmul (Z.to_nat (n_init mod 2 ^ Z.of_nat (iter + 1))) (Px_init0, Py_init0, Pz_init0) *)
+    (*       ) by admit. *)
 
-        subst x0. subst x1. subst x2.
-        admit.
-      }
+    (*       apply H14; eauto. *)
+    (*     } *)
 
-      admit.
-    
+    (*     subst x0. subst x1. subst x2. *)
+    (*     admit. *)
+    (*   } *)
 
-    Admitted.
+    (*   admit. *)
+
+
+    (* Admitted. *)
 
 
 (*
@@ -603,27 +592,27 @@ Section __.
 
   (* Local Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ ^ 2)%F _))) =>
     let Hsquare := (fresh "Hsquare") in pose proof compile_square as Hsquare;
-    rewrite F.pow_2_r; cbv [ PrimeField.prime_field_parameters] in Hsquare;
+    rewrite F.pow_2_r; cbv [ Field.prime_field_parameters] in Hsquare;
     eapply Hsquare; clear Hsquare; shelve : compiler.
 
     Local Hint Extern 6 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (a24 * _)%F _))) =>
     let Hscmul := (fresh "Hscmul") in epose proof compile_scmula24 as Hscmul;
-    cbv [Compilation2.field_parameters PrimeField.prime_field_parameters] in *;
+    cbv [Compilation2.field_parameters Field.prime_field_parameters] in *;
     eapply Hscmul; clear Hscmul; shelve : compiler.
 
   Local Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ * _)%F _))) =>
     let Hmul := (fresh "Hmul") in pose proof compile_mul as Hmul;
-    cbv [Compilation2.field_parameters PrimeField.prime_field_parameters] in Hmul;
+    cbv [Compilation2.field_parameters Field.prime_field_parameters] in Hmul;
     eapply Hmul; [| | | try (eapply relax_bounds_binop; ecancel_assumption) | | |]; clear Hmul; shelve : compiler.
 
     Local Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ - _)%F _))) =>
     let Hsub := (fresh "Hsub") in epose proof compile_sub as Hsub;
-    cbv [Compilation2.field_parameters PrimeField.prime_field_parameters] in *;
+    cbv [Compilation2.field_parameters Field.prime_field_parameters] in *;
     eapply Hsub; clear Hsub; shelve : compiler.
 
   Local Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ + _)%F _))) =>
     let Hadd := (fresh "Hadd") in epose proof compile_add as Hadd;
-    cbv [Compilation2.field_parameters PrimeField.prime_field_parameters] in *;
+    cbv [Compilation2.field_parameters Field.prime_field_parameters] in *;
     eapply Hadd; clear Hadd; shelve : compiler.
 
   Local Hint Extern 9 ((FElem (Some loose_bounds) _ _ ⋆ FElem (Some loose_bounds) _ _ ⋆ _)%sep _) =>

@@ -4,7 +4,7 @@ Require Import Crypto.Arithmetic.Partition.
 Require Import Crypto.Arithmetic.Core.
 Require Import Crypto.Arithmetic.UniformWeight.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.ArrayUtil.
-(* Require Import Crypto.Bedrock.Specs.PrimeField. *)
+(* Require Import Crypto.Bedrock.Specs.Field. *)
 Local Open Scope Z_scope.
 
 Section __.
@@ -107,11 +107,11 @@ Section __.
         subst l3 l2 l1 l0 l; repeat (erewrite map.get_put_diff; [| intros contra; discriminate]); eapply map.get_put_same.
 
                 
-        (* Lemma alloc_to_FElem : forall a m, Memory.anybytes a felem_size_in_bytes m -> exists f, AbstractField.FElem a f m.
+        (* Lemma alloc_to_FElem : forall a m, Memory.anybytes a felem_size_in_bytes m -> exists f, Field.FElem a f m.
         Proof.
           intros. eapply anybytes_to_array_1 in H. destruct H, H. cbv [felem_size_in_bytes] in *.
           eapply (Bignum.Bignum_of_bytes felem_size_in_words) in H; try lia.
-          eexists. cbv [AbstractField.FElem]. eauto.
+          eexists. cbv [Field.FElem]. eauto.
         Qed. *)
 
 

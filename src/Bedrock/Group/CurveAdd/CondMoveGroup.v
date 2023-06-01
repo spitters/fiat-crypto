@@ -13,20 +13,14 @@ Section __.
   Context {locals_ok : map.ok locals}.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
-  Context {field_parameters : Field.FieldParameters}
-          {field_parameters_ok : Field.FieldParameters_ok}.
-  Context {field_names : FieldNames}.
-  Context {field_representation : FieldRepresentation}
-          {field_representation_ok : FieldRepresentation_ok}
+  Context {F : Type} {field_parameters : FieldParameters F}
+          {field_parameters_ok : Field.FieldParameters_ok F}.
+  Context {field_names : FieldNames F}.
+  Context {field_representation : FieldRepresentation F}
+      {field_representation_ok : FieldRepresentation_ok F}
           {group_cmov : string}.
 
   Notation F_cmov := select_znz.
-
-  Instance spec_of_select_znz : spec_of select_znz.
-  Proof.
-      exact spec_of_selectznz.
-  Defined.
-
 
   Hint Resolve relax_bounds : compiler.
   Existing Instance felem_alloc.
@@ -96,6 +90,8 @@ Section __.
 
     Ltac solve_locals l1 :=
         subst l1; repeat (erewrite map.get_put_diff; [| intros contra; discriminate]); eapply map.get_put_same.
+
+  Instance spec_of_select_znz : spec_of select_znz := spec_of_selectznz.
 
     Lemma cmov_ok : program_logic_goal_for_function! cmov_func.
     Proof.

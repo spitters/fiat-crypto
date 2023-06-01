@@ -2,8 +2,7 @@ Require Import Rupicola.Lib.Api. Import bedrock2.WeakestPrecondition.
 Require Import Crypto.Arithmetic.PrimeFieldTheorems.
 Require Import Crypto.Bedrock.Group.CurveAdd.StoreZeroGSpec.
 Require Import Crypto.Bedrock.Group.CurveAdd.LoopBody.
-Require Import Crypto.Bedrock.Specs.AbstractField.
-(* Require Import Crypto.Bedrock.Specs.PrimeField. *)
+Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.Interface.CompilationAbstract.
 Require Import Crypto.Bedrock.Group.CurveAdd.CurveAdd.
 Require Import Crypto.Bedrock.Group.CurveAdd.BignumShift.
@@ -24,28 +23,20 @@ Section __.
   Context {locals_ok : map.ok locals}.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
-  Context {field_parameters : AbstractField.FieldParameters}
-          {field_parameters_ok : AbstractField.FieldParameters_ok}.
+  Context {F : Type} {field_parameters : FieldParameters F}
+          {field_parameters_ok : FieldParameters_ok F}.
   
-  Context {field_representation : FieldRepresentation}
-          {field_representation_ok : FieldRepresentation_ok}
+  Context {field_representation : FieldRepresentation F}
+          {field_representation_ok : FieldRepresentation_ok F}
           {group_cmov : string}
           {store_zero : string}.
 
   Context {curve_add : (F * F * F) -> (F * F * F) -> (F * F * F)}.
   Context {group_prop1 : forall x y z, curve_add (x, y, z) (Fzero, Fone, Fzero) = (x, y, z)}.
 
-    Instance spec_of_loop_body : spec_of "loop_body".
-    Proof.
-        pose proof (@spec_of_loop_body width BW word mem locals ext_spec field_parameters field_representation curve_add).
-        exact X.
-    Defined.
+    Instance spec_of_loop_body : spec_of "loop_body" := spec_of_loop_body (curve_add:=curve_add).
 
-    Instance spec_of_store_zero : spec_of "store_zero_G".
-    Proof.
-      pose proof (@StoreZeroGSpec.spec_of_store_zero width BW word mem locals ext_spec field_parameters field_representation).
-      exact X.
-    Defined.
+    Instance spec_of_store_zero : spec_of "store_zero_G" := spec_of_store_zero.
 
     Instance spec_of_scalar_mult : spec_of "scalar_mult" :=
     fnspec! "scalar_mult"
@@ -66,7 +57,7 @@ Section __.
         /\ exists Pxnew Pynew Pznew Outxnew Outynew Outznew (* output values *)
                   : F,
            exists nnew : list word,
-               (Outxnew, Outynew, Outznew) = (@scmul field_parameters curve_add) (Z.to_nat (Positional.eval (uweight 64) 6 (List.map word.unsigned n))) (Px, Py, Pz)
+               (Outxnew, Outynew, Outznew) = (@scmul _ field_parameters curve_add) (Z.to_nat (Positional.eval (uweight 64) 6 (List.map word.unsigned n))) (Px, Py, Pz)
               /\ (FElem (Some tight_bounds) pPx Pxnew
                 * FElem (Some tight_bounds) pPy Pynew
                 * FElem (Some tight_bounds) pPz Pznew
@@ -103,9 +94,9 @@ Section __.
         }
         ))).
 
-        From bedrock2 Require Import ToCString Bytedump.
-        Definition c_mod := (c_module (scalar_mult_func :: nil)).
-        Eval native_compute in c_mod.
+        (* From bedrock2 Require Import ToCString Bytedump. *)
+        (* Definition c_mod := (c_module (scalar_mult_func :: nil)). *)
+        (* Eval native_compute in c_mod. *)
 
     Lemma scalar_mult_ok : program_logic_goal_for_function! scalar_mult_func.
     Proof.
@@ -121,7 +112,7 @@ Section __.
       eexists; split; [ repeat (repeat straightline; eexists; split; [solve_locals5 l3 l2 l1 l0 l| ]); repeat straightline| ].
 
       pose proof H as Hspec1.
-      cbv [spec_of_store_zero LoopBody.spec_of_store_zero StorePointAtInfinity.spec_of_store_zero] in Hspec1.
+      cbv [spec_of_store_zero LoopBody.spec_of_store_zero spec_of_store_zero] in Hspec1.
 
 
       eapply Proper_call; [| eapply Hspec1; ecancel_assumption].
@@ -196,8 +187,8 @@ Section __.
         * R)%sep m'
         /\ (*n*)
            (Positional.eval (uweight 64) 6 (List.map word.unsigned n)) = Z.shiftr n_init (Z.of_nat v)
-        /\ (Outx, Outy, Outz) = @scmul field_parameters curve_add  (Z.to_nat (n_init mod (2 ^ (Z.of_nat v))))%Z (Px_init, Py_init, Pz_init)
-        /\ (Px, Py, Pz) = @scmul field_parameters curve_add (2 ^ v) (Px_init, Py_init, Pz_init)
+        /\ (Outx, Outy, Outz) = @scmul _ field_parameters curve_add  (Z.to_nat (n_init mod (2 ^ (Z.of_nat v))))%Z (Px_init, Py_init, Pz_init)
+        /\ (Px, Py, Pz) = @scmul _ field_parameters curve_add (2 ^ v) (Px_init, Py_init, Pz_init)
         /\ viter = Z.of_nat (v)
         /\ viter < 399
       ).
@@ -220,6 +211,7 @@ Section __.
             assert (n_init mod 1 = 0) by admit.
             rewrite H16, H18. simpl. eauto.
           - simpl. rewrite group_prop1. eauto.
+          - lia.
       }
 
       repeat straightline.
@@ -267,7 +259,7 @@ Section __.
           eapply Hspec2; clear Hspec2.
           split; [| split; [| split]].
 
-            - clear H18 H14 H23. cbv [LoopBody.my_field_representation]. ecancel_assumption.
+            - clear H18 H14 H23.  ecancel_assumption.
             - erewrite <- H20. eauto.
             - rewrite H22. eauto.
             - eassumption.
@@ -283,7 +275,6 @@ Section __.
           split; [| split; [| split; [| split; [| split] ]]].
           1: {
             rewrite <- word.ring_morph_add in H32.
-            cbv [my_field_representation LoopBody.my_field_representation] in *.
             ecancel_assumption.
           }
           5: {
@@ -373,3 +364,4 @@ Section __.
 
     Eval native_compute in c_mod.
 
+    End __.
