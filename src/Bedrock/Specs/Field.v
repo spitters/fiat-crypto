@@ -31,6 +31,12 @@ Section FieldSpecs.
       (* fe_copy := (@id (F)); *)
       }.
 
+  (* move *)
+  Class CurveParameters F :=
+    {
+      a24 : F
+    }.
+
   Class FieldNames (F : Type) :=
     {
       (** function names **)
@@ -39,7 +45,6 @@ Section FieldSpecs.
       sub : string;
       opp : string;
       square : string;
-      (* scmula24 : string; *)
       inv : string;
       from_bytes : string;
       to_bytes : string;
@@ -58,6 +63,11 @@ Section FieldSpecs.
       from_list : string;
     }.
 
+  Class CurveNames (F : Type) :=
+    {
+      scmula24 : string;
+    }.
+
   Definition field_names_prefixed F
   (prefix: string) : FieldNames F :=
     Build_FieldNames F
@@ -66,7 +76,6 @@ Section FieldSpecs.
     (prefix ++ "sub")
     (prefix ++ "opp")
     (prefix ++ "square")
-    (* (prefix ++ "scmula24") *)
     (prefix ++ "inv")
     (prefix ++ "from_bytes")
     (prefix ++ "to_bytes")
@@ -75,6 +84,11 @@ Section FieldSpecs.
     (prefix ++ "small_literal")
     (prefix ++ "from_list")
   .
+
+  Definition curve_names_prefixed F
+  (prefix: string) : CurveNames F :=
+    Build_CurveNames F
+    (prefix ++ "scmula24").
 
   Class FieldParameters_ok F {field_parameters : FieldParameters F} := {
     fld:@Hierarchy.field F Feq Fzero Fone Fopp Fadd Fsub Fmul Finv Fdiv
@@ -98,15 +112,23 @@ Section FieldSpecs.
       bytes_in_bounds : list byte -> Prop;
 
       (* Memory layout *)
-      FElem : word -> list word -> mem -> Prop := Bignum felem_size_in_words;
+
+      bounds : Type;
+      bounded_by : bounds -> felem -> Prop;
+      maybe_bounded mbounds v :=
+        match mbounds with
+        | Some bounds => bounded_by bounds v
+        | None => True
+        end;
+      FElem : option bounds -> word -> F -> mem -> Prop :=
+        fun mbounds ptr v =>
+          (Lift1Prop.ex1 (fun v' => (emp (feval v' = v /\ maybe_bounded mbounds v') ⋆ Bignum felem_size_in_words ptr v')%sep));
       FElemBytes : word -> list byte -> mem -> Prop :=
         fun addr bs =>
           (emp (length bs = encoded_felem_size_in_bytes
                 /\ bytes_in_bounds bs)
           * array ptsto (word.of_Z 1) addr bs)%sep;
 
-      bounds : Type;
-      bounded_by : bounds -> felem -> Prop;
       (* for saturated implementations, loose/tight bounds are the same *)
       loose_bounds : bounds;
       tight_bounds : bounds;
@@ -144,7 +166,8 @@ Section FieldSpecs.
     Lemma felem_size_in_bytes_mod :
           felem_size_in_bytes mod Memory.bytes_per_word width = 0.
     Proof. apply Z_mod_mult. Qed.
-    Lemma FElem_from_bytes p : Lift1Prop.iff1 (Placeholder F p) (Lift1Prop.ex1 (FElem p)).
+
+    Lemma Bignum_from_bytes p : Lift1Prop.iff1 (Placeholder F p) (Lift1Prop.ex1 (Bignum felem_size_in_words p)).
     Proof.
       cbv [Placeholder FElem felem_size_in_bytes].
       repeat intro.
@@ -168,6 +191,33 @@ Section FieldSpecs.
         unshelve (erewrite (_:_*_=_); eassumption).
         rewrite H; destruct Bitwidth.width_cases as [W|W];
           symmetry in W; destruct W; cbn; clear; lia. }
+    Qed.
+
+    Lemma Bignum_to_bytes px x :
+      Lift1Prop.impl1 (Bignum felem_size_in_words px x) (Placeholder F px).
+    Proof.
+      rewrite Bignum_from_bytes.
+      repeat intro; eexists; eauto.
+    Qed.
+
+    Lemma FElem_from_bytes
+      : forall px : word.rep,
+        Lift1Prop.iff1 (Placeholder F px) (Lift1Prop.ex1 (FElem None px)).
+    Proof.
+      unfold FElem.
+      intros.
+      split; intros.
+      {
+        apply Bignum_from_bytes in H.
+        destruct H.
+        do 2 eexists.
+        sepsimpl; simpl; eauto.
+      }
+      {
+        destruct H as [? [? ?]].
+        sepsimpl.
+        eapply Bignum_to_bytes; eauto.
+      }
     Qed.
   End BignumToFieldRepresentationAdapterLemmas.
 
@@ -194,7 +244,10 @@ Section FieldSpecs.
     Context {F : Type}
             {field_parameters : FieldParameters F}
             {field_names : FieldNames F}
-            {field_representation : FieldRepresentation F}.
+            {field_representation : FieldRepresentation F}
+            {curve_parameters : CurveParameters F}
+            {curve_names : CurveNames F}
+    .
 
     Local Definition Fsquare (x : F) := Fmul x x.
 
@@ -206,17 +259,15 @@ Section FieldSpecs.
     Import WeakestPrecondition.
 
     Definition unop_spec {name} (op: UnOp name) :=
-      fnspec! name (pout px : word) / (out x : felem) Rr,
+      fnspec! name (pout px : word) / (out x : F) Rr,
       { requires tr mem :=
-          bounded_by un_xbounds x
-          /\ (exists Ra, (FElem px x * Ra)%sep mem)
-          /\ (FElem pout out * Rr)%sep mem;
+          (exists Ra, (FElem (Some un_xbounds) px x * Ra)%sep mem)
+          /\ (FElem None pout out * Rr)%sep mem;
         ensures tr' mem' :=
           tr = tr' /\
           exists out,
-            feval out = un_model (feval x)
-            /\ bounded_by un_outbounds out
-            /\ (FElem pout out * Rr)%sep mem' }.
+            out = un_model x
+            /\ (FElem (Some un_outbounds) pout out * Rr)%sep mem' }.
 
     Instance spec_of_UnOp {name} (op: UnOp name) : spec_of name :=
       unop_spec op.
@@ -228,19 +279,16 @@ Section FieldSpecs.
         bin_outbounds: bounds }.
 
     Definition binop_spec  {name} (op: BinOp name) :=
-      fnspec! name (pout px py : word) / (out x y : felem) Rr,
+      fnspec! name (pout px py : word) / (out x y : F) Rr,
       { requires tr mem :=
-          bounded_by bin_xbounds x
-          /\ bounded_by bin_ybounds y
-          /\ (exists Rx, (FElem px x * Rx)%sep mem)
-          /\ (exists Ry, (FElem py y * Ry)%sep mem)
-          /\ (FElem pout out * Rr)%sep mem;
+          (exists Rx, (FElem (Some bin_xbounds) px x * Rx)%sep mem)
+          /\ (exists Ry, (FElem (Some bin_ybounds) py y * Ry)%sep mem)
+          /\ (FElem None pout out * Rr)%sep mem;
         ensures tr' mem' :=
           tr = tr' /\
           exists out,
-            feval out = bin_model (feval x) (feval y)
-            /\ bounded_by bin_outbounds out
-            /\ (FElem pout out * Rr)%sep mem' }.
+            out = bin_model x y
+            /\ (FElem (Some bin_outbounds) pout out * Rr)%sep mem' }.
 
     Instance spec_of_BinOp {name} (op: BinOp name) : spec_of name :=
       binop_spec op.
@@ -253,8 +301,8 @@ Section FieldSpecs.
       {| bin_model := Fadd; bin_xbounds := tight_bounds; bin_ybounds := tight_bounds; bin_outbounds := loose_bounds |}.
     Instance bin_sub : BinOp sub :=
       {| bin_model := Fsub; bin_xbounds := tight_bounds; bin_ybounds := tight_bounds; bin_outbounds := loose_bounds |}.
-    (* Instance un_scmula24 : UnOp scmula24 := *)
-    (*   {| un_model := Fmul a24; un_xbounds := loose_bounds; un_outbounds := tight_bounds |}. *)
+    Instance un_scmula24 : UnOp scmula24 :=
+      {| un_model := Fmul a24; un_xbounds := loose_bounds; un_outbounds := tight_bounds |}.
     Instance un_inv : UnOp inv := (* TODO: what are the bounds for inv? *)
       {| un_model := Finv; un_xbounds := tight_bounds; un_outbounds := loose_bounds |}.
     Instance un_opp : UnOp opp :=
@@ -264,58 +312,55 @@ Section FieldSpecs.
       fnspec! from_bytes (pout px : word) / out (bs : list byte) Rr,
       { requires tr mem :=
           (exists Ra, (FElemBytes px bs * Ra)%sep mem)
-          /\ (FElem pout out * Rr)%sep mem;
+          /\ (FElem None pout out * Rr)%sep mem;
         ensures tr' mem' :=
           tr = tr' /\
-          exists X, feval X = feval_bytes bs
-              /\ bounded_by tight_bounds X
-              /\ (FElem pout X * Rr)%sep mem' }.
+          exists X, X = feval_bytes bs
+              /\ (FElem (Some tight_bounds) pout X * Rr)%sep mem' }.
 
     Instance spec_of_to_bytes : spec_of to_bytes :=
-      fnspec! to_bytes (pout px : word) / (out : list byte) (x : felem) Rr,
+      fnspec! to_bytes (pout px : word) / (out : list byte) (x : F) Rr,
       { requires tr mem :=
-          bounded_by tight_bounds x /\
-          (exists Ra, (FElem px x * Ra)%sep mem)
+          (exists Ra, (FElem (Some tight_bounds) px x * Ra)%sep mem)
           /\ (FElemBytes pout out * Rr)%sep mem;
         ensures tr' mem' :=
           tr = tr' /\
           exists bs,
-            feval x = feval_bytes bs /\
+            x = feval_bytes bs /\
             (FElemBytes pout bs * Rr)%sep mem' }.
 
     Instance spec_of_felem_copy : spec_of felem_copy :=
-      fnspec! felem_copy (pout px : word) / (out x : felem) R Rout,
+      fnspec! felem_copy (pout px : word) / (out x : F) R Rout bounds,
       { requires tr mem :=
-          (FElem px x * FElem pout out * R)%sep mem /\
-          (FElem pout out * Rout)%sep mem;
+          (FElem bounds px x * FElem None pout out * R)%sep mem /\
+          (FElem None pout out * Rout)%sep mem;
         ensures tr' mem' :=
           tr = tr' /\
-          (FElem pout x * Rout)%sep mem' }.
+          (FElem bounds pout x * Rout)%sep mem' }.
 
     Instance spec_of_from_word : spec_of from_word :=
       fnspec! from_word (pout x : word) / out R,
       { requires tr mem0 :=
-          (FElem pout out * R)%sep mem0;
+          (FElem None pout out * R)%sep mem0;
         ensures tr' mem' :=
           tr = tr' /\
-          exists X, feval X = FofZ (word.unsigned x)
-              /\ bounded_by tight_bounds X
-              /\ (FElem pout X * R)%sep mem' }.
+          exists X,  X = FofZ (word.unsigned x)
+              /\ (FElem (Some tight_bounds) pout X * R)%sep mem' }.
 
     Local Notation bit_range := {|ZRange.lower := 0; ZRange.upper := 1|}.
 
-    Instance spec_of_selectznz  : spec_of select_znz :=
-      fnspec! select_znz (pout pc px py : word) / out Rout Rx Ry x y,
+    Instance spec_of_selectznz : spec_of select_znz :=
+      fnspec! select_znz (pout pc px py : word) / out Rout Rx Ry x y ybounds xbounds,
         {
           requires tr mem :=
-            (FElem pout out * Rout)%sep mem /\
-              (FElem px x * Rx)%sep mem /\
-              (FElem py y * Ry)%sep mem /\
+            (FElem None pout out * Rout)%sep mem /\
+              (FElem xbounds px x * Rx)%sep mem /\
+              (FElem ybounds py y * Ry)%sep mem /\
               ZRange.is_bounded_by_bool (word.unsigned pc) bit_range = true;
           ensures tr' mem' :=
             if ((word.unsigned pc) =? 1)
-            then ((FElem pout y * Rout)%sep mem')
-            else ((FElem pout x * Rout)%sep mem')
+            then ((FElem ybounds pout y * Rout)%sep mem')
+            else ((FElem xbounds pout x * Rout)%sep mem')
         }.
 
     Section FromList.
@@ -325,42 +370,20 @@ Section FieldSpecs.
     fnspec! from_list (pout : word) / outold Rout,
     {
         requires tr mem :=
-        (FElem pout outold * Rout)%sep mem ;
+        (FElem None pout outold * Rout)%sep mem ;
         ensures tr' mem' := exists out,
-        feval out = v /\ tr = tr' /\ bounded_by loose_bounds out /\
-        (FElem pout out * Rout)%sep mem'
+        tr = tr' /\
+          out = v /\
+          (FElem (Some loose_bounds) pout out * Rout)%sep mem'
     }.
     End FromList.
 
   End FunctionSpecs.
 
   Existing Instances spec_of_UnOp spec_of_BinOp bin_mul un_square bin_add bin_sub
-          (* un_scmula24 *)
+          un_scmula24
           un_inv spec_of_felem_copy.
 
-  Section SpecProperties.
-    Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
-    Context {locals: map.map String.string word}.
-    Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
-    Context {ext_spec: bedrock2.Semantics.ExtSpec}.
-    Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
-    Context {locals_ok : map.ok locals}.
-    Context {env_ok : map.ok env}.
-    Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
-    (* Context {field_data : FieldData}. *)
-    Context {F : Type} {field_parameters : FieldParameters F}
-            {field_representation : FieldRepresentation F}
-            {field_representation_ok : FieldRepresentation_ok F}.
-
-
-    Lemma FElem_to_bytes px x :
-      Lift1Prop.impl1 (FElem px x) (Placeholder F px).
-    Proof.
-      rewrite FElem_from_bytes.
-      repeat intro; eexists; eauto.
-    Qed.
-
-  End SpecProperties.
 End FieldSpecs.
 
 (* Require Import Crypto.Bedrock.Specs.Field. *)

@@ -17,16 +17,8 @@ Section Compile.
           {field_names : FieldNames F}.
   Context {field_representaton : FieldRepresentation F}
           {field_representation_ok : FieldRepresentation_ok F}.
-
-  Definition maybe_bounded mbounds v :=
-    match mbounds with
-    | Some bounds => bounded_by bounds v
-    | None => True
-    end.
-
-  (* TODO: Replace uses of the old FElem with this? *)
-  Definition FElem mbounds ptr v :=
-    (Lift1Prop.ex1 (fun v' => (emp (feval v' = v /\ maybe_bounded mbounds v') * FElem ptr v')%sep)).
+  Context {curve_parameters : CurveParameters F}
+          {curve_names : CurveNames F}.
 
   Lemma drop_bounds_FElem x_ptr x bounds
     : Lift1Prop.impl1 (FElem bounds x_ptr x)
@@ -49,30 +41,9 @@ Section Compile.
     exists x0.
     sepsimpl; simpl in *; eauto using relax_bounds.
   Qed.
-  
-  Lemma FElem'_from_bytes
-    : forall px : word.rep,
-      Lift1Prop.iff1 (Placeholder F px) (Lift1Prop.ex1 (FElem None px)).
-  Proof.
-    unfold FElem.
-    intros.
-    split; intros.
-    {
-      apply FElem_from_bytes in H.
-      destruct H.
-      do 2 eexists.
-      sepsimpl; simpl; eauto.
-    }
-    {
-      destruct H as [? [? ?]].
-      sepsimpl.
-      
-      eapply FElem_to_bytes; eauto.
-    }
-  Qed.
 
   #[refine]
-   Instance felem_alloc : Allocable (FElem None) :=
+  Instance felem_alloc : Allocable (FElem None) :=
     {|
     size_in_bytes := felem_size_in_bytes;
     size_in_bytes_mod := felem_size_in_bytes_mod;
@@ -80,13 +51,13 @@ Section Compile.
   Proof.
     {
       intros; intros m H.
-      apply FElem'_from_bytes.
+      apply FElem_from_bytes.
       eexists.
       eapply drop_bounds_FElem; eauto.
     }      
     {
       intros; intros m H.
-      apply FElem'_from_bytes.
+      apply FElem_from_bytes.
       eauto.
     }
   Defined.
@@ -108,13 +79,12 @@ Section Compile.
         {tr m l functions} x y:
     let v := bin_model x y in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-           Rinx Riny Rout out x_ptr x_var y_ptr y_var out_ptr out_var
-           bound_out,
+           Rinx Riny Rout out x_ptr x_var y_ptr y_var out_ptr out_var,
 
       (_: spec_of name) functions ->
 
       map.get l out_var = Some out_ptr ->
-      (FElem bound_out out_ptr out * Rout)%sep m ->
+      (FElem None out_ptr out * Rout)%sep m ->
 
       (FElem (Some bin_xbounds) x_ptr x * Rinx)%sep m ->
       (FElem (Some bin_ybounds) y_ptr y * Riny)%sep m ->
@@ -140,27 +110,27 @@ Section Compile.
       <{ pred (nlet_eq [out_var] v k) }>.
   Proof.
     repeat straightline'.
-    unfold FElem in *.
     sepsimpl.
+    (* handle_call. *)
     prove_field_compilation.
-    apply H6.
-    
-    eapply Proper_sep_impl1; eauto.
-    2:exact(fun a b => b).
-    intros m' H'.
-    eexists.
-    sepsimpl;
-      eauto.
+    (* apply H6. *)
+
+    (* eapply Proper_sep_impl1; eauto. *)
+    (* 2:exact(fun a b => b). *)
+    (* intros m' H'. *)
+    (* eexists. *)
+    (* sepsimpl; *)
+    (*   eauto. *)
   Qed.
 
   Lemma compile_unop {name} (op: UnOp name) {tr m l functions} x:
     forall {P} {pred: P (un_model x) -> predicate} {k: nlet_eq_k P (un_model x)} {k_impl}
-           Rin Rout out x_ptr x_var out_ptr out_var out_bounds,
+           Rin Rout out x_ptr x_var out_ptr out_var,
 
       (_: spec_of name) functions ->
 
       map.get l out_var = Some out_ptr ->
-      (FElem out_bounds out_ptr out * Rout)%sep m ->
+      (FElem None out_ptr out * Rout)%sep m ->
 
       (FElem (Some un_xbounds) x_ptr x * Rin)%sep m ->
       map.get l x_var = Some x_ptr ->
@@ -183,17 +153,10 @@ Section Compile.
       <{ pred (nlet_eq [out_var] (un_model x) k) }>.
   Proof.
     repeat straightline'.
-    unfold FElem in *.
     sepsimpl.
+    repeat straightline'.
+    simpl in H.
     prove_field_compilation.
-    apply H4.
-    
-    eapply Proper_sep_impl1; eauto.
-    2:exact(fun a b => b).
-    intros m' H'.
-    eexists.
-    sepsimpl;
-      eauto.
   Qed.
 
 
@@ -228,7 +191,7 @@ Section Compile.
     ltac:(cleanup_op_lemma (@compile_unop _ op)) (only parsing).
 
   Definition compile_square := make_un_lemma un_square.
-  (* Definition compile_scmula24 := make_un_lemma un_scmula24. *)
+  Definition compile_scmula24 := make_un_lemma un_scmula24.
 
   Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_felem_copy _ _ _ _ _ _ _ _)) : typeclass_instances.
   (* why? *)
@@ -237,18 +200,16 @@ Section Compile.
   Lemma compile_felem_copy {tr m l functions} x : 
     let v := x in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-           R x_ptr x_var out out_ptr out_var x_bound out_bound,
+           R x_ptr x_var out out_ptr out_var,
 
       spec_of_felem_copy functions ->
-
       map.get l out_var = Some out_ptr ->
-
-      (FElem x_bound x_ptr x * FElem out_bound out_ptr out * R)%sep m ->
+      (FElem (Some loose_bounds) x_ptr x * FElem None out_ptr out * R)%sep m ->
       map.get l x_var = Some x_ptr ->
 
       (let v := v in
        forall m',
-         (FElem x_bound x_ptr x * FElem x_bound out_ptr x * R)%sep m' ->
+         (FElem (Some loose_bounds) x_ptr x * FElem (Some loose_bounds) out_ptr x * R)%sep m' ->
          (<{ Trace := tr;
              Memory := m';
              Locals := l;
@@ -265,32 +226,25 @@ Section Compile.
       <{ pred (nlet_eq [out_var] v k) }>.
   Proof. 
     repeat straightline'.
-    unfold FElem in *.
     sepsimpl.
     sepsimpl; repeat straightline'; subst; eauto.
     prove_field_compilation.
     apply H3.
-
-    sepsimpl. cbv [Lift1Prop.ex1].
-    eexists. sepsimpl; eauto.
-    eapply sep_comm. eapply sep_assoc.
-    destruct H8, H1, H1, H4.
-    eexists; eexists. split; [eauto | split; eauto].
-    eexists; sepsimpl; eauto.
+    ecancel_assumption.
   Qed.
 
-  Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_from_word _ _ _ _ _ _ _ _)) : typeclass_instances.
+  Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_from_word _ _ _ _ _ _ _ _ _ _)) : typeclass_instances.
   Local Hint Extern 1 (spec_of from_word) => exact spec_of_from_word : typeclass_instances.
 
   Lemma compile_from_word {tr m l functions} x:
     let v := FofZ x in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
-           R (wx : word) out out_ptr out_var out_bounds,
+           R (wx : word) out out_ptr out_var,
 
       spec_of_from_word functions ->
 
       map.get l out_var = Some out_ptr ->
-      (FElem out_bounds out_ptr out * R)%sep m ->
+      (FElem None out_ptr out * R)%sep m ->
 
       word.unsigned wx = x ->
 
@@ -314,26 +268,22 @@ Section Compile.
       <{ pred (nlet_eq [out_var] v k) }>.
   Proof.
     repeat straightline'.
-    unfold FElem in *.
-    sepsimpl.
+    prove_field_compilation.
+    apply H3.
+    replace v with x0.
+    ecancel_assumption.
 
-    repeat straightline'.
-    straightline_call; [ssplit; eapply H4 |].
-      repeat straightline. 
-      apply H3.
-      eapply Proper_sep_impl1; eauto.
-      2: exact(fun a b => b).
-      intros m' H'. subst.
-      match goal with H : _ |- _ =>
-                      rewrite word.of_Z_unsigned in H end.
-      SpecializeBy.specialize_by_assumption.
-      eexists;
-        sepsimpl;
-        eauto. 
+    unfold v.
+    unfold x0.
+    rewrite word.of_Z_unsigned.
+    reflexivity.
   Qed.
 
   Section FromList.
-    Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_from_list _ _ _ _ _ _ _ _ _)) : typeclass_instances.
+    Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_from_list _ _ _ _ _ _ _ _ _ _ _)) : typeclass_instances.
+    Local Hint Extern 1 (spec_of from_list) => exact spec_of_from_list : typeclass_instances.
+
+    Check @spec_of_from_list _ _ _ _ _ _ _ _ _ _ _.
 
     Lemma compile_from_list {tr m l functions} x:
       let v := feval x in
@@ -368,9 +318,8 @@ Section Compile.
         <{ pred (nlet_eq [out_var] v k) }>.
     Proof.
       repeat straightline'.
-      unfold FElem in *.
       sepsimpl.
-      
+
       eapply Proper_call.
 
       2: eapply H.
@@ -379,16 +328,7 @@ Section Compile.
       intros ? ? ? ?.
       repeat straightline.
       apply H3.
-        repeat straightline. 
-        eapply Proper_sep_impl1; eauto.
-        2: exact(fun a b => b).
-        intros m' H'. subst.
-        match goal with H : _ |- _ =>
-                        try rewrite word.of_Z_unsigned in H end.
-        SpecializeBy.specialize_by_assumption.
-        eexists;
-          sepsimpl;
-          eauto.
+      ecancel_assumption.
     Qed.
   End FromList.
 
@@ -401,8 +341,8 @@ Local Infix "+F" := Fadd (at level 100).
 Local Infix "-F" := Fsub (at level 100).
 Local Notation "x ^F2" := (Fmul x x) (at level 90).
 
-(* #[export] Hint Extern 6 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (a24 *F _) _))) => *)
-(* simple eapply compile_scmula24; shelve : compiler. *)
+#[export] Hint Extern 6 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (a24 *F _) _))) =>
+simple eapply compile_scmula24; shelve : compiler.
 
 #[export] Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (_ *F _) _))) =>
 simple eapply compile_mul; shelve : compiler.
