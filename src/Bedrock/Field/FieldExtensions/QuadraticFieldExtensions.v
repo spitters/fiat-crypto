@@ -82,7 +82,22 @@ Section Fp2.
   Context {F_representation : FieldRepresentation F}
           {F_representation_ok : FieldRepresentation_ok F}.
 
+  (* note that this excludes non-saturated representations *)
   Context {bounds_equiv : forall x, bounded_by loose_bounds x -> bounded_by tight_bounds x}.
+
+  Lemma equiv_bounds_FElem x_ptr x
+    : Lift1Prop.iff1 (FElem (Some tight_bounds) x_ptr x)
+        (FElem (Some loose_bounds) x_ptr x).
+  Proof.
+    split.
+    - apply relax_bounds_FElem.
+    - unfold FElem.
+      intros H.
+      sepsimpl.
+      exists x1.
+      sepsimpl; simpl in *; eauto.
+  Qed.
+  Hint Immediate equiv_bounds_FElem : ecancel_impl.
 
   Instance spec_of_F_felem_copy : spec_of (felem_copy (F:=F)) := spec_of_felem_copy (F:=F).
   Instance spec_of_F_select_znz : spec_of (select_znz (F:=F)) := spec_of_selectznz (F:=F).
@@ -245,19 +260,19 @@ Section Fp2.
 
   Context {Fp2_names : FieldNames Fp2}.
 
-  Definition Fp2_felem_copy : bedrock2.Syntax.func :=
-    (felem_copy (F:=Fp2), (["out"; "x"], []:list String.string, bedrock_func_body:(
-      (* stackalloc (felem_size_in_bytes Fp2) as allocx; *)
-      (* stackalloc (felem_size_in_bytes Fp2) as allocy; *)
-      (* coq:(cmd.call [] (felem_copy (F:=F)) [expr.var ("allocx"); expr.var ("inx")]); *)
-      (* coq:(cmd.call [] (felem_copy (F:=F)) [expr_2nd_felem (expr.var ("allocx")); expr_2nd_felem (expr.var ("inx"))]); *)
-      (* coq:(cmd.call [] (felem_copy (F:=F)) [expr.var ("allocy"); expr.var ("iny")]); *)
-      (* coq:(cmd.call [] (felem_copy (F:=F)) [expr_2nd_felem (expr.var ("allocy")); expr_2nd_felem (expr.var ("iny"))]); *)
-      (* coq:(cmd.call [] (select_znz (F:=F)) [expr.var "out"; expr.var "c"; expr.var "allocx"; expr.var "allocy"]); *)
-      (* coq:(cmd.call [] (select_znz (F:=F)) [expr_2nd_felem (expr.var "out"); expr.var "c"; expr_2nd_felem (expr.var "allocx"); expr_2nd_felem (expr.var "allocy")]) *)
-      coq:(cmd.call [] (felem_copy (F:=F)) [expr.var "out"; expr.var "x"]);
-      coq:(cmd.call [] (felem_copy (F:=F)) [expr_2nd_felem (expr.var "out"); expr_2nd_felem (expr.var "x")])
-    ))).
+  (* Definition Fp2_felem_copy : bedrock2.Syntax.func := *)
+  (*   (felem_copy (F:=Fp2), (["out"; "x"], []:list String.string, bedrock_func_body:( *)
+  (*     (* stackalloc (felem_size_in_bytes Fp2) as allocx; *) *)
+  (*     (* stackalloc (felem_size_in_bytes Fp2) as allocy; *) *)
+  (*     (* coq:(cmd.call [] (felem_copy (F:=F)) [expr.var ("allocx"); expr.var ("inx")]); *) *)
+  (*     (* coq:(cmd.call [] (felem_copy (F:=F)) [expr_2nd_felem (expr.var ("allocx")); expr_2nd_felem (expr.var ("inx"))]); *) *)
+  (*     (* coq:(cmd.call [] (felem_copy (F:=F)) [expr.var ("allocy"); expr.var ("iny")]); *) *)
+  (*     (* coq:(cmd.call [] (felem_copy (F:=F)) [expr_2nd_felem (expr.var ("allocy")); expr_2nd_felem (expr.var ("iny"))]); *) *)
+  (*     (* coq:(cmd.call [] (select_znz (F:=F)) [expr.var "out"; expr.var "c"; expr.var "allocx"; expr.var "allocy"]); *) *)
+  (*     (* coq:(cmd.call [] (select_znz (F:=F)) [expr_2nd_felem (expr.var "out"); expr.var "c"; expr_2nd_felem (expr.var "allocx"); expr_2nd_felem (expr.var "allocy")]) *) *)
+  (*     coq:(cmd.call [] (felem_copy (F:=F)) [expr.var "out"; expr.var "x"]); *)
+  (*     coq:(cmd.call [] (felem_copy (F:=F)) [expr_2nd_felem (expr.var "out"); expr_2nd_felem (expr.var "x")]) *)
+  (*   ))). *)
 
   Definition Fp2_select_znz : bedrock2.Syntax.func :=
     (select_znz (F:=Fp2), (["out"; "c"; "inx"; "iny"], []:list String.string, bedrock_func_body:(
@@ -274,11 +289,10 @@ Section Fp2.
     ))).
 
   Instance spec_of_Fp2_select_znz : spec_of (select_znz (F:=Fp2)) := spec_of_selectznz (F:=Fp2).
-  Instance spec_of_Fp2_felem_copy : spec_of (felem_copy (F:=Fp2)) := spec_of_felem_copy (F:=Fp2).
 
   Definition Fp2_add : bedrock2.Syntax.func :=
     (add (F:=Fp2), (["out"; "inx"; "iny"], []:list String.string, bedrock_func_body:(
-      stackalloc (felem_size_in_bytes Fp2) as outx;
+      stackalloc (felem_size_in_bytes Fp2) as allocx;
       stackalloc (felem_size_in_bytes Fp2) as allocy;
       coq:(cmd.call [] (felem_copy (F:=F)) [expr.var ("allocx"); expr.var ("inx")]);
       coq:(cmd.call [] (felem_copy (F:=F)) [expr_2nd_felem (expr.var ("allocx")); expr_2nd_felem (expr.var ("inx"))]);
@@ -377,10 +391,17 @@ Section Fp2.
       repeat (erewrite map.get_put_diff; [| intros contra; discriminate]); eapply map.get_put_same|
     ]); repeat straightline.
 
-  Import Syntax BinInt String List.ListNotations.
+  Ltac straightline' :=
+    match goal with
+    | _ => straightline
+    | l := _ : map.rep |- _ => subst l
+    | |- exists _, _ => eexists
+    | |- _ /\ _ => split
+    | |- felem_size_in_bytes _ mod _ = 0 => eapply felem_size_in_bytes_mod
+    | |- map.get _ _ = _ => repeat (erewrite map.get_put_diff; [| intros contra; discriminate]); eapply map.get_put_same
+    end.
 
-  (* Context {key value} {map : map key value} {ok : ok map}. *)
-  (* Context {key_eqb: key -> key -> bool} {key_eq_dec: EqDecider key_eqb}. *)
+  Import Syntax BinInt String List.ListNotations.
 
   Lemma Fp2_select_znz_ok : program_logic_goal_for_function! Fp2_select_znz.
   Proof.
@@ -391,44 +412,13 @@ Section Fp2.
     rewrite eqb_refl.
     cbv match beta delta [func].
 
-    repeat straightline.
-    split; [eapply felem_size_in_bytes_mod |].
-    repeat straightline.
-    split; [eapply felem_size_in_bytes_mod |].
-    repeat straightline.
-
-    eexists; split.
-    repeat straightline. eexists; split.
-    (* subst l. repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). eapply map.get_put_same. *)
-    subst l l0 l1. repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). eapply map.get_put_same.
-    repeat straightline. eexists; split.
-    (* subst l. repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). eapply map.get_put_same. *)
-    subst l l0 l1. repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). eapply map.get_put_same.
-    repeat straightline.
+    repeat straightline'.
 
     eapply FElem_from_bytes in H8 as [?].
     eapply FElem_from_bytes in H10 as [?].
 
     collect H0 H5.
     collect H6 Hnew.
-    (* simpl in Hnew0. *)
-    (* eexists; split. *)
-    (* subst l. repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). eapply map.get_put_same. *)
-    (* (* subst l l0 l1. repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). eapply map.get_put_same. *) *)
-    (* repeat straightline. eexists; split. *)
-    (* subst l. repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). eapply map.get_put_same. *)
-    (* repeat straightline. *)
-
-    (* seprewrite_in Fp2_Fp_FElem H0. *)
-    (* seprewrite_in Fp2_Fp_FElem H1. *)
-    (* seprewrite_in Fp2_Fp_FElem H2. *)
-
-    (* repeat straightline. *)
-    (* cbv [id] in *. *)
-    (* pose proof H4 as H4'. *)
-    (* eapply sep_and_r_fwd in H4; destruct H4 as [? H4]. *)
-    (* eapply sep_and_r_fwd in H4; destruct H4 as [? H4]. *)
-    (* eapply sep_and_r_fwd in H4; destruct H4 as [? H4]. *)
 
     eassert (((_ ⋆ _) ⋆ _) mCombined0).
     {
@@ -437,7 +427,10 @@ Section Fp2.
       apply Hnew0.
     }
     simpl in H0.
-    repeat straightline.
+
+    clear Hnew0.
+    clear dependent mStack0.
+    clear dependent mStack.
 
     straightline_call.
     1: {
@@ -445,242 +438,134 @@ Section Fp2.
       2: {
         seprewrite_in Fp2_Fp_FElem H0.
         ecancel_assumption.
-        }
-      (* seprewrite_in Fp2_Fp_FElem H0. *)
-
-      (* #[local] Hint Immediate Fp2_Fp_FElem : ecancel_impl. *)
-      (*  ecancel_assumption_impl. *)
-      (* sepsimpl. *)
+      }
       eapply sep_assoc in H0.
       eapply sep_and_l_fwd in H0 as [].
       eapply sep_and_l_fwd in H5 as [].
-      (* seprewrite_in Fp2_Fp_FElem H0. *)
-      (* seprewrite_in Fp2_Fp_FElem H5. *)
-      (* seprewrite_in Fp2_Fp_FElem H5. *)
+
       seprewrite_in Fp2_Fp_FElem H6.
-      (* seprewrite_in Fp2_Fp_FElem H6. *)
-      (* seprewrite_in Fp2_Fp_FElem H6. *)
       ecancel_assumption.
-    (* eapply sep_and_r_fwd in H7; destruct H7 as [? H7]. *)
-    (* eapply sep_and_r_fwd in H7; destruct H7 as [? H7]. *)
-      (* simpl in H0. *)
-      (* seprewrite_in Fp2_Fp_FElem H12. *)
-      (* simpl in H10. *)
-      (* seprewrite_in Fp2_Fp_FElem H1. *)
-      (* seprewrite_in Fp2_Fp_FElem H2. *)
-      (* sepsimpl. *)
-
-      (* unfold FElem, Bignum.Bignum in *. *)
-
-    (* eapply sep_and_r_fwd in H10. ; destruct H7 as [? H7]. *)
-    (* eapply sep_and_r_fwd in H7; destruct H7 as [? H7]. *)
-    (* eapply sep_and_r_fwd in H7; destruct H7 as [? H7]. *)
-      (* ecancel_assumption_impl. *)
-      (* seprewrite_in Fp2_Fp_FElem H12. *)
-      (* ecancel_assumption_impl. *)
-      (* ecancel_assumption_impl. *)
-      (* split; try ecancel_assumption_impl. *)
-      (* split; try ecancel_assumption_impl. *)
-      (* assumption. *)
     }
+    (* from now on, the mem will be a2, so clear previous mem *)
+    clear dependent mCombined0.
 
-    sepsimpl.
-
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l| ].
-    (* eexists; split. *)
-    (* subst l. repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). eapply map.get_put_same. *)
-    (* repeat straightline. *)
-    (* eexists; split. *)
-    (* subst l. repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). eapply map.get_put_same. *)
-    (* repeat straightline. *)
-    (* eexists; split. *)
-    (* subst l. repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). eapply map.get_put_same. *)
-    (* repeat straightline. *)
-    (* eexists; split. *)
-    (* subst l. repeat (erewrite map.get_put_diff; [| intros contra; discriminate]). eapply map.get_put_same. *)
-    (* repeat straightline. *)
+    repeat straightline'.
 
     straightline_call.
     1: {
       sepsimpl.
       2: ecancel_assumption.
 
-      eapply sep_assoc in H12.
-      eapply sep_comm in H12.
-      eapply (sep_assoc _ (FElem Fp2 _ _ _) _) in H12.
-      eapply sep_and_l_fwd in H12 as [].
-      eapply sep_and_l_fwd in H6 as [].
-      (* eapply sep_and_l_fwd in H5 as []. *)
-      (* seprewrite_in Fp2_Fp_FElem H0. *)
-      (* seprewrite_in Fp2_Fp_FElem H5. *)
-      (* seprewrite_in Fp2_Fp_FElem H5. *)
-      seprewrite_in Fp2_Fp_FElem H12.
-      (* seprewrite_in Fp2_Fp_FElem H6. *)
-      (* seprewrite_in Fp2_Fp_FElem H6. *)
+      eapply sep_assoc in H6.
+      eapply sep_comm in H6.
+      eapply (sep_assoc _ (FElem Fp2 _ _ _) _) in H6.
+      eapply sep_and_l_fwd in H6 as [h1 h2].
+      eapply sep_and_l_fwd in h2 as [h2 h3].
+      seprewrite_in Fp2_Fp_FElem h3.
       ecancel_assumption.
-      }
-    (*   destruct (word.unsigned pc =? 1). *)
-    (*   seprewrite_in Fp2_Fp_FElem H0. *)
-    (*   seprewrite_in Fp2_Fp_FElem H1. *)
-    (*   seprewrite_in Fp2_Fp_FElem H2. *)
+    }
+    clear dependent a2.
 
-    (*   split; try ecancel_assumption_impl. *)
-    (*   split; try ecancel_assumption_impl. *)
-    (*   split; try ecancel_assumption_impl. *)
-
-    (*   split; try ecancel_assumption_impl. *)
-    (*   split; try ecancel_assumption_impl. *)
-    (*   assumption. *)
-    (*   split; try ecancel_assumption. *)
-    (*   cbv [id] in *. *)
-    (*   remember ((Field.FElem _ a (fst_felem x))) as R1. *)
-    (*   remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x1)) as R2. *)
-    (*   remember ((Field.FElem _ a0 (fst_felem x0))) as R3. *)
-    (*   remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x0)) as R4. *)
-    (*   eapply sep_comm in H5. *)
-    (*   eapply sep_assoc in H5. *)
-    (*   remember (R2 * (R3 * R4) * R1)%sep as R1'. *)
-    (*   eapply sep_and_l_fwd in H5; destruct H5 as [H5 ?]. *)
-    (*   eapply sep_and_l_fwd in H5; destruct H5 as [H5 ?]. *)
-    (*   subst. *)
-    (*   ecancel_assumption. *)
-    (* } *)
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l| ].
+    repeat straightline'.
 
     straightline_call.
     1: {
       sepsimpl.
       2: {
-        seprewrite_in Fp2_Fp_FElem H13.
+        seprewrite_in Fp2_Fp_FElem H6.
         ecancel_assumption_impl.
-        }
-
-      eapply sep_assoc in H13.
-      eapply sep_comm in H13.
-      eapply (sep_assoc _ (FElem Fp2 _ _ _) _) in H13.
-      eapply sep_and_l_fwd in H13 as [].
-      (* eapply sep_and_l_fwd in H5 as []. *)
-      (* seprewrite_in Fp2_Fp_FElem H0. *)
-      (* seprewrite_in Fp2_Fp_FElem H5. *)
-      (* seprewrite_in Fp2_Fp_FElem H5. *)
-      seprewrite_in Fp2_Fp_FElem H5.
-      (* seprewrite_in Fp2_Fp_FElem H6. *)
-      (* seprewrite_in Fp2_Fp_FElem H6. *)
-      ecancel_assumption.
-
       }
 
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l| ].
+      eapply sep_assoc in H6.
+      eapply sep_comm in H6.
+      eapply (sep_assoc _ (FElem Fp2 _ _ _) _) in H6.
+      eapply sep_and_l_fwd in H6 as [h1 h2].
+      seprewrite_in Fp2_Fp_FElem h1.
+      ecancel_assumption.
+    }
+    clear dependent a4.
+
+    repeat straightline'.
 
     straightline_call.
     1: {
       sepsimpl.
       2: ecancel_assumption.
 
-      eapply sep_assoc in H14.
-      eapply sep_assoc in H14.
-      eapply sep_assoc in H14.
-      eapply sep_and_r_fwd in H14 as [].
-      (* eapply sep_comm in H13. *)
-      (* eapply (sep_assoc _ (FElem Fp2 _ _ _) _) in H13. *)
-      (* eapply sep_and_l_fwd in H13 as []. *)
-      (* eapply sep_and_l_fwd in H5 as []. *)
-      seprewrite_in Fp2_Fp_FElem H5.
-      (* seprewrite_in Fp2_Fp_FElem H5. *)
-      (* seprewrite_in Fp2_Fp_FElem H5. *)
-      (* seprewrite_in Fp2_Fp_FElem H5. *)
-      (* seprewrite_in Fp2_Fp_FElem H6. *)
-      (* seprewrite_in Fp2_Fp_FElem H6. *)
+      eapply sep_assoc in H6.
+      eapply sep_assoc in H6.
+      eapply sep_assoc in H6.
+      eapply sep_and_r_fwd in H6 as [h1 h2].
+      seprewrite_in Fp2_Fp_FElem h1.
       ecancel_assumption.
-      }
+    }
+    clear dependent a2.
 
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l |].
-
-    (*deconstructing sep hyp.*)
-    (* cbv [id] in *. *)
-    (* remember ((Field.FElem _ a (fst_felem x))) as R1. *)
-    (* remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x)) as R2. *)
-    (* remember ((Field.FElem _ a0 (fst_felem y))) as R3. *)
-    (* remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem y)) as R4. *)
-    (* rename H10 into H11. *)
-    (* eapply sep_assoc in H11. eapply (sep_assoc (R4 * R3)%sep) in H11. *)
-    (* eapply (sep_assoc (R4 * R3 * R2)%sep) in H11. *)
-    (* eapply sep_comm in H11. *)
-    (* eapply sep_and_l_fwd in H11; destruct H11 as [H11 ?]. *)
-    (* eapply sep_and_l_fwd in H11; destruct H11 as [H11 ?]. *)
-    (* subst. *)
+    repeat straightline'.
 
     straightline_call.
     1: {
 
-      eapply sep_assoc in H15.
-      eapply sep_assoc in H15.
-      eapply sep_assoc in H15.
-      eapply sep_and_r_fwd in H15 as [].
-      eapply sep_and_r_fwd in H6 as [].
+      eapply sep_assoc in H6.
+      eapply sep_assoc in H6.
+      eapply sep_assoc in H6.
+      eapply sep_and_r_fwd in H6 as [h1 h2].
+      eapply sep_and_r_fwd in h2 as [h2 h3].
 
-      sepsimpl.
+      repeat split.
 
-      seprewrite_in Fp2_Fp_FElem H6.
-      1: ecancel_assumption.
-
-      1: ecancel_assumption.
-      1: ecancel_assumption.
+      seprewrite_in Fp2_Fp_FElem h2.
+      ecancel_assumption.
+      ecancel_assumption.
+      ecancel_assumption.
       assumption.
     }
+    clear dependent a4.
 
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l| ].
+    repeat straightline'.
     destruct (word.unsigned pc =? 1) eqn:eq.
     (*after destruct*)
     {
-
       straightline_call.
       1: {
-        split; [| split; [| split]].
-        1: subst; ecancel_assumption.
-        1: subst; ecancel_assumption.
-        1: subst; ecancel_assumption.
-        1: auto.
+        repeat split.
+        ecancel_assumption.
+        ecancel_assumption.
+        ecancel_assumption.
+        assumption.
       }
+      clear dependent a2.
 
       repeat straightline. (*mStack is not in scope in the below proof; should otherwise go through. destruct sep hyp before introducing evars.*)
 
-      rewrite eq in H16.
+      rewrite eq in H5.
 
-      eassert ((FElem _ _ a0 _  * _)%sep a8).
+      eassert (h1 : (FElem _ _ a0 _  * _)%sep a4).
       {
         seprewrite Fp2_Fp_FElem. ecancel_assumption.
       }
 
-      destruct H5, H5, H5, H17.
+      destruct h1 as [mq [mr [h1 [h2 h3]]]].
 
       eexists. eexists. split.
       1: {
-        eapply FElem_from_bytes. eexists. clear H10. eapply drop_bounds_FElem. eauto.
+        eapply FElem_from_bytes. eexists. eapply drop_bounds_FElem. eauto.
       }
       split; [eapply map.split_comm; eauto| ].
 
-      (* clear H16 H12 H5 H0 H2 H11 H9 H7 H13 H14. *)
-
-      eassert ((FElem _ _ a _  * _)%sep x3).
+      eassert (h4 : (FElem _ _ a _  * _)%sep mr).
       {
         seprewrite Fp2_Fp_FElem. ecancel_assumption.
       }
       (* clear H18. *)
 
-      destruct H19, H19, H19, H20.
+      destruct h4 as [mq' [mr' [h4 [h5 h6]]]].
 
       eexists. eexists. split.
       1: {
-        eapply FElem_from_bytes. eexists. clear H8. eapply drop_bounds_FElem. eauto.
+        eapply FElem_from_bytes. eexists. eapply drop_bounds_FElem. eauto.
       }
       split; [eapply map.split_comm; eauto| ].
-
 
       repeat straightline. split; auto.
       seprewrite Fp2_Fp_FElem.
@@ -690,46 +575,43 @@ Section Fp2.
     {
       straightline_call.
       1: {
-        split; [| split; [| split]].
-        1: subst; ecancel_assumption.
-        1: subst; ecancel_assumption.
-        1: subst; ecancel_assumption.
-        1: auto.
+        repeat split.
+        ecancel_assumption.
+        ecancel_assumption.
+        ecancel_assumption.
+        assumption.
       }
+      clear dependent a2.
 
       repeat straightline. (*mStack is not in scope in the below proof; should otherwise go through. destruct sep hyp before introducing evars.*)
 
-      rewrite eq in H16.
+      rewrite eq in H5.
 
-      eassert ((FElem _ _ a0 _  * _)%sep a8).
+      eassert (h1 : (FElem _ _ a0 _  * _)%sep a4).
       {
         seprewrite Fp2_Fp_FElem. ecancel_assumption.
       }
 
-      destruct H5, H5, H5, H17.
+      destruct h1 as [mq [mr [h1 [h2 h3]]]].
 
       eexists. eexists. split.
       1: {
-        eapply FElem_from_bytes. eexists. clear H10. eapply drop_bounds_FElem. eauto.
+        eapply FElem_from_bytes. eexists. eapply drop_bounds_FElem. eauto.
       }
       split; [eapply map.split_comm; eauto| ].
 
-      (* clear H16 H12 H5 H0 H2 H11 H9 H7 H13 H14. *)
-
-      eassert ((FElem _ _ a _  * _)%sep x3).
+      eassert (h4 : (FElem _ _ a _  * _)%sep mr).
       {
         seprewrite Fp2_Fp_FElem. ecancel_assumption.
       }
-      (* clear H18. *)
 
-      destruct H19, H19, H19, H20.
+      destruct h4 as [mq' [mr' [h4 [h5 h6]]]].
 
       eexists. eexists. split.
       1: {
-        eapply FElem_from_bytes. eexists. clear H8. eapply drop_bounds_FElem. eauto.
+        eapply FElem_from_bytes. eexists. eapply drop_bounds_FElem. eauto.
       }
       split; [eapply map.split_comm; eauto| ].
-
 
       repeat straightline. split; auto.
       seprewrite Fp2_Fp_FElem.
@@ -737,486 +619,176 @@ Section Fp2.
     }
   Qed.
 
-  Lemma Fp2_select_znz_ok : program_logic_goal_for_function! Fp2_select_znz.
+  Lemma Fp2_add_ok : program_logic_goal_for_function! Fp2_add.
   Proof.
-    enter' Fp2_select_znz. clear H0 H1 H2. cbv [spec_of_selectznz] in *.
-    intros. unfold1_call_goal. cbv match beta delta [call_body].
-    assert ((select_znz =? select_znz)%string = true) by (rewrite eqb_refl; auto).
-    rewrite H1.
+    enter' Fp2_select_znz.
+    clear H0.
+    cbv [binop_spec] in *.
+    intros. unfold1_call_goal.
+    cbv match beta delta [call_body].
+    unfold Fp2_add.
+    rewrite eqb_refl.
     cbv match beta delta [func].
-    repeat straightline.
 
-    split; [eapply felem_size_in_bytes_mod |].
-    repeat straightline.
-    split; [eapply felem_size_in_bytes_mod |].
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l| ].
+    repeat straightline'.
+
+    eapply FElem_from_bytes in H7 as [?].
+    eapply FElem_from_bytes in H9 as [?].
+
+    collect H0 H5.
+    collect H6 Hnew.
+
+    eassert (((_ ⋆ _) ⋆ _) mCombined0).
+    {
+      do 2 eexists; split; [eauto |]; split; [| apply H9].
+      do 2 eexists; split; [eauto |]; split; [| apply H7].
+      apply Hnew0.
+    }
+    simpl in H0.
+
+    clear Hnew0.
+    clear dependent mStack0.
+    clear dependent mStack.
 
     straightline_call.
     1: {
       split.
-    repeat straightline.
-    split.
-
-    eapply Fp2_FElem_to_Fp_R_sep in H0.
-    eapply Fp2_FElem_to_Fp_R_sep in H2.
-    eapply Fp2_FElem_to_Fp_R_sep in H5.
-
-    collect H0 H2.
-    collect Hnew H5.
-
-    split; [eapply felem_size_in_bytes_mod |].
-    repeat straightline.
-    split; [eapply felem_size_in_bytes_mod |].
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l| ].
-
-    eapply alloc_to_FElem in H5. destruct H5.
-    eapply alloc_to_FElem in H0. destruct H0.
-    eapply Fp2_FElem_to_Fp_sep in H0, H5.
-    eassert (((_ * _) * _)%sep mCombined0).
-    {
-      do 2 eexists; split; [eauto |]; split; [| apply H5].
-      do 2 eexists; split; [eauto |]; split; [| apply H0].
-      apply Hnew0.
-    }
-    clear dependent mStack.
-    clear dependent mStack0.
-
-    straightline_call.
-    1: {
-      split; try ecancel_assumption.
-      remember ((Field.FElem _ a (fst_felem x1))) as R1.
-      remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x1)) as R2.
-      remember ((Field.FElem _ a0 (fst_felem x0))) as R3.
-      remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x0)) as R4.
-      remember (R1 * R2)%sep as R1'.
-      remember (R3 * R4)%sep as R2'.
-      eapply sep_assoc in H8.
-
-      eapply sep_and_l_fwd in H8; destruct H8 as [H8 ?].
-      eapply sep_and_l_fwd in H8; destruct H8 as [H8 ?].
-      subst.
-      ecancel_assumption.
-    }
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l| ].
-
-    straightline_call.
-    1: {
-      split; try ecancel_assumption.
-      cbv [id] in *.
-      remember ((Field.FElem _ a (fst_felem x))) as R1.
-      remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x1)) as R2.
-      remember ((Field.FElem _ a0 (fst_felem x0))) as R3.
-      remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x0)) as R4.
-      eapply sep_comm in H5.
-      eapply sep_assoc in H5.
-      remember (R2 * (R3 * R4) * R1)%sep as R1'.
-      eapply sep_and_l_fwd in H5; destruct H5 as [H5 ?].
-      eapply sep_and_l_fwd in H5; destruct H5 as [H5 ?].
-      subst.
-      ecancel_assumption.
-    }
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l| ].
-
-    straightline_call.
-    1: {
-      split; try ecancel_assumption.
-      cbv [id] in *.
-      remember ((Field.FElem _ a (fst_felem x))) as R1.
-      remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x)) as R2.
-      remember ((Field.FElem _ a0 (fst_felem x0))) as R3.
-      remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x0)) as R4.
-      eapply sep_comm in H7.
-      eapply sep_assoc in H7.
-      eapply sep_comm in H7.
-      eapply sep_assoc in H7.
-      remember ((R3 * R4))%sep as R1'.
-      remember ((R2 * R1))%sep as R2'.
-      eapply sep_assoc in H7.
-      eapply sep_and_l_fwd in H7; destruct H7 as [H7 ?].
-      eapply sep_and_l_fwd in H7; destruct H7 as [H7 ?].
-      subst.
-      ecancel_assumption.
-    }
-
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l| ].
-
-    straightline_call.
-    1: {
-      split; try ecancel_assumption.
-      cbv [id] in *.
-      remember ((Field.FElem _ a (fst_felem x))) as R1.
-      remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x)) as R2.
-      remember ((Field.FElem _ a0 (fst_felem y))) as R3.
-      remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x0)) as R4.
-      eapply sep_comm in H9.
-      eapply sep_assoc in H9.
-      eapply sep_comm in H9.
-      eapply sep_assoc in H9.
-      eapply (sep_assoc _ _ (R3 * R2)%sep) in H9.
-      eapply (sep_comm R1) in H9.
-      eapply sep_assoc in H9.
-      remember ((R3 * R2 * R1))%sep as R1'.
-      eapply sep_assoc in H9.
-      eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?].
-      eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?].
-      subst.
-      ecancel_assumption.
-    }
-
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l |].
-
-    (*deconstructing sep hyp.*)
-    cbv [id] in *.
-    remember ((Field.FElem _ a (fst_felem x))) as R1.
-    remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x)) as R2.
-    remember ((Field.FElem _ a0 (fst_felem y))) as R3.
-    remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem y)) as R4.
-    rename H10 into H11.
-    eapply sep_assoc in H11. eapply (sep_assoc (R4 * R3)%sep) in H11.
-    eapply (sep_assoc (R4 * R3 * R2)%sep) in H11.
-    eapply sep_comm in H11.
-    eapply sep_and_l_fwd in H11; destruct H11 as [H11 ?].
-    eapply sep_and_l_fwd in H11; destruct H11 as [H11 ?].
-    subst.
-
-    straightline_call.
-    1: {
-      split; [| split; [| split]].
-      1: {
-        subst. ecancel_assumption.
-      }
       2: {
-        subst. clear H2 H0. ecancel_assumption.
+        seprewrite_in Fp2_Fp_FElem H0.
+        ecancel_assumption.
       }
-      1: { subst. clear H2 H0. ecancel_assumption.
-      }
-      auto.
+      eapply sep_assoc in H0.
+      eapply sep_and_l_fwd in H0 as [].
+      eapply sep_and_l_fwd in H5 as [].
+
+      seprewrite_in Fp2_Fp_FElem H5.
+      ecancel_assumption.
     }
+    (* from now on, the mem will be a2, so clear previous mem *)
+    clear dependent mCombined0.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+      sepsimpl.
+      2: ecancel_assumption.
+
+      eapply sep_assoc in H6.
+      eapply sep_comm in H6.
+      eapply (sep_assoc _ (FElem Fp2 _ _ _) _) in H6.
+      eapply sep_and_l_fwd in H6 as [h1 h2].
+      eapply sep_and_l_fwd in h2 as [h2 h3].
+      seprewrite_in Fp2_Fp_FElem h2.
+      ecancel_assumption.
+    }
+    clear dependent a2.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+      sepsimpl.
+      2: {
+        seprewrite_in Fp2_Fp_FElem H6.
+        ecancel_assumption_impl.
+      }
+
+      eapply sep_assoc in H6.
+      eapply sep_comm in H6.
+      eapply (sep_assoc _ (FElem Fp2 _ _ _) _) in H6.
+      eapply sep_and_l_fwd in H6 as [h1 h2].
+      eapply sep_and_l_fwd in h2 as [h2 h3].
+      seprewrite_in Fp2_Fp_FElem h3.
+      ecancel_assumption.
+    }
+    clear dependent a4.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+      sepsimpl.
+      2: ecancel_assumption.
+
+      eapply sep_assoc in H6.
+      eapply sep_assoc in H6.
+      eapply sep_assoc in H6.
+      eapply sep_and_r_fwd in H6 as [h1 h2].
+      eapply sep_and_r_fwd in h2 as [h2 h3].
+      seprewrite_in Fp2_Fp_FElem h3.
+      ecancel_assumption.
+    }
+    clear dependent a2.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+
+      eapply sep_assoc in H6.
+      eapply sep_assoc in H6.
+      eapply sep_assoc in H6.
+      eapply sep_and_r_fwd in H6 as [h1 h2].
+      eapply sep_and_r_fwd in h2 as [h2 h3].
+
+      repeat split.
+
+      seprewrite_in Fp2_Fp_FElem h2.
+      cbv [bin_xbounds bin_add]. eexists. ecancel_assumption.
+      cbv [bin_ybounds bin_add]. eexists. ecancel_assumption.
+      seprewrite_in Fp2_Fp_FElem h1.
+      ecancel_assumption.
+    }
+    clear dependent a4.
+
+    repeat straightline'.
+
+    straightline_call.
+
+    1: {
+
+        repeat split.
+      cbv [bin_xbounds bin_add]. eexists. ecancel_assumption.
+      cbv [bin_ybounds bin_add]. eexists. ecancel_assumption.
+        ecancel_assumption.
+    }
+    clear dependent a2.
 
     repeat straightline.
-    eexists; split; [solve_locals l1 l0 l| ].
-    destruct (word.unsigned pc =? 1) eqn:eq.
-    (*after destruct*)
+
+    eassert (h1 : (FElem _ _ a0 _  * _)%sep a4).
     {
-
-      straightline_call.
-      1: {
-        split; [| split; [| split]].
-        1: subst; ecancel_assumption.
-        1: subst; ecancel_assumption.
-        1: subst; ecancel_assumption.
-        1: auto.
-      }
-
-      repeat straightline. (*mStack is not in scope in the below proof; should otherwise go through. destruct sep hyp before introducing evars.*)
-
-      rewrite eq in H16.
-
-      eassert ((Field.FElem _ a0 _  * _)%sep a8).
-      {
-        eapply Fp_FElem_to_Fp2_R_sep. ecancel_assumption.
-      }
-      destruct H10, H10, H10, H17.
-      eexists. eexists. split.
-      1: {
-        eapply FElem_Fp2_to_anybytes. eauto.
-      }
-      split; [eapply map.split_comm; eauto| ].
-
-      clear H16 H12 H5 H0 H2 H11 H9 H7 H13 H14.
-
-      eassert ((Field.FElem _ a _  * _)%sep x3).
-      {
-        eapply Fp_FElem_to_Fp2_R_sep. ecancel_assumption.
-      }
-      clear H18.
-
-      destruct H0, H0, H0, H2.
-
-      do 2 eexists; split.
-      1: {
-        eapply FElem_Fp2_to_anybytes; eauto.
-      }
-
-      split; [eapply map.split_comm; eauto| ].
-
-      repeat straightline. split; auto. 
-      eapply Fp_FElem_to_Fp2_R_sep.
-      ecancel_assumption.
-    }
-    (*other case for conditional*)
-    {
-      straightline_call.
-      1: {
-        split; [| split; [| split]].
-        1: subst; ecancel_assumption.
-        1: subst; ecancel_assumption.
-        1: subst; ecancel_assumption.
-        1: auto.
-      }
-
-      repeat straightline. (*mStack is not in scope in the below proof; should otherwise go through. destruct sep hyp before introducing evars.*)
-
-      rewrite eq in H16.
-
-      eassert ((Field.FElem _ a0 _  * _)%sep a8).
-      {
-        eapply Fp_FElem_to_Fp2_R_sep. ecancel_assumption.
-      }
-      destruct H10, H10, H10, H17.
-      eexists. eexists. split.
-      1: {
-        eapply FElem_Fp2_to_anybytes. eauto.
-      }
-      split; [eapply map.split_comm; eauto| ].
-
-      clear H16 H12 H5 H0 H2 H11 H9 H7 H13 H14.
-
-      eassert ((Field.FElem _ a _  * _)%sep x3).
-      {
-        eapply Fp_FElem_to_Fp2_R_sep. ecancel_assumption.
-      }
-      clear H18.
-
-      destruct H0, H0, H0, H2.
-
-      do 2 eexists; split.
-      1: {
-        eapply FElem_Fp2_to_anybytes; eauto.
-      }
-
-      split; [eapply map.split_comm; eauto| ].
-
-      repeat straightline. split; auto.
-      eapply Fp_FElem_to_Fp2_R_sep.
-      ecancel_assumption.
-    }
-  Qed.
-  (*Proof of select_znz_Fp2 finished.*)
-
-  Lemma Fp2_add_ok : program_logic_goal_for_function! Fp2_add.
-  Proof.
-    enter' Fp2_add. clear H0 H1 H2. cbv [binop_spec] in *.
-    intros. unfold1_call_goal. cbv match beta delta [call_body].
-    assert ((Field.add =? Field.add)%string = true) by (rewrite eqb_refl; auto).
-    rewrite H1.
-    cbv match beta delta [func].
-    repeat straightline.
-
-    eapply Fp2_FElem_to_Fp_R_sep in H5, H6, H7.
-
-    collect H5 H6.
-    collect Hnew H7.
-
-    split; [eapply felem_size_in_bytes_mod |].
-    repeat straightline.
-    split; [eapply felem_size_in_bytes_mod |].
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l| ].
-
-    eapply alloc_to_FElem in H7. destruct H7.
-    eapply alloc_to_FElem in H5. destruct H5.
-    eapply Fp2_FElem_to_Fp_sep in H5, H7.
-    eassert (((_ * _) * _)%sep mCombined0).
-    {
-      do 2 eexists; split; [eauto |]; split; [| apply H7].
-      do 2 eexists; split; [eauto |]; split; [| apply H5].
-      apply Hnew0.
-    }
-    clear dependent mStack.
-    clear dependent mStack0.
-
-    straightline_call.
-    1: {
-      split; try ecancel_assumption.
-      remember ((Field.FElem _ a (fst_felem x3))) as R1.
-      remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x3)) as R2.
-      remember ((Field.FElem _ a0 (fst_felem x2))) as R3.
-      remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x2)) as R4.
-      remember (R1 * R2)%sep as R1'.
-      remember (R3 * R4)%sep as R2'.
-      eapply sep_assoc in H9.
-
-      eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?].
-      eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?].
-      subst.
-      ecancel_assumption.
-    }
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l| ].
-
-    straightline_call.
-    1: {
-      split; try ecancel_assumption.
-      cbv [id] in *.
-      remember ((Field.FElem _ a (fst_felem x))) as R1.
-      remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x3)) as R2.
-      remember ((Field.FElem _ a0 (fst_felem x2))) as R3.
-      remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x2)) as R4.
-      eapply sep_comm in H7.
-      eapply sep_assoc in H7.
-      remember (R2 * (R3 * R4) * R1)%sep as R1'.
-      eapply sep_and_l_fwd in H7; destruct H7 as [H7 ?].
-      eapply sep_and_l_fwd in H7; destruct H7 as [H7 ?].
-      subst.
-      ecancel_assumption.
-    }
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l| ].
-
-    straightline_call.
-    1: {
-      split; try ecancel_assumption.
-      cbv [id] in *.
-      remember ((Field.FElem _ a (fst_felem x))) as R1.
-      remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x)) as R2.
-      remember ((Field.FElem _ a0 (fst_felem x2))) as R3.
-      remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x2)) as R4.
-      eapply sep_comm in H8.
-      eapply sep_assoc in H8.
-      eapply sep_comm in H8.
-      eapply sep_assoc in H8.
-      remember ((R3 * R4))%sep as R1'.
-      remember ((R2 * R1))%sep as R2'.
-      eapply sep_assoc in H8.
-      eapply sep_and_l_fwd in H8; destruct H8 as [H8 ?].
-      eapply sep_and_l_fwd in H8; destruct H8 as [H8 ?].
-      subst.
-      ecancel_assumption.
+      seprewrite Fp2_Fp_FElem. ecancel_assumption.
     }
 
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l| ].
+    destruct h1 as [mq [mr [h1 [h2 h3]]]].
 
-    straightline_call.
-    1: {
-      split; try ecancel_assumption.
-      cbv [id] in *.
-      remember ((Field.FElem _ a (fst_felem x))) as R1.
-      remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x)) as R2.
-      remember ((Field.FElem _ a0 (fst_felem y))) as R3.
-      remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x2)) as R4.
-      eapply sep_comm in H10.
-      eapply sep_assoc in H10.
-      eapply sep_comm in H10.
-      eapply sep_assoc in H10.
-      eapply (sep_assoc _ _ (R3 * R2)%sep) in H10.
-      eapply (sep_comm R1) in H10.
-      eapply sep_assoc in H10.
-      remember ((R3 * R2 * R1))%sep as R1'.
-      eapply sep_assoc in H10.
-      eapply sep_and_l_fwd in H10; destruct H10 as [H10 ?].
-      eapply sep_and_l_fwd in H10; destruct H10 as [H10 ?].
-      subst.
-      ecancel_assumption.
-    }
-
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l |].
-
-    (*deconstructing sep hyp.*)
-    cbv [id] in *.
-    remember ((Field.FElem _ a (fst_felem x))) as R1.
-    remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x)) as R2.
-    remember ((Field.FElem _ a0 (fst_felem y))) as R3.
-    remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem y)) as R4.
-    eapply sep_assoc in H11. eapply (sep_assoc (R4 * R3)%sep) in H11.
-    eapply (sep_assoc (R4 * R3 * R2)%sep) in H11.
-    eapply sep_comm in H11.
-    eapply sep_and_l_fwd in H11; destruct H11 as [H11 ?].
-    clear H11. subst.
-
-
-    straightline_call.
-    1: {
-      split; [|split; [| split; [| split]]].
-      5: {
-        subst; ecancel_assumption.
-      }
-      3: {
-        eexists. ecancel_assumption.
-      }
-      3: {
-        eexists; ecancel_assumption.
-      }
-      1: {
-        destruct H0. eauto.
-      }
-      1: {
-        destruct H2; eauto.
-      }
-    }
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l| ].
-
-    straightline_call.
-    1: {
-      split; [| split; [| split; [| split]]].
-      5: ecancel_assumption.
-      4: eexists; ecancel_assumption.
-      3: eexists; ecancel_assumption.
-      1: destruct H0; eauto.
-      1: destruct H2; eauto.
-    }
-
-    repeat straightline. (*mStack is not in scope in the below proof; should otherwise go through. destruct sep hyp before introducing evars.*)
-    eassert ((Field.FElem _ a0 _  * _)%sep a8).
-    {
-      eapply Fp_FElem_to_Fp2_R_sep. ecancel_assumption.
-    }
-    destruct H6, H6, H6, H11.
     eexists. eexists. split.
     1: {
-      eapply FElem_Fp2_to_anybytes. eauto.
+      eapply FElem_from_bytes. eexists. eapply drop_bounds_FElem. eauto.
     }
     split; [eapply map.split_comm; eauto| ].
 
-    clear H20 H14 H5 H10 H8 H7 H9.
-
-    eassert ((Field.FElem _ a _  * _)%sep x7).
+    eassert (h4 : (FElem _ _ a _  * _)%sep mr).
     {
-      eapply Fp_FElem_to_Fp2_R_sep. ecancel_assumption.
+      seprewrite Fp2_Fp_FElem. ecancel_assumption.
     }
-    clear H21.
 
-    destruct H5, H5, H5, H7.
+    destruct h4 as [mq' [mr' [h4 [h5 h6]]]].
 
-    do 2 eexists; split.
+    eexists. eexists. split.
     1: {
-      eapply FElem_Fp2_to_anybytes; eauto.
+      eapply FElem_from_bytes. eexists. eapply drop_bounds_FElem. eauto.
     }
-
     split; [eapply map.split_comm; eauto| ].
 
-    repeat straightline. split; auto. split; auto.
-
-    exists (x4 ++ x5). split; [| split].
-
-    3: {
-      eapply Fp_FElem_to_Fp2_R_sep. erewrite fst_felem_app; [| ecancel_assumption].
-      erewrite snd_felem_app; [| ecancel_assumption].
-      ecancel_assumption.
-    }
-    2: {
-      split; eauto. erewrite fst_felem_app; try ecancel_assumption; auto.
-      erewrite snd_felem_app; try ecancel_assumption; auto.
-    }
-    simpl.
-    cbv [addp2].
-    apply Prod.path_pair.
-    1: {
-      erewrite fst_felem_app; try ecancel_assumption. simpl. auto.
-    }
-    erewrite snd_felem_app; try ecancel_assumption; simpl; auto.
+    repeat straightline'.
+    seprewrite Fp2_Fp_FElem.
+    subst out0 x4 x5.
+    simpl in *.
+    ecancel_assumption.
   Qed.
-
-  (*multiplication in Fp2*)
 
   Definition Fp2_mul : bedrock2.Syntax.func :=
     (mul (F:=Fp2), (["out"; "inx"; "iny"], []:list String.string, bedrock_func_body:(
@@ -1249,228 +821,268 @@ Section Fp2.
   Proof.
     enter' Fp2_mul. clear H0 H1 H2 H3 H4 H5 H8 H9. cbv [binop_spec] in *.
     intros. unfold1_call_goal. cbv match beta delta [call_body].
-    assert ((Field.mul =? Field.mul)%string = true) by (rewrite eqb_refl; auto).
-    rewrite H1.
+    rewrite eqb_refl.
     cbv match beta delta [func].
-    repeat straightline.
+    repeat straightline'.
 
-    eapply Fp2_FElem_to_Fp_R_sep in H3, H4, H5.
+    collect H0 H1.
+    collect Hnew H2.
 
-    collect H3 H4.
-    collect Hnew H5.
+    eapply FElem_from_bytes in H12 as [].
+    eapply FElem_from_bytes in H9 as [].
+    eapply FElem_from_bytes in H5 as [].
+    eapply FElem_from_bytes in H3 as [].
 
-    split; [eapply felem_size_in_bytes_mod |].
-    repeat straightline.
-    split; [eapply felem_size_in_bytes_mod |].
-    repeat straightline.
-    split; [eapply felem_size_in_bytes_mod |].
-    repeat straightline.
-    split; [eapply felem_size_in_bytes_mod |].
-    repeat straightline.
-    eexists; split; [solve_locals5 l3 l2 l1 l0 l| ].
-
-    eapply alloc_to_FElem in H9. destruct H9.
-    eapply alloc_to_FElem in H12. destruct H12.
-    eapply Fp2_FElem_to_Fp_sep in H9, H12.
-    eapply alloc_to_FElem_F in H3. destruct H3.
-    eapply alloc_to_FElem_F in H5; destruct H5.
     eassert (((_ * _ * _ * _) * _)%sep mCombined2).
     {
-      do 2 eexists; split; [eassumption | split; [| apply H12]].
-      do 2 eexists; split; [eassumption | split; [| apply H9]].
-      do 2 eexists; split; [eassumption | split; [| apply H5]].
+      do 2 eexists; split; [eassumption | split; [| apply H0]].
+      do 2 eexists; split; [eassumption | split; [| apply H1]].
+      do 2 eexists; split; [eassumption | split; [| apply H2]].
       do 2 eexists; split; [eassumption | split; [| apply H3]].
       apply Hnew0.
     }
-
-
-
     clear dependent mStack.
     clear dependent mStack0.
     clear dependent mStack1.
     clear dependent mStack2.
-
-    (*unfolding as multiple preconditions*)
-    (* cbv [id] in *.
-      eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?].
-      eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?]. *)
-
-    remember (Field.FElem _ a x4) as R1.
-    remember (Field.FElem _ a0 x5) as R2.
-    remember (Field.FElem _ a1 (fst_felem x2)) as R3.
-    remember (Field.FElem _ (word.add a1 felem_offset_word) (snd_felem x2)) as R4.
-    remember (Field.FElem _ a2 (fst_felem x3)) as R5.
-    remember (Field.FElem _ (word.add a2 felem_offset_word) (snd_felem x3)) as R6.
-    eassert (( _ * (R1 * R2 * R3 * R4 * R5 * R6))%sep mCombined2) by ecancel_assumption.
-    subst R1 R2 R3 R4 R5 R6.
+    clear Hnew0.
+    simpl in H5.
 
     straightline_call.
-    1: {
-      split; try ecancel_assumption.
-
-      eapply sep_and_l_fwd in H3; destruct H3 as [H3 ?].
-      eapply sep_and_l_fwd in H3; destruct H3 as [H3 ?].
-      ecancel_assumption.
-    }
-    repeat straightline. eapply sep_comm in H8. eapply (sep_assoc _ _ (Field.FElem _ a1 _)) in H8.
-
-    eexists; split; [solve_locals5 l3 l2 l1 l0 l| ].
-
-    straightline_call.
-    1: {
-      split; try ecancel_assumption.
-      eapply sep_and_l_fwd in H8; destruct H8 as [H8 ?].
-      eapply sep_and_l_fwd in H8; destruct H8 as [H8 ?].
-      ecancel_assumption.
-    }
-    repeat straightline. eapply sep_comm in H9. eapply (sep_assoc _ _ (Field.FElem _ (word.add a1 _) _)) in H9.
-    eexists; split; [solve_locals5 l3 l2 l1 l0 l| ].
-
-    straightline_call.
-    1: {
-      split; try ecancel_assumption.
-
-      eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?].
-      eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?].
-      ecancel_assumption.
-    }
-    repeat straightline. eapply sep_comm in H11. eapply (sep_assoc _ _ (Field.FElem _ a2 _)) in H11.
-    eexists; split; [solve_locals5 l3 l2 l1 l0 l| ].
-
-    straightline_call.
-    1: {
-      split; try ecancel_assumption.
-      eapply sep_and_l_fwd in H11; destruct H11 as [H11 ?].
-      eapply sep_and_l_fwd in H11; destruct H11 as [H11 ?].
-      ecancel_assumption.
-    }
-    repeat straightline. eapply sep_comm in H12. eapply (sep_assoc _ _ (Field.FElem _ (word.add a2 _) _)) in H12.
-    eexists; split; [solve_locals5 l3 l2 l1 l0 l |].
-
-    (*deconstructing sep hyp.*)
-    cbv [id] in *.
-    eapply sep_and_l_fwd in H12; destruct H12 as [H12 ?].
-    eapply sep_and_l_fwd in H12; destruct H12 as [H12 ?].
-    clear H12 H5.
-
-    Ltac handle_call' := straightline_call; [
-          split; [|split; [| split; [| split; [| ecancel_assumption]]]]; [| | eexists; ecancel_assumption| eexists; ecancel_assumption]; eauto
-    |].
-
-    destruct H0, H2.
-
-    handle_call'.
-    repeat straightline.
-    eexists; split; [solve_locals5 l3 l2 l1 l0 l| ].
-
-    handle_call'.
-    repeat straightline.
-    eexists; split; [solve_locals5 l3 l2 l1 l0 l| ].
-
-    handle_call'.
-    repeat straightline.
-    eexists; split; [solve_locals5 l3 l2 l1 l0 l| ].
-
-    handle_call'.
-    repeat straightline.
-    eexists; split; [solve_locals5 l3 l2 l1 l0 l| ].
-
-    handle_call'.
-    repeat straightline.
-    eexists; split; [solve_locals5 l3 l2 l1 l0 l| ].
-
-    handle_call'.
-    repeat straightline.
-    eexists; split; [solve_locals5 l3 l2 l1 l0 l| ].
-
-    handle_call'.
-    repeat straightline.
-    eexists; split; [solve_locals5 l3 l2 l1 l0 l| ].
-
-    handle_call'.
-    repeat straightline.
-
-    let Hstack := (fresh "Hstack") in
-    let Hsplit := (fresh "Hsplit") in
-    let Hnew := (fresh "Hnew") in
-    eassert (Hstack : (Field.FElem _ a2 _ * _)%sep a16) by (eapply Fp_FElem_to_Fp2_R_sep; ecancel_assumption);
-    destruct Hstack as [? [? [Hsplit [Hstack' Hnew]]]]; do 2 eexists; split; [eapply FElem_Fp2_to_anybytes; eauto| split; [eapply map.split_comm; eauto| ]].
-
-    let Hstack := (fresh "Hstack") in
-    let Htemp := (fresh "Htemp") in
-    let Hsplit := (fresh "Hsplit") in
-    let Hnew := (fresh "Hnew") in
-    eassert (Htemp : (Field.FElem _ a1 _ * _)%sep x15) by (eapply Fp_FElem_to_Fp2_R_sep; ecancel_assumption);
-    destruct Htemp as [? [? [Hsplit [Hstack Hnew]]]]; do 2 eexists; split; [eapply FElem_Fp2_to_anybytes; eauto| split; [eapply map.split_comm; eauto| ]].
-
-
-    let Hstack := (fresh "Hstack") in
-    let Htemp := (fresh "Htemp") in
-    let Hsplit := (fresh "Hsplit") in
-    let Hnew := (fresh "Hnew") in
-    eassert (Htemp : ((Field.FElem F) a0 _ * _)%sep x17) by (ecancel_assumption);
-    destruct Htemp as [? [? [Hsplit [Hstack Hnew]]]]; do 2 eexists; split; [eapply FElem_F_to_anybytes; eauto| split; [eapply map.split_comm; eauto| ]].
-
-    let Hstack := (fresh "Hstack") in
-    let Htemp := (fresh "Htemp") in
-    let Hsplit := (fresh "Hsplit") in
-    let Hnew := (fresh "Hnew") in
-    eassert (Htemp : ((Field.FElem F) a _ * _)%sep x19) by (ecancel_assumption);
-    destruct Htemp as [? [? [Hsplit [Hstack Hnew]]]]; do 2 eexists; split; [eapply FElem_F_to_anybytes; eauto| split; [eapply map.split_comm; eauto| ]].
-
-    repeat straightline. split; auto; split; auto.
-    exists (x13 ++ x12); split; [| split].
-    1: {
-      simpl. erewrite fst_felem_app; try ecancel_assumption. erewrite snd_felem_app; try ecancel_assumption.
-      eapply Prod.path_pair.
-      - simpl.
-        (* assert (forall x, @feval *)
-        (* (@QuadraticFieldExtensionsSpecs.F_parameters prime_field_parameters) *)
-        (* width BW word mem F_representation x *)
-        (*   = (@feval F_parameters width BW word mem F_representation x)) by auto. *)
-        (* rewrite H13. *)
-        rewrite H40.
-        rewrite H16. rewrite H22.
-        eassert (Quad_non_res M_pos = _).
-        {
-          cbv [Quad_non_res]. assert (Z.pos M_pos mod 4 =? 3 = true) by lia.
-          rewrite H13.
-          eauto.
-        }
-        rewrite H13.
-        simpl.
-        Local Infix "*p" := ModularArithmetic.F.mul (at level 90).
-        Local Infix "-p" := ModularArithmetic.F.sub (at level 90).
-        Local Infix "+p" := ModularArithmetic.F.add (at level 90).
-        remember (feval (fst_felem x)) as xr.
-        remember (feval (snd_felem x)) as xi.
-        remember (feval (fst_felem y)) as yr.
-        remember (feval (snd_felem y)) as yi.
-        rewrite F_mul_assoc; [| apply M_pos_prime]. (*admitted primality of M_pos*)
-        rewrite <- H13.
-        rewrite <- mul_neg_1; eauto. apply M_pos_prime.
-      - simpl.
-        (* assert (forall x, @feval *)
-        (*   (@QuadraticFieldExtensionsSpecs.F_parameters prime_field_parameters) *)
-        (*   width BW word mem F_representation x *)
-        (*     = (@feval F_parameters width BW word mem F_representation x)) by auto. *)
-        (*   rewrite H13. *)
-        rewrite H37, H34, H31, H28, H25, H22, H16. simpl.
-        remember (feval (fst_felem x)) as xr.
-        remember (feval (snd_felem x)) as xi.
-        remember (feval (fst_felem y)) as yr.
-        remember (feval (snd_felem y)) as yi.
-        rewrite mul_equiv; eauto. apply M_pos_prime.
-    }
     1: {
       split.
-      - erewrite fst_felem_app; try ecancel_assumption. auto.
-      - erewrite snd_felem_app; try ecancel_assumption; auto.
-    }
-    eapply Fp_FElem_to_Fp2_R_sep. erewrite fst_felem_app; try ecancel_assumption.
-    erewrite snd_felem_app; try ecancel_assumption.
-  Qed.
+      2: {
+        seprewrite_in Fp2_Fp_FElem H5.
+        ecancel_assumption_impl.
+      }
 
+      eapply sep_assoc in H5.
+      eapply (sep_assoc _ (FElem _ _ a0 _) _)  in H5.
+      eapply (sep_assoc _ (FElem _ _ a _) _)  in H5.
+      eapply sep_and_l_fwd in H5 as [h1 h2].
+      eapply sep_and_l_fwd in h1 as [h1 h3].
+
+      seprewrite_in Fp2_Fp_FElem h1.
+      ecancel_assumption.
+    }
+    clear dependent mCombined2.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+      split.
+      2: ecancel_assumption.
+
+      eassert (h1 : ((fun m : map.rep => _) ⋆ _) _). ecancel_assumption.
+
+      eapply sep_and_l_fwd in h1 as [h1 h2].
+      eapply sep_and_l_fwd in h1 as [h1 h3].
+
+      seprewrite_in Fp2_Fp_FElem h1.
+      ecancel_assumption.
+    }
+    clear dependent a4.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+      seprewrite_in Fp2_Fp_FElem H2.
+      split.
+      2: ecancel_assumption.
+
+      eassert (h1 : ((fun m : map.rep => _) ⋆ _) _). ecancel_assumption.
+
+      eapply sep_and_l_fwd in h1 as [h1 h2].
+      eapply sep_and_l_fwd in h1 as [h1 h3].
+
+      seprewrite_in Fp2_Fp_FElem h3.
+      ecancel_assumption.
+    }
+    clear dependent a6.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+      split.
+      2: ecancel_assumption.
+
+      eassert (h1 : ((fun m : map.rep => _) ⋆ _) _). ecancel_assumption.
+
+      eapply sep_and_l_fwd in h1 as [h1 h2].
+      eapply sep_and_l_fwd in h1 as [h1 h3].
+
+      seprewrite_in Fp2_Fp_FElem h3.
+      ecancel_assumption.
+    }
+    clear dependent a4.
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+      simpl in *.
+      repeat split.
+      3: ecancel_assumption.
+
+      eexists. ecancel_assumption.
+      eexists. ecancel_assumption.
+    }
+    clear dependent a6.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+      simpl in *.
+      repeat split.
+      3: ecancel_assumption.
+
+      eexists. ecancel_assumption.
+      eexists. ecancel_assumption.
+    }
+    clear dependent a4.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+      simpl in *.
+      eassert (h1 : ((fun m : map.rep => _) ⋆ _) _). ecancel_assumption.
+
+      eapply sep_and_l_fwd in h1 as [h1 h2].
+      eapply sep_and_l_fwd in h1 as [h1 h3].
+      repeat split.
+      seprewrite_in Fp2_Fp_FElem h2.
+      3: {
+        seprewrite_in Fp2_Fp_FElem h2.
+        ecancel_assumption. }
+
+      eexists. seprewrite equiv_bounds_FElem. ecancel_assumption.
+      eexists. seprewrite equiv_bounds_FElem. ecancel_assumption.
+    }
+    clear dependent a6.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+      simpl in *.
+      repeat split.
+      eexists. seprewrite equiv_bounds_FElem. ecancel_assumption.
+      eexists. seprewrite equiv_bounds_FElem. ecancel_assumption.
+      ecancel_assumption.
+    }
+    clear dependent a4.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+      simpl in *.
+      repeat split.
+      eexists. ecancel_assumption.
+      eexists. ecancel_assumption.
+      ecancel_assumption_impl.
+    }
+    clear dependent a6.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+      simpl in *.
+      repeat split.
+      eexists. ecancel_assumption.
+      eexists. ecancel_assumption.
+      ecancel_assumption_impl.
+    }
+    clear dependent a4.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+      simpl in *.
+      repeat split.
+      eexists. seprewrite equiv_bounds_FElem. ecancel_assumption.
+      eexists. ecancel_assumption.
+      ecancel_assumption_impl.
+    }
+    clear dependent a6.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+      simpl in *.
+      repeat split.
+      eexists. ecancel_assumption.
+      eexists. ecancel_assumption.
+      ecancel_assumption_impl.
+    }
+    clear dependent a4.
+    sepsimpl.
+
+    repeat straightline.
+
+    let Hstack := (fresh "Hstack") in
+    let Hsplit := (fresh "Hsplit") in
+    let Hnew := (fresh "Hnew") in
+    eassert (Hstack : (FElem _ _ a2 _ * _)%sep a6) by (seprewrite Fp2_Fp_FElem; ecancel_assumption);
+    destruct Hstack as [? [? [Hsplit [Hstack' Hnew]]]];
+    do 2 eexists; split; [eapply FElem_from_bytes; eexists; eapply drop_bounds_FElem; eauto| split; [eapply map.split_comm; eauto| ]].
+
+    let Hstack := (fresh "Hstack") in
+    let Hsplit := (fresh "Hsplit") in
+    let Hnew := (fresh "Hnew") in
+    eassert (Hstack : (FElem _ _ a1 _ * _)%sep x15) by (seprewrite Fp2_Fp_FElem; ecancel_assumption);
+    destruct Hstack as [? [? [Hsplit [Hstack'' Hnew]]]];
+    do 2 eexists; split; [eapply FElem_from_bytes; eexists; eapply drop_bounds_FElem; eauto| split; [eapply map.split_comm; eauto| ]].
+
+    let Hstack := (fresh "Hstack") in
+    let Hsplit := (fresh "Hsplit") in
+    let Hnew := (fresh "Hnew") in
+    eassert (Hstack : (FElem F _ a0 _ * _)%sep x17) by ecancel_assumption;
+    destruct Hstack as [? [? [Hsplit [Hstack''' Hnew]]]];
+    do 2 eexists; split; [eapply FElem_from_bytes; eexists; eapply drop_bounds_FElem; eauto| split; [eapply map.split_comm; eauto| ]].
+
+    let Hstack := (fresh "Hstack") in
+    let Hsplit := (fresh "Hsplit") in
+    let Hnew := (fresh "Hnew") in
+    eassert (Hstack : (FElem F _ a _ * _)%sep x19) by ecancel_assumption;
+    destruct Hstack as [? [? [Hsplit [Hstack'''' Hnew]]]];
+    do 2 eexists; split; [eapply FElem_from_bytes; eexists; eapply drop_bounds_FElem; eauto| split; [eapply map.split_comm; eauto| ]].
+
+    repeat straightline'.
+    simpl in *.
+    subst x6 x7 x8 x9 x10 x11 x12 x13 out0.
+    unfold mulp2.
+    seprewrite Fp2_Fp_FElem.
+    simpl.
+
+    eassert (Quad_non_res M_pos = _).
+    {
+      cbv [Quad_non_res]. assert (Z.pos M_pos mod 4 =? 3 = true) by lia.
+      rewrite H0.
+      eauto.
+    }
+    (* rewrite H0. *)
+    rewrite F_mul_assoc.
+    rewrite <- mul_neg_1.
+    rewrite <- mul_equiv.
+
+    seprewrite equiv_bounds_FElem.
+    seprewrite equiv_bounds_FElem.
+    ecancel_assumption.
+
+    apply M_pos_prime.
+    apply M_pos_prime.
+
+    assumption.
+    apply M_pos_prime.
+  Qed.
 
   (*subtraction in Fp2*)
   Definition Fp2_sub : bedrock2.Syntax.func :=
@@ -1489,135 +1101,169 @@ Section Fp2.
 
   Lemma Fp2_sub_ok : program_logic_goal_for_function! Fp2_sub.
   Proof.
-    enter' Fp2_sub. clear H0 H1 H2 H4. cbv [binop_spec] in *.
-    intros. unfold1_call_goal. cbv match beta delta [call_body].
-    assert ((Field.sub =? Field.sub)%string = true) by (rewrite eqb_refl; auto).
-    rewrite H1.
+    enter' Fp2_sub.
+    clear H0.
+    cbv [binop_spec] in *.
+    intros. unfold1_call_goal.
+    cbv match beta delta [call_body].
+    unfold Fp2_add.
+    rewrite eqb_refl.
     cbv match beta delta [func].
-    repeat straightline.
 
-    eapply Fp2_FElem_to_Fp_R_sep in H4, H5, H6.
+    repeat straightline'.
 
-    collect H4 H5.
-    collect Hnew H6.
+    eapply FElem_from_bytes in H7 as [?].
+    eapply FElem_from_bytes in H9 as [?].
 
-    split; [eapply felem_size_in_bytes_mod |].
-    repeat straightline.
-    split; [eapply felem_size_in_bytes_mod |].
-    repeat straightline.
+    collect H0 H5.
+    collect H6 Hnew.
 
-    eexists; split; [solve_locals l1 l0 l| ].
-
-    eapply alloc_to_FElem in H4. destruct H4.
-    eapply alloc_to_FElem in H6. destruct H6.
-    eapply Fp2_FElem_to_Fp_sep in H4, H6.
-    eassert (((_ * _) * _)%sep mCombined0).
+    eassert (((_ ⋆ _) ⋆ _) mCombined0).
     {
-      do 2 eexists; split; [eassumption | split; [| apply H6]].
-      do 2 eexists; split; [eassumption | split; [| apply H4]].
+      do 2 eexists; split; [eauto |]; split; [| apply H9].
+      do 2 eexists; split; [eauto |]; split; [| apply H7].
       apply Hnew0.
     }
+    simpl in H0.
 
-    clear dependent mStack.
+    clear Hnew0.
     clear dependent mStack0.
-
-    (*unfolding as multiple preconditions*)
-    (* cbv [id] in *.
-      eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?].
-      eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?]. *)
-
-    remember (Field.FElem _ a (fst_felem x2)) as R1.
-    remember (Field.FElem _ a0 (fst_felem x3)) as R2.
-    remember (Field.FElem _ (word.add a felem_offset_word) (snd_felem x2)) as R3.
-    remember (Field.FElem _ (word.add a0 felem_offset_word) (snd_felem x3)) as R4.
-    eassert (( _ * (R1 * R2 * R3 * R4))%sep mCombined0) by ecancel_assumption.
-    subst R1 R2 R3 R4. clear H8.
+    clear dependent mStack.
 
     straightline_call.
-    1: {
-      split; try ecancel_assumption.
-
-      eapply sep_and_l_fwd in H4; destruct H4 as [H4 ?].
-      eapply sep_and_l_fwd in H4; destruct H4 as [H4 ?].
-      ecancel_assumption.
-    }
-    repeat straightline. eapply sep_comm in H7. eapply (sep_assoc _ _ (Field.FElem _ a _)) in H7.
-
-    eexists; split; [solve_locals l1 l0 l| ].
-
-    straightline_call.
-    1: {
-      split; try ecancel_assumption.
-      eapply sep_and_l_fwd in H7; destruct H7 as [H7 ?].
-      eapply sep_and_l_fwd in H7; destruct H7 as [H7 ?].
-      ecancel_assumption.
-    }
-    repeat straightline. eapply sep_comm in H8. eapply (sep_assoc _ _ (Field.FElem _ (word.add a _) _)) in H8.
-    eexists; split; [solve_locals l1 l0 l| ].
-
-    straightline_call.
-    1: {
-      split; try ecancel_assumption.
-
-      eapply sep_and_l_fwd in H8; destruct H8 as [H8 ?].
-      eapply sep_and_l_fwd in H8; destruct H8 as [H8 ?].
-      ecancel_assumption.
-    }
-    repeat straightline. eapply sep_comm in H9. eapply (sep_assoc _ _ (Field.FElem _ a0 _)) in H9.
-    eexists; split; [solve_locals l1 l0 l| ].
-
-    straightline_call.
-    1: {
-      split; try ecancel_assumption.
-      eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?].
-      eapply sep_and_l_fwd in H9; destruct H9 as [H9 ?].
-      ecancel_assumption.
-    }
-    repeat straightline. eapply sep_comm in H10. eapply (sep_assoc _ _ (Field.FElem _ (word.add a0 _) _)) in H10.
-    eexists; split; [solve_locals l1 l0 l |].
-
-    (*deconstructing sep hyp.*)
-    cbv [id] in *.
-    eapply sep_and_l_fwd in H10; destruct H10 as [H10 ?].
-    eapply sep_and_l_fwd in H10; destruct H10 as [H10 ?].
-    clear H10 H6.
-
-
-    destruct H0, H2.
-
-    handle_call'.
-    repeat straightline.
-    eexists; split; [solve_locals l1 l0 l| ].
-
-    handle_call'.
-    repeat straightline.
-
-    let Hstack := (fresh "Hstack") in
-    let Hsplit := (fresh "Hsplit") in
-    let Hnew := (fresh "Hnew") in
-    eassert (Hstack : (Field.FElem _ a0 _ * _)%sep a8) by (eapply Fp_FElem_to_Fp2_R_sep; ecancel_assumption);
-    destruct Hstack as [? [? [Hsplit [Hstack' Hnew]]]]; do 2 eexists; split; [eapply FElem_Fp2_to_anybytes; eauto| split; [eapply map.split_comm; eauto| ]].
-
-    let Hstack := (fresh "Hstack") in
-    let Htemp := (fresh "Htemp") in
-    let Hsplit := (fresh "Hsplit") in
-    let Hnew := (fresh "Hnew") in
-    eassert (Htemp : (Field.FElem _ a _ * _)%sep x7) by (eapply Fp_FElem_to_Fp2_R_sep; ecancel_assumption);
-    destruct Htemp as [? [? [Hsplit [Hstack Hnew]]]]; do 2 eexists; split; [eapply FElem_Fp2_to_anybytes; eauto| split; [eapply map.split_comm; eauto| ]].
-
-    repeat straightline. split; auto; split; auto.
-    exists (x4 ++ x5); split; [| split].
-    1: {
-      simpl. erewrite fst_felem_app; try ecancel_assumption. erewrite snd_felem_app; try ecancel_assumption.
-      eapply Prod.path_pair; auto.
-    }
     1: {
       split.
-      - erewrite fst_felem_app; try ecancel_assumption; auto.
-      - erewrite snd_felem_app; try ecancel_assumption; auto.
-    }
-    eapply Fp_FElem_to_Fp2_R_sep. erewrite fst_felem_app; try ecancel_assumption.
-    erewrite snd_felem_app; try ecancel_assumption.
-  Qed.
+      2: {
+        seprewrite_in Fp2_Fp_FElem H0.
+        ecancel_assumption.
+      }
+      eapply sep_assoc in H0.
+      eapply sep_and_l_fwd in H0 as [].
+      eapply sep_and_l_fwd in H5 as [].
 
+      seprewrite_in Fp2_Fp_FElem H5.
+      ecancel_assumption.
+    }
+    (* from now on, the mem will be a2, so clear previous mem *)
+    clear dependent mCombined0.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+      sepsimpl.
+      2: ecancel_assumption.
+
+      eassert (((fun m => (_ /\ _)) ⋆ _) a2).
+      ecancel_assumption.
+
+      eapply sep_and_l_fwd in H0 as [h1 h2].
+      eapply sep_and_l_fwd in h2 as [h2 h3].
+      seprewrite_in Fp2_Fp_FElem h2.
+      ecancel_assumption.
+    }
+    clear dependent a2.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+      sepsimpl.
+      2: {
+        seprewrite_in Fp2_Fp_FElem H6.
+        ecancel_assumption_impl.
+      }
+
+      eassert (((fun m => (_ /\ _)) ⋆ _) a4).
+      ecancel_assumption.
+      eapply sep_and_l_fwd in H0 as [h1 h2].
+      eapply sep_and_l_fwd in h2 as [h2 h3].
+      seprewrite_in Fp2_Fp_FElem h3.
+      ecancel_assumption.
+    }
+    clear dependent a4.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+      sepsimpl.
+      2: ecancel_assumption.
+
+      eassert (((fun m => (_ /\ _)) ⋆ _) a2).
+      ecancel_assumption.
+      eapply sep_and_l_fwd in H0 as [h1 h2].
+      eapply sep_and_l_fwd in h2 as [h2 h3].
+      seprewrite_in Fp2_Fp_FElem h3.
+      ecancel_assumption.
+    }
+    clear dependent a2.
+
+    repeat straightline'.
+
+    straightline_call.
+    1: {
+
+      eassert (((fun m => (_ /\ _)) ⋆ _) a4).
+      ecancel_assumption.
+      eapply sep_and_l_fwd in H0 as [h1 h2].
+      eapply sep_and_l_fwd in h2 as [h2 h3].
+
+      repeat split.
+
+      seprewrite_in Fp2_Fp_FElem h2.
+      simpl. eexists. ecancel_assumption.
+      simpl. eexists. ecancel_assumption.
+      seprewrite_in Fp2_Fp_FElem h1.
+      ecancel_assumption.
+    }
+    clear dependent a4.
+
+    repeat straightline'.
+
+    straightline_call.
+
+    1: {
+
+        repeat split.
+      simpl. eexists. ecancel_assumption.
+      simpl. eexists. ecancel_assumption.
+        ecancel_assumption.
+    }
+    clear dependent a2.
+
+    repeat straightline.
+
+    eassert (h1 : (FElem _ _ a0 _  * _)%sep a4).
+    {
+      seprewrite Fp2_Fp_FElem. ecancel_assumption.
+    }
+
+    destruct h1 as [mq [mr [h1 [h2 h3]]]].
+
+    eexists. eexists. split.
+    1: {
+      eapply FElem_from_bytes. eexists. eapply drop_bounds_FElem. eauto.
+    }
+    split; [eapply map.split_comm; eauto| ].
+
+    eassert (h4 : (FElem _ _ a _  * _)%sep mr).
+    {
+      seprewrite Fp2_Fp_FElem. ecancel_assumption.
+    }
+
+    destruct h4 as [mq' [mr' [h4 [h5 h6]]]].
+
+    eexists. eexists. split.
+    1: {
+      eapply FElem_from_bytes. eexists. eapply drop_bounds_FElem. eauto.
+    }
+    split; [eapply map.split_comm; eauto| ].
+
+    repeat straightline'.
+    seprewrite Fp2_Fp_FElem.
+    subst out0 x4 x5.
+    simpl in *.
+    ecancel_assumption.
+  Qed.
 End Fp2.
