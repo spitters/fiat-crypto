@@ -621,6 +621,110 @@ Section WithParameters.
     Qed.
   End ListUnop.
 
+  Section ListNullOp.
+    Context {res : API.Expr type_listZ}
+            (res_valid :
+               valid_func (res (fun _ : API.type => unit)))
+            (res_Wf : API.Wf res).
+    Context name (nop : NullOp name)
+            (res_eq :
+                feval (map word.of_Z (API.interp (res _)))
+                = null_model)
+            (res_bounds : list_in_bounds null_outbounds (API.interp (res _)))
+            (outbounds_tighter_than_max : forall x, list_in_bounds null_outbounds x -> list_Z_bounded_by (@max_bounds width n) x)
+            (outbounds_length : forall x, list_in_bounds null_outbounds x -> length x = n).
+
+    Local Ltac equivalence_side_conditions_hook ::=
+      lazymatch goal with
+      | |- context [length (API.interp (res _) ?x)] =>
+        specialize (res_bounds x ltac:(auto));
+        rewrite (length_list_Z_bounded_by _ _ res_bounds);
+        try congruence;
+        rewrite !map_length, outbounds_length;
+        felem_to_array; sepsimpl; congruence
+      | _ => idtac
+      end.
+
+    Local Notation t :=
+      (type_listZ) (only parsing).
+
+    Definition list_nullop_insizes
+      : type.for_each_lhs_of_arrow access_sizes t :=
+      (tt).
+    Definition list_nullop_outsizes
+      : base_access_sizes (type.final_codomain t) :=
+      access_size.word.
+    Definition list_nullop_inlengths
+      : type.for_each_lhs_of_arrow list_lengths t :=
+      (tt).
+
+    Let insizes := list_nullop_insizes.
+    Let outsizes := list_nullop_outsizes.
+    Let inlengths := list_nullop_inlengths.
+
+    Lemma list_nullop_correct f :
+      f = make_bedrock_func name insizes outsizes inlengths res ->
+      forall functions, nullop_spec _ (f :: functions).
+    Proof using inname_gen_varname_gen_disjoint outbounds_length
+          outbounds_tighter_than_max outname_gen_varname_gen_disjoint
+          ok relax_bounds res_Wf res_bounds res_eq res_valid.
+      subst inlengths insizes outsizes.
+      cbv [nullop_spec list_nullop_insizes list_nullop_outsizes list_nullop_inlengths].
+      cbv beta; intros; subst f. cbv [make_bedrock_func].
+      cleanup.
+      unfold FElem in *.
+      unfold Bignum.Bignum in *.
+      sepsimpl.
+      eapply Proper_call.
+      2: {
+        use_translate_func_correct constr:((tt)) Rr.
+        all: try translate_func_precondition_hammer.
+        reflexivity.
+        {
+          compute_names; cbn [type.app_curried fst snd];
+            autounfold with types list_lengths pairs;
+            lists_autounfold; sepsimpl.
+          exists (map word.unsigned x).
+          crush_sep;
+          try solve_equivalence_side_conditions; try solve_length out outbounds_length.
+
+          rewrite Core.bytes_per_width_bytes_per_word.
+          seprewrite0 (Util.array_truncated_scalar_scalar_iff1 x pout (word.of_Z (bytes_per_word width))).
+          eassumption. } }
+      { postcondition_simplify; [ | ].
+        (* { (* output correctness *) *)
+        (*   eapply res_eq; auto. } *)
+        2: { (* output bounds *)
+        { refine (proj1 (Proper_sep_iff1 _ _ _ _ _ _ _) _);
+            [symmetry; eapply FElem_array_truncated_scalar_iff1 | reflexivity | sepsimpl ].
+          rewrite Core.bytes_per_width_bytes_per_word in H10.
+          (* exists x6. *)
+          cbn [bounded_by field_representation frep] in *.
+          sepsimpl.
+          eexists.
+
+          sepsimpl.
+          2: eapply res_eq.
+          rewrite map_length.
+          eauto.
+
+          eauto.
+          simpl.
+          erewrite Util.map_unsigned_of_Z, MaxBounds.map_word_wrap_bounded
+            by eauto using relax_list_Z_bounded_by.
+          eauto.
+          rewrite <- H7.
+          rewrite (map_map word.unsigned).
+          rewrite Core.map_ext_id.
+          eassumption.
+          intros.
+          rewrite word.of_Z_unsigned.
+          reflexivity. } }
+        { reflexivity. }
+      }
+      Qed.
+  End ListNullOp.
+
   Section FromWord.
     Context {res : API.Expr (type_Z -> type_listZ)}
             (res_valid :

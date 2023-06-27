@@ -40,6 +40,8 @@ Section FieldSpecs.
   Class FieldNames (F : Type) :=
     {
       (** function names **)
+      zero : string;
+      one : string;
       mul : string;
       add : string;
       sub : string;
@@ -71,6 +73,8 @@ Section FieldSpecs.
   Definition field_names_prefixed F
   (prefix: string) : FieldNames F :=
     Build_FieldNames F
+    (prefix ++ "zero")
+    (prefix ++ "one")
     (prefix ++ "mul")
     (prefix ++ "add")
     (prefix ++ "sub")
@@ -251,12 +255,29 @@ Section FieldSpecs.
 
     Local Definition Fsquare (x : F) := Fmul x x.
 
+    Import WeakestPrecondition.
+
+    Class NullOp (name: string) :=
+      { null_model: F;
+        null_outbounds: bounds }.
+
+    Definition nullop_spec {name} (op: NullOp name) :=
+      fnspec! name (pout : word) / (out : F) Rr,
+      { requires tr mem :=
+          (FElem None pout out * Rr)%sep mem;
+        ensures tr' mem' :=
+          tr = tr' /\
+          exists out,
+            out = null_model
+            /\ (FElem (Some null_outbounds) pout out * Rr)%sep mem' }.
+
+    Instance spec_of_NullOp {name} (op: NullOp name) : spec_of name :=
+      nullop_spec op.
+
     Class UnOp (name: string) :=
       { un_model: F -> F;
         un_xbounds: bounds;
         un_outbounds: bounds }.
-
-    Import WeakestPrecondition.
 
     Definition unop_spec {name} (op: UnOp name) :=
       fnspec! name (pout px : word) / (out x : F) Rr,
@@ -307,6 +328,10 @@ Section FieldSpecs.
       {| un_model := Finv; un_xbounds := tight_bounds; un_outbounds := loose_bounds |}.
     Instance un_opp : UnOp opp :=
       {| un_model := Fopp; un_xbounds := tight_bounds; un_outbounds := loose_bounds |}.
+    Instance null_zero : NullOp zero :=
+      {| null_model := Fzero; null_outbounds := tight_bounds |}.
+    Instance null_one : NullOp one :=
+      {| null_model := Fone; null_outbounds := tight_bounds |}.
 
     Instance spec_of_from_bytes : spec_of from_bytes :=
       fnspec! from_bytes (pout px : word) / out (bs : list byte) Rr,

@@ -63,6 +63,8 @@ Section Field.
 
   Local Ltac begin_derive_bedrock2_func :=
     lazymatch goal with
+    | |- context [spec_of_NullOp null_zero] => eapply zero_func_correct
+    | |- context [spec_of_NullOp null_one] => eapply one_func_correct
     | |- context [spec_of_BinOp bin_mul] => eapply mul_func_correct
     | |- context [spec_of_UnOp un_square] => eapply square_func_correct
     | |- context [spec_of_BinOp bin_add] => eapply add_func_correct
@@ -104,6 +106,30 @@ Section Field.
                         (bls12_to_bytes :: functions))
          As bls12_to_bytes_correct.
   Proof. Time derive_bedrock2_func to_bytes_op. Qed.
+
+  Derive bls12_zero
+         SuchThat (forall functions,
+                      spec_of_NullOp null_zero
+                        (field_representation:=field_representation)
+                        (bls12_zero :: functions))
+         As bls12_zero_correct.
+  Proof. Time derive_bedrock2_func zero_op. Qed.
+
+  Derive bls12_one
+         SuchThat (forall functions,
+                      spec_of_NullOp null_one
+                        (field_representation:=field_representation)
+                        (bls12_one :: functions))
+         As bls12_one_correct.
+  Proof. Time derive_bedrock2_func one_op. Qed.
+
+  Derive bls12_mul
+         SuchThat (forall functions,
+                      spec_of_BinOp bin_mul
+                        (field_representation:=field_representation)
+                        (bls12_mul :: functions))
+         As bls12_mul_correct.
+  Proof. Time derive_bedrock2_func mul_op. Qed.
 
   Derive bls12_mul
          SuchThat (forall functions,

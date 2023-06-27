@@ -36,7 +36,16 @@ Class word_by_word_Montgomery_ops
   {prime_parameters : PrimeParameters}
   {field_names : FieldNames (F M_pos)}
   {n m} : Type :=
-  { mul_op :
+  { zero_op :
+      computed_op
+        (WordByWordMontgomery.zero m width) Field.zero
+        list_nullop_insizes list_nullop_outsizes (list_nullop_inlengths);
+    one_op :
+      computed_op
+        (WordByWordMontgomery.one m width) Field.one
+        list_nullop_insizes list_nullop_outsizes (list_nullop_inlengths);
+
+    mul_op :
       computed_op
         (WordByWordMontgomery.mul m width) Field.mul
         list_binop_insizes list_binop_outsizes (list_binop_inlengths n);
@@ -171,9 +180,12 @@ Section WordByWordMontgomery.
   Context (from_mont : string)
           (to_mont : string)
           (ops : word_by_word_Montgomery_ops n M)
+          zero_func one_func
           mul_func add_func sub_func opp_func square_func
           from_bytes_func to_bytes_func
           from_mont_func to_mont_func select_znz_func
+          (zero_func_eq : zero_func = b2_func zero_op)
+          (one_func_eq : one_func = b2_func one_op)
           (mul_func_eq : mul_func = b2_func mul_op)
           (add_func_eq : add_func = b2_func add_op)
           (sub_func_eq : sub_func = b2_func sub_op)
@@ -335,6 +347,72 @@ Section WordByWordMontgomery.
   Lemma valid_length : forall x, WordByWordMontgomery.valid width n M x -> length x = n.
   Proof.
     intros. destruct H. erewrite WordByWordMontgomery.length_small; eauto.
+  Qed.
+
+  Lemma zero_func_correct :
+    valid_func (res zero_op _) ->
+    forall functions,
+      spec_of_NullOp null_zero (zero_func :: functions).
+  Proof using check_args_ok zero_func_eq ok.
+        (* tight_bounds_tighter_than. *)
+    intros. cbv [spec_of_NullOp null_zero]. rewrite zero_func_eq.
+    pose proof zero_correct
+         M width _ ltac:(eassumption) _ (res_eq zero_op)
+      as Hcorrect.
+    eapply list_nullop_correct with (res:=res zero_op);
+    try handle_side_conditions; [| | eapply valid_max_bounds; eauto | apply valid_length].
+    {
+    (* output *value* is correct *)
+      intros. cbv [feval]. simpl. cbv [Representation.eval_words]. simpl.
+      cbv [feval feval_bytes bounded_by bytes_in_bounds Field.loose_bounds
+               field_representation Signature.field_representation
+               Representation.frep Representation.eval_bytes
+               Representation.eval_words
+               bin_model bin_xbounds bin_ybounds
+               un_model un_xbounds eval_trans
+      ] in *.
+      (* specialize (Hcorrect (map Interface.word.unsigned x) (map Interface.word.unsigned y) H0 H1). *)
+      FtoZ. rewrite map_unsigned_of_Z. erewrite (MaxBounds.map_word_wrap_bounded).
+      2: {
+        eapply valid_max_bounds; eauto. destruct Hcorrect; eauto.
+      }
+      destruct Hcorrect. auto.
+    }
+    { (* output *bounds* are correct *)
+      intros. apply Hcorrect; auto. }
+  Qed.
+
+  Lemma one_func_correct :
+    valid_func (res one_op _) ->
+    forall functions,
+      spec_of_NullOp null_one (one_func :: functions).
+  Proof using check_args_ok one_func_eq ok.
+        (* tight_bounds_tighter_than. *)
+    intros. cbv [spec_of_NullOp null_one]. rewrite one_func_eq.
+    pose proof one_correct
+         M width _ ltac:(eassumption) _ (res_eq one_op)
+      as Hcorrect.
+    eapply list_nullop_correct with (res:=res one_op);
+    try handle_side_conditions; [| | eapply valid_max_bounds; eauto | apply valid_length].
+    {
+    (* output *value* is correct *)
+      intros. cbv [feval]. simpl. cbv [Representation.eval_words]. simpl.
+      cbv [feval feval_bytes bounded_by bytes_in_bounds Field.loose_bounds
+               field_representation Signature.field_representation
+               Representation.frep Representation.eval_bytes
+               Representation.eval_words
+               bin_model bin_xbounds bin_ybounds
+               un_model un_xbounds eval_trans
+      ] in *.
+      (* specialize (Hcorrect (map Interface.word.unsigned x) (map Interface.word.unsigned y) H0 H1). *)
+      FtoZ. rewrite map_unsigned_of_Z. erewrite (MaxBounds.map_word_wrap_bounded).
+      2: {
+        eapply valid_max_bounds; eauto. destruct Hcorrect; eauto.
+      }
+      destruct Hcorrect. auto.
+    }
+    { (* output *bounds* are correct *)
+      intros. apply Hcorrect; auto. }
   Qed.
 
   Lemma mul_func_correct :
