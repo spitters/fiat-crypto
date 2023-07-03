@@ -7,8 +7,8 @@ Require Import Crypto.Bedrock.Field.Synthesis.New.ComputedOp.
 Require Import Crypto.Bedrock.Field.Synthesis.New.WordByWordMontgomery.
 Require Import Crypto.Bedrock.Field.Translation.Parameters.Defaults64.
 Require Import Crypto.Bedrock.Specs.Field.
-Require Import Crypto.Bedrock.Specs.Field.
 Import ListNotations.
+Require Import Crypto.Bedrock.Field.Translation.Proofs.ValidComputable.Func.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.ProgramLogic.
@@ -122,14 +122,6 @@ Section Field.
                         (bls12_one :: functions))
          As bls12_one_correct.
   Proof. Time derive_bedrock2_func one_op. Qed.
-
-  Derive bls12_mul
-         SuchThat (forall functions,
-                      spec_of_BinOp bin_mul
-                        (field_representation:=field_representation)
-                        (bls12_mul :: functions))
-         As bls12_mul_correct.
-  Proof. Time derive_bedrock2_func mul_op. Qed.
 
   Derive bls12_mul
          SuchThat (forall functions,

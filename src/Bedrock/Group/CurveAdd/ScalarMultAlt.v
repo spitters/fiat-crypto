@@ -4,8 +4,8 @@ Require Import coqutil.Byte.
 Require Import Crypto.Algebra.Hierarchy.
 Require Import Crypto.Algebra.ScalarMult.
 Require Import Crypto.Arithmetic.PrimeFieldTheorems.
-Require Import Crypto.Bedrock.Specs.AbstractField.
-Require Import Crypto.Bedrock.Specs.PrimeField.
+Require Import Crypto.Bedrock.Specs.Field.
+Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Group.CurveAdd.LoopBody.
 
 Module M.
@@ -21,7 +21,7 @@ Module M.
     Context {prime_field_parameters : PrimeFieldParameters}
             {prime_field_parameters_ok : PrimeFieldParameters_ok}.
 
-    Local Instance field_parameters : FieldParameters := PrimeField.prime_field_parameters.
+    Local Instance field_parameters : FieldParameters := Field.prime_field_parameters.
     Context {field_representation : FieldRepresentation}
             {field_representation_ok : FieldRepresentation_ok}
             {scalarbits : nat}.

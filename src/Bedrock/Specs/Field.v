@@ -62,7 +62,8 @@ Section FieldSpecs.
           ... *)
       felem_copy : string;
       from_word : string;
-      from_list : string;
+      (* from_lists name should depend on input *)
+      (* from_list : string; *)
     }.
 
   Class CurveNames (F : Type) :=
@@ -86,7 +87,6 @@ Section FieldSpecs.
     (prefix ++ "select_znz")
     (prefix ++ "felem_copy")
     (prefix ++ "small_literal")
-    (prefix ++ "from_list")
   .
 
   Definition curve_names_prefixed F
@@ -383,6 +383,7 @@ Section FieldSpecs.
               (FElem ybounds py y * Ry)%sep mem /\
               ZRange.is_bounded_by_bool (word.unsigned pc) bit_range = true;
           ensures tr' mem' :=
+            tr = tr' /\
             if ((word.unsigned pc) =? 1)
             then ((FElem ybounds pout y * Rout)%sep mem')
             else ((FElem xbounds pout x * Rout)%sep mem')
@@ -390,9 +391,10 @@ Section FieldSpecs.
 
     Section FromList.
     Context (v : F).
+    Context (name : string).
 
-    Instance spec_of_from_list  : spec_of from_list :=
-    fnspec! from_list (pout : word) / outold Rout,
+    Instance spec_of_from_list  : spec_of name :=
+    fnspec! name (pout : word) / outold Rout,
     {
         requires tr mem :=
         (FElem None pout outold * Rout)%sep mem ;

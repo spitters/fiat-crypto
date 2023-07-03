@@ -38,6 +38,7 @@ Section StoreZero.
            * FElem None pY Y
            * FElem None pZ Z * R)%sep mem;
         ensures tr' mem' :=
+          tr = tr' /\
           (FElem (Some tight_bounds) pX Fzero
            * FElem (Some tight_bounds) pY Fone
            * FElem (Some tight_bounds) pZ Fzero * R)%sep mem'}.

@@ -872,13 +872,13 @@ End WordByWordMontgomery.
 
 (* Prototyping full pipeline: *)
 
-Require Import Coq.Strings.String.
-Require Import Crypto.Bedrock.Field.Translation.Parameters.Defaults64.
-Require Import Crypto.Bedrock.Field.Translation.Proofs.ValidComputable.Func.
+(* Require Import Coq.Strings.String. *)
+(* Require Import Crypto.Bedrock.Field.Translation.Parameters.Defaults64. *)
+(* Require Import Crypto.Bedrock.Field.Translation.Proofs.ValidComputable.Func. *)
 
-Local Open Scope string_scope.
+(* Local Open Scope string_scope. *)
 
-Require Import bedrock2.ProgramLogic.
+(* Require Import bedrock2.ProgramLogic. *)
 
 (* Section Tests.
   Definition m := (2^224 - 2^96 + 1)%Z.
