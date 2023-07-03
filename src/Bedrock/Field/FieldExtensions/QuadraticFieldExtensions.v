@@ -444,6 +444,7 @@ Section Fp2.
       eapply sep_and_l_fwd in H5 as [].
 
       seprewrite_in Fp2_Fp_FElem H6.
+      seprewrite_in Fp2_Fp_FElem H6.
       ecancel_assumption.
     }
     (* from now on, the mem will be a2, so clear previous mem *)
@@ -480,6 +481,7 @@ Section Fp2.
       eapply sep_comm in H6.
       eapply (sep_assoc _ (FElem Fp2 _ _ _) _) in H6.
       eapply sep_and_l_fwd in H6 as [h1 h2].
+      seprewrite_in Fp2_Fp_FElem h1.
       seprewrite_in Fp2_Fp_FElem h1.
       ecancel_assumption.
     }
@@ -538,7 +540,7 @@ Section Fp2.
 
       repeat straightline. (*mStack is not in scope in the below proof; should otherwise go through. destruct sep hyp before introducing evars.*)
 
-      rewrite eq in H5.
+      rewrite eq in H6.
 
       eassert (h1 : (FElem _ _ a0 _  * _)%sep a4).
       {
@@ -567,7 +569,9 @@ Section Fp2.
       }
       split; [eapply map.split_comm; eauto| ].
 
-      repeat straightline. split; auto.
+      repeat straightline.
+      split; auto.
+      split; auto.
       seprewrite Fp2_Fp_FElem.
       ecancel_assumption.
     }
@@ -585,7 +589,7 @@ Section Fp2.
 
       repeat straightline. (*mStack is not in scope in the below proof; should otherwise go through. destruct sep hyp before introducing evars.*)
 
-      rewrite eq in H5.
+      rewrite eq in H6.
 
       eassert (h1 : (FElem _ _ a0 _  * _)%sep a4).
       {
@@ -613,7 +617,9 @@ Section Fp2.
       }
       split; [eapply map.split_comm; eauto| ].
 
-      repeat straightline. split; auto.
+      repeat straightline.
+      split; auto.
+      split; auto.
       seprewrite Fp2_Fp_FElem.
       ecancel_assumption.
     }
@@ -662,6 +668,7 @@ Section Fp2.
       eapply sep_and_l_fwd in H5 as [].
 
       seprewrite_in Fp2_Fp_FElem H5.
+      seprewrite_in Fp2_Fp_FElem H5.
       ecancel_assumption.
     }
     (* from now on, the mem will be a2, so clear previous mem *)
@@ -699,6 +706,7 @@ Section Fp2.
       eapply (sep_assoc _ (FElem Fp2 _ _ _) _) in H6.
       eapply sep_and_l_fwd in H6 as [h1 h2].
       eapply sep_and_l_fwd in h2 as [h2 h3].
+      seprewrite_in Fp2_Fp_FElem h3.
       seprewrite_in Fp2_Fp_FElem h3.
       ecancel_assumption.
     }
@@ -862,6 +870,7 @@ Section Fp2.
       eapply sep_and_l_fwd in H5 as [h1 h2].
       eapply sep_and_l_fwd in h1 as [h1 h3].
 
+      seprewrite_in Fp2_Fp_FElem h1.
       seprewrite_in Fp2_Fp_FElem h1.
       ecancel_assumption.
     }
@@ -1142,6 +1151,7 @@ Section Fp2.
       eapply sep_and_l_fwd in H5 as [].
 
       seprewrite_in Fp2_Fp_FElem H5.
+      seprewrite_in Fp2_Fp_FElem H5.
       ecancel_assumption.
     }
     (* from now on, the mem will be a2, so clear previous mem *)
@@ -1178,6 +1188,7 @@ Section Fp2.
       ecancel_assumption.
       eapply sep_and_l_fwd in H0 as [h1 h2].
       eapply sep_and_l_fwd in h2 as [h2 h3].
+      seprewrite_in Fp2_Fp_FElem h3.
       seprewrite_in Fp2_Fp_FElem h3.
       ecancel_assumption.
     }
