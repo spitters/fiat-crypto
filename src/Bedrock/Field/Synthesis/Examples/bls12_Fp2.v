@@ -7,7 +7,7 @@ Require Import Crypto.Bedrock.Field.Interface.Compilation2.
 Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.Synthesis.New.WordByWordMontgomery.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_prime.
-Require Import Crypto.Bedrock.Field.Synthesis.Examples.felem_copy_p224.
+Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_felem_copy.
 Require Import Crypto.Bedrock.Field.FieldExtensions.QuadraticFieldExtensions.
 
 Import BinInt String List.ListNotations.

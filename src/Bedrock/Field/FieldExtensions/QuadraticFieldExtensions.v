@@ -117,21 +117,6 @@ Section Fp2.
   Existing Instance Fp2_field_representation.
   Existing Instance Fp2_field_representation_ok.
 
-  (* Lemma fst_felem_app : forall a b pa Ra m bounds, *)
-  (*     (FElem F bounds pa a * Ra)%sep m *)
-  (*     -> fst_felem (a ++ b) = a. *)
-  (* Proof. *)
-  (*   intros. cbv [Field.FElem Bignum.Bignum] in *. sepsimpl. *)
-  (*   cbv [fst_felem]. rewrite firstn_app'; auto. *)
-  (* Qed. *)
-
-  (* Lemma snd_felem_app : forall a b pa Ra m, (FElem F pa a * Ra)%sep m *)
-  (* -> snd_felem (a ++ b) = b. *)
-  (* Proof. *)
-  (*   intros. cbv [Field.FElem Bignum.Bignum] in *. sepsimpl. *)
-  (*   cbv [snd_felem]. rewrite skipn_app; auto. *)
-  (* Qed. *)
-
   Lemma Fp2_list_decomp : forall l, fst_felem l ++ snd_felem l = l.
   Proof.
     intros. cbv [fst_felem snd_felem]. rewrite firstn_skipn. auto.
@@ -235,44 +220,24 @@ Section Fp2.
     - apply Fp_FElem_to_Fp2_sep.
   Qed.
 
-  (* #[export] Hint Immediate *)
-  (* Lemma Fp_FElem_to_Fp2_R_sep : forall px x m R, *)
-  (*     ((Field.FElem F bounds px (fst x)) * *)
-  (*        (Field.FElem F bounds (word.add px felem_offset_word) (snd x)) * R)%sep m *)
-  (*     -> ((Field.FElem Fp2 bounds px x * R)%sep m). *)
-  (* Proof. *)
-  (*   intros. destruct H, H, H, H0. *)
-  (*   eexists; eexists; split; eauto; split; eauto. *)
-  (*   apply Fp_FElem_to_Fp2_sep. auto. *)
-  (* Qed. *)
-
-
-  (* Lemma Fp2_FElem_to_Fp_R_sep : forall px x m R, *)
-  (*   ((Field.FElem Fp2 px x * R)%sep m) -> *)
-  (*   ((Field.FElem F px (fst_felem x)) * (Field.FElem F (word.add px felem_offset_word) (snd_felem x)) * R)%sep m. *)
-  (* Proof. *)
-  (*   intros. destruct H, H, H, H0. *)
-  (*   eexists; eexists; split; eauto; split; eauto. *)
-  (*   apply Fp2_FElem_to_Fp_sep. auto. *)
-  (* Qed. *)
-
   Definition expr_2nd_felem (x : Syntax.expr) := expr.op bopname.add x (expr.literal felem_offset).
 
   Context {Fp2_names : FieldNames Fp2}.
 
-  (* Definition Fp2_felem_copy : bedrock2.Syntax.func := *)
-  (*   (felem_copy (F:=Fp2), (["out"; "x"], []:list String.string, bedrock_func_body:( *)
-  (*     (* stackalloc (felem_size_in_bytes Fp2) as allocx; *) *)
-  (*     (* stackalloc (felem_size_in_bytes Fp2) as allocy; *) *)
-  (*     (* coq:(cmd.call [] (felem_copy (F:=F)) [expr.var ("allocx"); expr.var ("inx")]); *) *)
-  (*     (* coq:(cmd.call [] (felem_copy (F:=F)) [expr_2nd_felem (expr.var ("allocx")); expr_2nd_felem (expr.var ("inx"))]); *) *)
-  (*     (* coq:(cmd.call [] (felem_copy (F:=F)) [expr.var ("allocy"); expr.var ("iny")]); *) *)
-  (*     (* coq:(cmd.call [] (felem_copy (F:=F)) [expr_2nd_felem (expr.var ("allocy")); expr_2nd_felem (expr.var ("iny"))]); *) *)
-  (*     (* coq:(cmd.call [] (select_znz (F:=F)) [expr.var "out"; expr.var "c"; expr.var "allocx"; expr.var "allocy"]); *) *)
-  (*     (* coq:(cmd.call [] (select_znz (F:=F)) [expr_2nd_felem (expr.var "out"); expr.var "c"; expr_2nd_felem (expr.var "allocx"); expr_2nd_felem (expr.var "allocy")]) *) *)
-  (*     coq:(cmd.call [] (felem_copy (F:=F)) [expr.var "out"; expr.var "x"]); *)
-  (*     coq:(cmd.call [] (felem_copy (F:=F)) [expr_2nd_felem (expr.var "out"); expr_2nd_felem (expr.var "x")]) *)
-  (*   ))). *)
+  Definition Fp2_felem_copy : bedrock2.Syntax.func :=
+    (felem_copy (F:=Fp2), (["out"; "x"], []:list String.string, bedrock_func_body:(
+      stackalloc (felem_size_in_bytes Fp2) as allocx;
+      coq:(cmd.call [] (felem_copy (F:=F)) [expr.var ("allocx"); expr.var ("x")]);
+      coq:(cmd.call [] (felem_copy (F:=F)) [expr_2nd_felem (expr.var ("allocx")); expr_2nd_felem (expr.var ("x"))]);
+      (* coq:(cmd.call [] (felem_copy (F:=F)) [expr.var ("allocy"); expr.var ("iny")]); *)
+      (* coq:(cmd.call [] (felem_copy (F:=F)) [expr_2nd_felem (expr.var ("allocy")); expr_2nd_felem (expr.var ("iny"))]); *)
+      (* coq:(cmd.call [] (select_znz (F:=F)) [expr.var "out"; expr.var "c"; expr.var "allocx"; expr.var "allocy"]); *)
+      (* coq:(cmd.call [] (select_znz (F:=F)) [expr_2nd_felem (expr.var "out"); expr.var "c"; expr_2nd_felem (expr.var "allocx"); expr_2nd_felem (expr.var "allocy")]) *)
+      coq:(cmd.call [] (felem_copy (F:=F)) [expr.var "out"; expr.var "allocx"]);
+      coq:(cmd.call [] (felem_copy (F:=F)) [expr_2nd_felem (expr.var "out"); expr_2nd_felem (expr.var "allocx")])
+    ))).
+
+  Instance spec_of_Fp2_copy : spec_of (felem_copy (F:=Fp2)) := spec_of_felem_copy (F:=Fp2).
 
   Definition Fp2_select_znz : bedrock2.Syntax.func :=
     (select_znz (F:=Fp2), (["out"; "c"; "inx"; "iny"], []:list String.string, bedrock_func_body:(
@@ -304,6 +269,24 @@ Section Fp2.
 
   Instance spec_of_Fp2_add : spec_of (add (F:=Fp2)) := binop_spec bin_add (F:=Fp2).
 
+  Definition Fp2_zero : bedrock2.Syntax.func :=
+    (zero (F:=Fp2), (["out"], []:list String.string, bedrock_func_body:(
+      coq:(cmd.call [] (zero (F:=F)) [expr.var "out"]);
+      coq:(cmd.call [] (zero (F:=F)) [expr_2nd_felem (expr.var "out")])
+    ))).
+
+  Instance spec_of_F_zero : spec_of (zero (F:=F)) := nullop_spec null_zero (F:=F).
+  Instance spec_of_Fp2_zero : spec_of (zero (F:=Fp2)) := nullop_spec null_zero (F:=Fp2).
+
+  Definition Fp2_one : bedrock2.Syntax.func :=
+    (one (F:=Fp2), (["out"], []:list String.string, bedrock_func_body:(
+      coq:(cmd.call [] (one (F:=F)) [expr.var "out"]);
+      coq:(cmd.call [] (zero (F:=F)) [expr_2nd_felem (expr.var "out")])
+    ))).
+
+  Instance spec_of_F_one : spec_of (one (F:=F)) := nullop_spec null_one (F:=F).
+  Instance spec_of_Fp2_one : spec_of (one (F:=Fp2)) := nullop_spec null_one (F:=Fp2).
+
   Ltac bind_body_of_function' f := (*using alternative bind_body that does not normalize body of funcction, as it is horribly slow.*)
     let fname := open_constr:(_) in
     let fargs := open_constr:(_) in
@@ -320,62 +303,6 @@ Section Fp2.
   cbv beta delta [program_logic_goal_for]; intros;
   bind_body_of_function' f;
   lazymatch goal with |- ?s _ => cbv beta delta [s] end.
-
-  (* Lemma alloc_to_FElem_F : forall a m, Memory.anybytes a (felem_size_in_bytes F) m -> exists f, Field.FElem F a f m. *)
-  (* Proof. *)
-  (*   intros. eapply anybytes_to_array_1 in H. destruct H, H. cbv [felem_size_in_bytes] in *. *)
-  (*   eapply (Bignum.Bignum_of_bytes (felem_size_in_words F)) in H; try lia. *)
-  (*   eexists. cbv [Field.FElem]. eauto. *)
-  (* Qed. *)
-
-  (* Lemma FElem_F_to_anybytes : forall pa a m, Field.FElem F pa a m -> Memory.anybytes pa (felem_size_in_bytes F) m. *)
-  (* Proof. *)
-  (*   intros. *)
-  (*   cbv [Field.FElem] in H. *)
-  (*   eapply Bignum.Bignum_to_bytes in H. *)
-  (*   sepsimpl. *)
-  (*   eapply array_1_to_anybytes in H0. *)
-  (*   assert (felem_size_in_bytes F = (Z.of_nat *)
-  (*   (Datatypes.length *)
-  (*      (flat_map *)
-  (*         (fun w : word => *)
-  (*          LittleEndianList.le_split *)
-  (*            (Z.to_nat (Memory.bytes_per_word width))  *)
-  (*            (word.unsigned w)) a)))). *)
-  (*            { *)
-  (*              rewrite H. cbv [felem_size_in_bytes]. *)
-  (*              rewrite Nat2Z.inj_mul. *)
-  (*              rewrite Z2Nat.id; auto. *)
-  (*              cbv [Memory.bytes_per_word]. *)
-  (*              destruct word_ok; lia. *)
-  (*            } *)
-  (*   rewrite <- H1 in H0. auto. *)
-  (* Qed. *)
-
-  (* Lemma FElem_Fp2_to_anybytes : forall pa a m, Field.FElem Fp2 pa a m -> Memory.anybytes pa (felem_size_in_bytes Fp2) m. *)
-  (* Proof. *)
-  (*   intros. *)
-  (*   cbv [Field.FElem] in H. *)
-  (*   eapply Bignum.Bignum_to_bytes in H. *)
-  (*   sepsimpl. *)
-  (*   eapply array_1_to_anybytes in H0. *)
-  (*   assert (felem_size_in_bytes Fp2 = (Z.of_nat *)
-  (*   (Datatypes.length *)
-  (*      (flat_map *)
-  (*         (fun w : word => *)
-  (*          LittleEndianList.le_split *)
-  (*            (Z.to_nat (Memory.bytes_per_word width))  *)
-  (*            (word.unsigned w)) a)))). *)
-  (*            { *)
-  (*              rewrite H. cbv [felem_size_in_bytes]. *)
-  (*              rewrite Nat2Z.inj_mul. *)
-  (*              rewrite Z2Nat.id; auto. *)
-  (*              cbv [Memory.bytes_per_word]. *)
-  (*              destruct word_ok; lia. *)
-  (*            } *)
-  (*   rewrite <- H1 in H0. auto. *)
-  (* Qed. *)
-
   Ltac collect H1 H2 := let Hnew := (fresh "Hnew") in
     eassert (Hnew : id (fun m => (_ m) /\ (_ m)) _) by (cbv [id]; split; [eapply H1| eapply H2]); clear H1 H2.
 
@@ -402,6 +329,55 @@ Section Fp2.
     end.
 
   Import Syntax BinInt String List.ListNotations.
+
+  Lemma Fp2_zero_ok : program_logic_goal_for_function! Fp2_zero.
+  Proof.
+    enter' Fp2_zero.
+    clear H0.
+    cbv [nullop_spec].
+    intros. unfold1_call_goal. cbv match beta delta [call_body].
+    rewrite eqb_refl.
+    cbv match beta delta [func].
+
+    repeat straightline'.
+    straightline_call.
+    seprewrite_in Fp2_Fp_FElem H0.
+    ecancel_assumption_impl.
+    clear dependent mem0.
+
+    repeat straightline'.
+    straightline_call.
+    ecancel_assumption_impl.
+    clear dependent a0.
+
+    repeat straightline'.
+    seprewrite Fp2_Fp_FElem.
+    ecancel_assumption_impl.
+  Qed.
+
+  Lemma Fp2_one_ok : program_logic_goal_for_function! Fp2_one.
+  Proof.
+    enter' Fp2_one.
+    cbv [nullop_spec].
+    intros. unfold1_call_goal. cbv match beta delta [call_body].
+    rewrite eqb_refl.
+    cbv match beta delta [func].
+
+    repeat straightline'.
+    straightline_call.
+    seprewrite_in Fp2_Fp_FElem H1.
+    ecancel_assumption_impl.
+    clear dependent mem0.
+
+    repeat straightline'.
+    straightline_call.
+    ecancel_assumption_impl.
+    clear dependent a0.
+
+    repeat straightline'.
+    seprewrite Fp2_Fp_FElem.
+    ecancel_assumption_impl.
+  Qed.
 
   Lemma Fp2_select_znz_ok : program_logic_goal_for_function! Fp2_select_znz.
   Proof.
@@ -1276,5 +1252,120 @@ Section Fp2.
     subst out0 x4 x5.
     simpl in *.
     ecancel_assumption.
+  Qed.
+
+  Ltac update_mem :=
+    match goal with
+    | Hsplit : map.split ?comb ?mem ?stack |- _ =>
+        match goal with
+          Hold_mem : ?p mem,
+            Hstack : Memory.anybytes ?a (felem_size_in_bytes _) stack
+          |- _ =>
+            let x := fresh "x" in
+            let Hmem := fresh "Hmem" in
+            eapply FElem_from_bytes in Hstack as [x Hstack]
+            ; eassert (Hnew_mem : (p ⋆ FElem _ None a x) comb) by (eexists; eauto)
+            ; clear dependent mem
+            ; clear dependent stack
+            ; rename Hnew_mem into Hmem
+        end
+    end.
+
+   Ltac collect2 H1 H2 := let Hnew := (fresh "Hnew") in
+     eassert (Hnew : id (fun m => (_ m) /\ (_ m)) _) by (cbv [id]; repeat split; [eapply H1| eapply H2]); clear H1 H2.
+
+  Ltac sep_and_fwd :=
+    cbn [id] in *;
+    match goal with
+    | H : context[fun m => _] |- _ =>
+        let Hnew1 := fresh "Hmem" in
+        let Hnew2 := fresh "Hmem" in
+        eassert (Hnew1 : ((fun m => _) ⋆ _) _) by ecancel_assumption;
+        eapply sep_and_l_fwd in Hnew1 as [Hnew1 Hnew2];
+        clear H
+    end.
+
+  Lemma Fp2_felem_copy_ok : program_logic_goal_for_function! Fp2_felem_copy.
+  Proof.
+    enter' Fp2_felem_copy.
+    clear H0.
+    cbv [spec_of_felem_copy] in *.
+    intros. unfold1_call_goal.
+    cbv match beta delta [call_body].
+    (* unfold Fp2_felem_copy. *)
+    rewrite eqb_refl.
+    cbv match beta delta [func].
+
+    destruct H0.
+    collect2 H0 H3.
+    repeat straightline'.
+    update_mem.
+
+    straightline_call.
+    sepsimpl.
+    {
+      sep_and_fwd.
+      seprewrite_in Fp2_Fp_FElem Hmem0.
+      seprewrite_in Fp2_Fp_FElem Hmem0.
+      seprewrite_in Fp2_Fp_FElem Hmem0.
+      ecancel_assumption_impl.
+    }
+    seprewrite_in Fp2_Fp_FElem Hmem.
+    ecancel_assumption_impl.
+    clear dependent mCombined.
+
+    repeat straightline'.
+    straightline_call.
+    sepsimpl.
+    {
+      sep_and_fwd.
+      seprewrite_in Fp2_Fp_FElem Hmem.
+      seprewrite_in Fp2_Fp_FElem Hmem.
+      ecancel_assumption_impl.
+    }
+    (* seprewrite_in Fp2_Fp_FElem H4. *)
+    ecancel_assumption_impl.
+    clear dependent a1.
+
+    repeat straightline'.
+    straightline_call.
+    sepsimpl.
+    sep_and_fwd.
+    seprewrite_in Fp2_Fp_FElem Hmem.
+    seprewrite_in Fp2_Fp_FElem Hmem.
+    ecancel_assumption_impl.
+
+    sep_and_fwd.
+    seprewrite_in Fp2_Fp_FElem Hmem0.
+    ecancel_assumption_impl.
+    clear dependent a3.
+
+    repeat straightline'.
+    straightline_call.
+    sepsimpl.
+    ecancel_assumption_impl.
+    ecancel_assumption_impl.
+    clear dependent a1.
+
+    repeat straightline.
+
+    eassert (h1 : (_ ⋆ (FElem _ _ a (fst x) ⋆ FElem _ _ (word.add a _) (snd x)))%sep a3).
+    {
+      ecancel_assumption.
+    }
+    destruct h1 as [mq [mr [h1 [h2 h3]]]].
+    (* destruct h3 as [mq' [mr' [h3 [h4 h5]]]]. *)
+
+    eexists. eexists.
+    split; [|split].
+    2: eassumption.
+
+    eapply FElem_from_bytes.
+    eexists. eapply drop_bounds_FElem. eapply Fp2_Fp_FElem. eassumption.
+
+    repeat straightline'.
+
+    seprewrite Fp2_Fp_FElem.
+    ecancel_assumption_impl.
   Qed.
 End Fp2.

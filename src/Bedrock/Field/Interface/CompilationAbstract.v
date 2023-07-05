@@ -280,8 +280,10 @@ Section Compile.
   Qed.
 
   Section FromList.
+    Context {name : string}.
+
     Local Hint Extern 1 (spec_of _) => (simple refine (@spec_of_from_list _ _ _ _ _ _ _ _ _ _ _)) : typeclass_instances.
-    Local Hint Extern 1 (spec_of from_list) => exact spec_of_from_list : typeclass_instances.
+    Local Hint Extern 1 (spec_of name) => exact spec_of_from_list : typeclass_instances.
 
     Check @spec_of_from_list _ _ _ _ _ _ _ _ _ _ _.
 
@@ -290,7 +292,7 @@ Section Compile.
       forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
             R (wx : word) out out_ptr out_var,
 
-        spec_of_from_list v functions ->
+        spec_of_from_list v name functions ->
         maybe_bounded (Some loose_bounds) x ->
 
         map.get l out_var = Some out_ptr ->
@@ -312,7 +314,7 @@ Section Compile.
           Locals := l;
           Functions := functions }>
         cmd.seq
-          (cmd.call [] from_list
+          (cmd.call [] name
                     [expr.var out_var])
           k_impl
         <{ pred (nlet_eq [out_var] v k) }>.
