@@ -3,8 +3,7 @@ Points of interest:
 Everything is in src/Bedrock
 
 Specs:
-Specs/AbstractField.v - Spec for arbitrary field.
-Specs/PrimeField.v - Spec for prime-order field.
+Specs/Field.v - specs for generic fields; contains instantiantion for prime-order fields
 
 Instantiation of fields:
 Field/Synthesis/Examples/bls12_prime.v - Synthesis of Bedrock2 functions for prime-order field
