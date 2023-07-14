@@ -82,5 +82,23 @@ but these are somewhat outdated.
 All generic proofs should be imported to these files and reproved,
 instantiating primes and proving obligations.
 
+** Admitted lemmas
+
+* Bignum shift
+
+There are some true but tedious unproven subgoals
+
+* Specializing proofs
+
+Specializing proofs should be done. In particular, for scalar mult, we
+need that curve addition is associative and that the point at infinity
+is an identity. These properties are not proven, but should be proven
+in an instantiation to bls12 (or, maybe, generically)
+  
+* Specializing Fp2 proofs: 
+
+There is an admit in
+`Field/Synthesis/Examples/bls12_Fp2` which might be outdated.
+
 
 
