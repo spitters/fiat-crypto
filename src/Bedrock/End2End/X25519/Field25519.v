@@ -8,8 +8,7 @@ Require Import Crypto.Bedrock.Field.Interface.Representation.
 Require Import Crypto.Bedrock.Field.Synthesis.New.ComputedOp.
 Require Import Crypto.Bedrock.Field.Synthesis.New.UnsaturatedSolinas.
 Require Import Crypto.Bedrock.Field.Translation.Parameters.Defaults32.
-Require Import Crypto.Bedrock.Specs.AbstractField.
-Require Import Crypto.Bedrock.Specs.PrimeField.
+Require Import Crypto.Bedrock.Specs.Field.
 Import ListNotations.
 
 Existing Instances BW32.
@@ -38,15 +37,27 @@ Section Field.
   Proof. constructor; try exact _; apply prefix_name_gen_unique. Qed.
 
   (* Define Curve25519 field *)
-  Instance field_parameters : PrimeFieldParameters.
+  Instance prime_parameters : PrimeParameters.
   Proof using Type.
     let M := (eval vm_compute in (Z.to_pos (UnsaturatedSolinas.m s c))) in
     (* curve 'A' parameter *)
-    let a := constr:(F.of_Z M 486662) in
+    exact (Build_PrimeParameters M).
+  Defined.
+  Existing Instance prime_field_parameters.
+
+  Local Notation F := (F M_pos).
+  Instance curve_parameters : CurveParameters F.
+    let a := constr:(F.of_Z M_pos 486662) in
+    exact (Build_CurveParameters F a).
+  Defined.
+
+  Instance field_names : FieldNames F.
     let prefix := constr:("fe25519_"%string) in
-    eapply
-      (prime_field_parameters_prefixed
-         M ((a - F.of_Z _ 2) / F.of_Z _ 4)%F prefix).
+    exact (field_names_prefixed F prefix).
+  Defined.
+  Instance curve_names : CurveNames F.
+    let prefix := constr:("fe25519_"%string) in
+    exact (curve_names_prefixed F prefix).
   Defined.
 
   (* Call fiat-crypto pipeline on all field operations *)

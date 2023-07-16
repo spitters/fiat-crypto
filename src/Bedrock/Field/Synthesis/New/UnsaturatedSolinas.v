@@ -6,8 +6,8 @@ Require Import bedrock2.Syntax.
 Require Import Crypto.Arithmetic.Core.
 Require Import Crypto.Spec.ModularArithmetic.
 Require Import Crypto.Arithmetic.ModularArithmeticTheorems.
-Require Import Crypto.Bedrock.Specs.AbstractField.
-Require Import Crypto.Bedrock.Specs.PrimeField.
+Require Import Crypto.Bedrock.Specs.Field.
+Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.Common.Types.
 Require Import Crypto.Bedrock.Field.Common.Util.
 Require Import Crypto.Bedrock.Field.Common.Arrays.ByteBounds.
@@ -31,58 +31,61 @@ Import ListNotations API.Compilers Types.Notations.
 Class unsaturated_solinas_ops
   {width BW word mem locals env ext_spec varname_gen error}
   {parameters_sentinel : @parameters width BW word mem locals env ext_spec varname_gen error}
-  {prime_field_parameters : PrimeFieldParameters}
+  {prime_parameters : PrimeParameters}
+  {curve_parameters : CurveParameters (F M_pos)}
+  {field_names : FieldNames (F M_pos)}
+  {curve_names : CurveNames (F M_pos)}
   {n s c} : Type :=
   { mul_op :
       computed_op
-        (UnsaturatedSolinas.carry_mul n s c width) (@AbstractField.mul PrimeField.prime_field_parameters)
+        (UnsaturatedSolinas.carry_mul n s c width) mul
         list_binop_insizes list_binop_outsizes (list_binop_inlengths n);
     add_op :
       computed_op
-        (UnsaturatedSolinas.add n s c width) (@AbstractField.add PrimeField.prime_field_parameters)
+        (UnsaturatedSolinas.add n s c width) Field.add
         list_binop_insizes list_binop_outsizes (list_binop_inlengths n);
     sub_op :
       computed_op
-        (UnsaturatedSolinas.sub n s c width) (@AbstractField.sub PrimeField.prime_field_parameters)
+        (UnsaturatedSolinas.sub n s c width) Field.sub
         list_binop_insizes list_binop_outsizes (list_binop_inlengths n);
     opp_op :
       computed_op
-        (UnsaturatedSolinas.opp n s c width) (@AbstractField.opp PrimeField.prime_field_parameters)
+        (UnsaturatedSolinas.opp n s c width) Field.opp
         list_unop_insizes list_unop_outsizes (list_unop_inlengths n);
     square_op :
       computed_op
         (UnsaturatedSolinas.carry_square n s c width)
-        (@AbstractField.square PrimeField.prime_field_parameters)
+        Field.square
         list_unop_insizes list_unop_outsizes (list_unop_inlengths n);
     scmula24_op :
       computed_op
         (UnsaturatedSolinas.carry_scmul_const n s c width
                                               (F.to_Z a24))
-                                              (@AbstractField.scmula24 PrimeField.prime_field_parameters)
+                                              Field.scmula24
         list_unop_insizes list_unop_outsizes (list_unop_inlengths n);
     felem_copy_op :
       computed_op
         (UnsaturatedSolinas.copy n width) 
-        (@AbstractField.felem_copy PrimeField.prime_field_parameters)
+        Field.felem_copy
         list_unop_insizes list_unop_outsizes (list_unop_inlengths n);
     from_word_op :
       computed_op
         (UnsaturatedSolinas.encode_word n s c width)
-        (@AbstractField.from_word PrimeField.prime_field_parameters)
+        Field.from_word
         from_word_insizes from_word_outsizes from_word_inlengths;
     from_bytes_op :
       computed_op
         (UnsaturatedSolinas.from_bytes n s c width)
-        (@AbstractField.from_bytes PrimeField.prime_field_parameters)
+        Field.from_bytes
         from_bytes_insizes from_bytes_outsizes (from_bytes_inlengths
                                                   (n_bytes s));
     to_bytes_op :
       computed_op
         (UnsaturatedSolinas.to_bytes n s c width)
-        (@AbstractField.to_bytes PrimeField.prime_field_parameters)
+        Field.to_bytes
         to_bytes_insizes to_bytes_outsizes (to_bytes_inlengths n);
   }.
-Arguments unsaturated_solinas_ops {_ _ _ _ _ _ _ _ _ _ _} n.
+Arguments unsaturated_solinas_ops {_ _ _ _ _ _ _ _ _ _ _ _ _ _} n.
 
 (** We need to tell [check_args] that we are requesting these functions in order to get the relevant properties out *)
 Notation necessary_requests := ["to_bytes"; "from_bytes"]%string (only parsing).
@@ -91,10 +94,16 @@ Section UnsaturatedSolinas.
   Context
   {width BW word mem locals env ext_spec error}
   {parameters_sentinel : @parameters width BW word mem locals env ext_spec default_varname_gen error}
-  {prime_field_parameters : PrimeFieldParameters}
+  {prime_parameters : PrimeParameters}
   {ok : Types.ok}.
 
-  Local Instance field_parameters : FieldParameters := PrimeField.prime_field_parameters.
+  Local Notation F := (F M_pos).
+
+  Context {field_names : FieldNames F}
+    {curve_parameters : CurveParameters F}
+    {curve_names : CurveNames F}.
+
+  Existing Instance prime_field_parameters.
 
   Context (n : nat) (s : Z) (c : list (Z * Z))
           (M_eq : M = m s c)
@@ -109,10 +118,11 @@ Section UnsaturatedSolinas.
           (loose_bounds_tighter_than:
              list_Z_tighter_than (loose_bounds n s c)
                                  (@MaxBounds.max_bounds width n)).
- 
+
   Context (ops : unsaturated_solinas_ops n s c)
           mul_func add_func sub_func opp_func square_func
-          scmula24_func felem_copy_func from_word_func from_bytes_func to_bytes_func
+          scmula24_func
+          felem_copy_func from_word_func from_bytes_func to_bytes_func
           (mul_func_eq : mul_func = b2_func mul_op)
           (add_func_eq : add_func = b2_func add_op)
           (sub_func_eq : sub_func = b2_func sub_op)
@@ -132,7 +142,7 @@ Section UnsaturatedSolinas.
   Local Notation prime_bytes_bounds_value :=
     (map (fun v : Z => Some {| ZRange.lower := 0; ZRange.upper := v |})
          (prime_bytes_upperbound_list s)).
-  Local Instance field_representation : FieldRepresentation
+  Local Instance field_representation : FieldRepresentation F
     := field_representation
          n (n_bytes s) weight (list (option ZRange.zrange))
          (UnsaturatedSolinasHeuristics.loose_bounds n s c)
@@ -141,7 +151,7 @@ Section UnsaturatedSolinas.
          list_Z_bounded_by (fun x => x).
 
   Local Ltac specialize_correctness_hyp Hcorrect :=
-    cbv [feval feval_bytes bounded_by bytes_in_bounds AbstractField.loose_bounds
+    cbv [feval feval_bytes bounded_by bytes_in_bounds Field.loose_bounds
                field_representation Signature.field_representation
                Representation.frep Representation.eval_bytes
                Representation.eval_words
@@ -166,9 +176,9 @@ Section UnsaturatedSolinas.
       end
     end.
 
-  Lemma loose_bounds_eq : AbstractField.loose_bounds = loose_bounds n s c.
+  Lemma loose_bounds_eq : Field.loose_bounds = loose_bounds n s c.
   Proof using Type. reflexivity. Qed.
-  Lemma tight_bounds_eq : AbstractField.tight_bounds = tight_bounds n s c.
+  Lemma tight_bounds_eq : Field.tight_bounds = tight_bounds n s c.
   Proof. reflexivity. Qed.
 
   (* TODO: move to coqutil.Datatypes.List *)
@@ -272,8 +282,8 @@ Section UnsaturatedSolinas.
             let e := lazymatch goal with | |- forall res, ?e = _ -> API.Wf _ => e end in
             idtac "Warning: Falling back to manually proving pipeline well-formedness for" e;
             PipelineTactics.prove_pipeline_wf ()
-       | |- context [AbstractField.tight_bounds] => rewrite tight_bounds_eq
-       | |- context [AbstractField.loose_bounds] => rewrite loose_bounds_eq
+       | |- context [Field.tight_bounds] => rewrite tight_bounds_eq
+       | |- context [Field.loose_bounds] => rewrite loose_bounds_eq
        | _ => idtac
        end;
        lazymatch goal with
@@ -313,7 +323,7 @@ Section UnsaturatedSolinas.
     let Heq := (fresh "Heq") in
     let Hbound := (fresh "Hbound") in
       destruct Hcorrect as [Heq Hbound];
-      cbv [Fmul AbstractField.Fadd AbstractField.Fsquare AbstractField.Fopp F.opp AbstractField.Fsub]; simpl;
+      cbv [Fmul Field.Fadd Field.Fsquare Field.Fopp F.opp Field.Fsub]; simpl;
       FtoZ; erewrite map_unsigned_of_Z, MaxBounds.map_word_wrap_bounded; [|
       eapply relax_list_Z_bounded_by; [| eapply Hbound]; eauto]; simpl in Heq; rewrite Heq;
       try rewrite M_eq; pull_Zmod; eauto.
@@ -526,7 +536,7 @@ Section UnsaturatedSolinas.
       erewrite map_byte_wrap_bounded; [| eapply partition_bounded_by].
       rewrite Partition.eval_partition; [| eapply Freeze.wprops_bytes].
       rewrite mod_mod_small; [| eapply modulus_fits_in_bytes].
-      cbv [M] in M_eq. rewrite <- M_eq. rewrite <- F.of_Z_mod. auto.
+      cbv [M] in M_eq. rewrite <- M_eq. simpl. rewrite <- F.of_Z_mod. auto.
     }
     {
       intros. rewrite Hcorrect by auto. eapply partition_bounded_by.
@@ -551,16 +561,17 @@ Require Import Crypto.Bedrock.Field.Translation.Proofs.ValidComputable.Func.
 Local Open Scope string_scope.
 
 (* TODO: move somewhere common *)
-Definition prime_field_parameters_prefixed
-           M_pos a24 (prefix: string) : PrimeFieldParameters :=
-  Build_PrimeFieldParameters
-    M_pos a24
+Definition prime_field_names_prefixed prefix F :=
+
+  Build_FieldNames
+    (* M_pos a24 *)
+    F
     (prefix ++ "mul")
     (prefix ++ "add")
     (prefix ++ "sub")
     (prefix ++ "opp")
     (prefix ++ "square")
-    (prefix ++ "scmula24")
+    (* (prefix ++ "scmula24") *)
     (prefix ++ "inv")
     (prefix ++ "from_bytes")
     (prefix ++ "to_bytes")
@@ -570,6 +581,11 @@ Definition prime_field_parameters_prefixed
     (prefix ++ "from_list")
     (* (prefix ++ "from_word") *)
 .
+
+Definition curve_names_prefixed prefix F :=
+  Build_CurveNames
+    F
+    (prefix ++ "scmula24").
 
 Local Ltac begin_derive_bedrock2_func :=
   lazymatch goal with

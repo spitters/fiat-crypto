@@ -13,76 +13,78 @@ Local Open Scope string_scope. Local Open Scope Z_scope. Local Open Scope list_s
 Require Import Crypto.Bedrock.Field.FieldExtensions.QuadraticFieldExtensionsSpecs.
 Require Import Rupicola.Lib.Api.
 Require Import Crypto.Bedrock.Specs.Field.
-Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.FieldExtensions.Theory.QuadraticExtensions.
 Require Import Crypto.Bedrock.Field.Interface.Compilation2.
 Require Import Crypto.Arithmetic.UniformWeight.
 Require Import Crypto.Bedrock.Field.Translation.Parameters.Defaults64.
-
+Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_from_list_F.
 
 Section bls12_Fp2.
 
-    Existing Instances Defaults64.default_parameters Defaults64.default_parameters_ok.
+    (* Existing Instances Defaults64.default_parameters Defaults64.default_parameters_ok. *)
 
     Local Notation F := (F M_pos).
 
-    Instance prime_parameters : PrimeParameters := prime_parameters.
-    Instance field_names : FieldNames := field_names.
+    Existing Instance bls12_prime_parameters.
+    Existing Instance bls12_field_names.
+    Existing Instance bls12_field_parameters.
+    (* Instance prime_parameters : PrimeParameters := bls12_prime_parameters. *)
+    (* Instance field_names : FieldNames F := bls12_field_names. *)
 
-    Instance field_parameters : Field.FieldParameters F.
-    Proof.
-        exact bls12_prime.field_parameters.
-    Defined.
+
+    (* Instance field_parameters : FieldParameters F := bls12_field_parameters. *)
 
     (* Instance field_parameters : Field.FieldParameters. *)
     (* Proof. *)
     (*     exact (@Field.prime_field_parameters prime_field_parameters). *)
     (* Defined. *)
 
-    Instance field_representation : @Field.FieldRepresentation F field_parameters _ _ _ _.
-    Proof.
-        exact (WordByWordMontgomery.field_representation m).
-    Defined.
+    Existing Instance WordByWordMontgomery.field_representation.
+
+    (* Instance field_representation : @Field.FieldRepresentation F field_parameters _ _ _ _. *)
+    (* Proof. *)
+    (*     exact (WordByWordMontgomery.field_representation). *)
+    (* Defined. *)
 
     Check @ladderstep_body. (*Give Proper Name!!!!!!!!*)
 
-    Definition bls12_G1_add := ladderstep_body.
+    Definition bls12_G1_add := ladderstep_body "bls12_three_b".
     (*make Field.field_representation from rep in WordByWordMontgomery.*)
 
-    Definition mpos : positive.
-    Proof.
-        destruct bls12_Fp2.prime_parameters. eapply M_pos.
-    Defined.
+    (* Definition mpos : positive.  *)
+    (* Proof. *)
+    (*     destruct bls12_Fp2.prime_parameters. eapply M_pos. *)
+    (* Defined. *)
 
     (*hard-code curve-defining parameter b*)
-    Definition b := 4.
-    Definition three_b := 12.
-    Definition uw := (uweight 64).
-    Definition n := felem_size_in_words.
-    Definition three_b_list := Partition.partition uw n three_b.
-    Definition word := BasicC64Semantics.word.
-    Definition three_b_mont := @WordByWordMontgomery.to_montgomerymod 64 n m (@m' _ 64) three_b_list.
-    Definition three_b_words := List.map (@word.of_Z 64 word) three_b_mont.
+    (* Definition b := 4. *)
+    (* Definition three_b := 12. *)
+    (* Definition uw := (uweight 64). *)
+    (* Definition n := felem_size_in_words. *)
+    (* Definition three_b_list := Partition.partition uw n three_b. *)
+    (* Definition word := BasicC64Semantics.word. *)
+    (* Definition three_b_mont := @WordByWordMontgomery.to_montgomerymod 64 n M (@m' _ 64) three_b_list. *)
+    (* Definition three_b_words := List.map (@word.of_Z 64 word) three_b_mont. *)
 
-    Instance spec_of_bls12_add : spec_of (fst bls12_add).
-    Proof. exact spec_of_add. Defined.
+    Instance spec_of_bls12_add : spec_of (fst bls12_add) := spec_of_add.
+    (* Proof. exact spec_of_add. Defined. *)
         (* exact (@spec_of_add _ _ _ _ _ _ field_parameters (WordByWordMontgomery.field_representation m)).
     Defined. *)
 
-    Instance spec_of_bls12_sub : spec_of (fst bls12_sub).
-    Proof. exact spec_of_sub. Defined.
+    Instance spec_of_bls12_sub : spec_of (fst bls12_sub) := spec_of_sub.
+    (* Proof. exact spec_of_sub. Defined. *)
         (* exact (@spec_of_sub _ _ _ _ _ _ field_parameters (WordByWordMontgomery.field_representation m)).
     Defined. *)
 
-    Instance spec_of_bls12_mul : spec_of (fst bls12_mul).
-    Proof. exact spec_of_mul. Defined.
+    Instance spec_of_bls12_mul : spec_of (fst bls12_mul) := spec_of_mul.
+    (* Proof. exact spec_of_mul. Defined. *)
         (* exact (@spec_of_mul _ _ _ _ _ _ field_parameters (WordByWordMontgomery.field_representation m)).
     Defined. *)
 
     (* Instance spec_of_bls12_square : spec_of (fst bls12_square).
     Proof. exact spec_of_square. Defined. *)
 
-    Instance spec_of_G1_add : spec_of "ladderstep".
+    Instance spec_of_G1_add : spec_of "curve_add".
     Proof.
         exact (spec_of_ladderstep three_b_words).
     Defined.
@@ -92,10 +94,7 @@ Section bls12_Fp2.
         exact (ModularArithmetic.F.of_Z M_pos three_b).
     Defined.
 
-    Instance spec_of_from_list : spec_of from_list.
-    Proof.
-        exact (spec_of_from_list three_b_F).
-    Defined.
+    Instance spec_of_three_b : spec_of "bls12_three_b" := spec_of_from_list three_b_F "bls12_three_b".
 
     Lemma bls12_G1_ok : program_logic_goal_for_function! bls12_G1_add. (*Why does this take 7 minutes??!?!?*)
     pose proof ladderstep_correct. cbv [spec_of_G1_add].
@@ -110,78 +109,31 @@ Section bls12_Fp2.
             cbv [__rupicola_program_marker]. auto.
         }
         2: {
-            cbv [CurveAdd.spec_of_from_list]. cbv [spec_of_from_list] in H0.
+            cbv [CurveAdd.spec_of_three_b spec_of_from_list]. cbv [spec_of_three_b spec_of_from_list] in H0.
             assert (three_b_F = feval three_b_words).
             {
                 cbv [Representation.eval_words eval_trans three_b_F].
-                Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_from_list_F.
                 pose proof (three_b_mont_mod).
-                assert (three_b_words = bls12_Fp2.three_b_words).
-                {
-                    cbv [bls12_Fp2.three_b_words three_b_words]. eapply f_equal.
-                    cbv [bls12_Fp2.three_b_mont three_b_mont bls12_Fp2.three_b_list].
-                    cbv. reflexivity.
-                }
-                rewrite <- H35.
-                (* unfold feval. *)
                 cbv [feval].
-                (* rewrite H34. *)
                 unfold eval_trans.
                 simpl.
                 apply f_equal.
-                (* cbv [word] in H34. *)
-                assert (@M bls12_prime.prime_parameters = m).
-                {
-                    simpl. cbv [M]. cbv [m]. cbv [M_pos]. simpl. reflexivity.
-                }
-                rewrite H36 in H34.
-                unfold bls12_Fp2.three_b.
+                unfold three_b.
                 unfold eval_trans.
                 simpl in H34.
                 rewrite H34.
                 cbv [three_b_list]. rewrite eval_partition; [| eapply uwprops].
-                2 : {
-                    clear H H1 H2 H4 H6 H7 H9 H10 H11 H12 H13 H14 H15 H16 H17 H18 H19 H20 H21 H22 H23 H24 H25 H26 H27 H28 H29 H30 H31 H32 H33.
-                    clear H34 H35 H36. lia.
-                }
-                clear H H1 H2 H4 H6 H7 H9 H10 H11 H12 H13 H14 H15 H16 H17 H18 H19 H20 H21 H22 H23 H24 H25 H26 H27 H28 H29 H30 H31 H32 H33.
-                cbv [three_b bls12_Fp2.three_b]. rewrite Zmod_small. 1: reflexivity. cbv. intuition subst. easy.
+                2: reflexivity.
+                cbv [three_b]. rewrite Zmod_small. 1: reflexivity. cbv. intuition subst. easy.
             }
-            rewrite H34 in H0.
-            eapply H0.
+            rewrite <- H34.
+            apply H0.
         }
-        clear H H1 H2 H4 H6 H7 H9 H10 H11 H12 H13 H14 H15 H16 H17 H18 H19 H20 H21 H22 H23 H24 H25 H26 H27 H28 H29 H30 H31 H32 H33.
-        cbv [CompilationAbstract.maybe_bounded bounded_by loose_bounds bls12_Fp2.three_b_words].
-        (* eassert (my_field_representation = _). *)
-        (* { *)
-        (*     cbv [my_field_representation]. eauto.  *)
-        (* } *)
-        (* rewrite H. *)
-        eassert (bls12_Fp2.field_representation = _).
-        {
-            cbv [bls12_Fp2.field_representation]. auto.
-        }
-        cbv [bls12_Fp2.field_representation]. remember (List.map word.of_Z bls12_Fp2.three_b_mont) as eyy.
+        cbv [maybe_bounded bounded_by loose_bounds three_b_words].
+        remember (List.map word.of_Z three_b_mont) as eyy.
         simpl. subst eyy.
 
 
-        assert (three_b_mont = bls12_Fp2.three_b_mont).
-        {
-            pose proof (three_b_mont_eq). rewrite H1.
-            cbv [bls12_Fp2.three_b_mont bls12_Fp2.three_b_list bls12_Fp2.three_b].
-            cbv [three_b_list three_b].
-            assert (n = bls12_Fp2.n).
-            {
-                cbv [bls12_Fp2.n]. cbv [n]. reflexivity.
-            }
-            rewrite <- H2.
-            assert (bls12_Fp2.uw = uw).
-            {
-                cbv [bls12_Fp2.uw]. cbv [uw]. reflexivity.
-            }
-            rewrite H4. reflexivity.
-        }
-        rewrite <- H1.
         rewrite unsigned_of_Z_valid.
 
         2: cbv [n felem_size_in_words]; simpl.

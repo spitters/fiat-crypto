@@ -9,7 +9,7 @@ Require Import compiler.MMIO.
 Require Import coqutil.Word.Bitwidth32.
 Require Import Crypto.Arithmetic.PrimeFieldTheorems.
 Require Import Crypto.Bedrock.End2End.X25519.Field25519.
-Require Import Crypto.Bedrock.Field.Interface.Compilation2.
+Require Import Crypto.Bedrock.Field.Interface.AbstractCompilation.
 Require Import Crypto.Bedrock.Field.Synthesis.New.UnsaturatedSolinas.
 Require Import Crypto.Bedrock.Group.AdditionChains.
 Require Import Crypto.Bedrock.Group.ScalarMult.LadderStep.

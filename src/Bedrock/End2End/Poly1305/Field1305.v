@@ -6,8 +6,7 @@ Require Import Crypto.Bedrock.Field.Interface.Representation.
 Require Import Crypto.Bedrock.Field.Synthesis.New.ComputedOp.
 Require Import Crypto.Bedrock.Field.Synthesis.New.UnsaturatedSolinas.
 Require Import Crypto.Bedrock.Field.Translation.Parameters.Defaults32.
-Require Import Crypto.Bedrock.Specs.AbstractField.
-Require Import Crypto.Bedrock.Specs.PrimeField.
+Require Import Crypto.Bedrock.Specs.Field.
 Import ListNotations.
 
 (* Parameters for Poly1305 field. *)
@@ -22,16 +21,27 @@ Section Field.
   Definition prefix : string := "fe1305_"%string.
 
   (* Define Poly1305 field *)
-  Instance field_parameters : PrimeFieldParameters.
+  Instance prime_parameters : PrimeParameters.
   Proof using Type.
     let M := (eval vm_compute in (Z.to_pos (UnsaturatedSolinas.m s c))) in
-    (* dummy 'A' parameter since we don't care about scmula24 here *)
-    let a := constr:(F.of_Z M 2) in
-    let prefix := constr:("fe1305_"%string) in
-    eapply
-      (prime_field_parameters_prefixed
-         M ((a - F.of_Z _ 2) / F.of_Z _ 4)%F prefix).
+    (* let a := constr:(F.of_Z M 2) in *)
+    exact (Build_PrimeParameters M).
   Defined.
+
+  Existing Instance prime_field_parameters.
+
+  Local Notation F := (F M_pos).
+
+  Let prefix := "fe1305_"%string.
+
+  Instance field_names : FieldNames F := field_names_prefixed F prefix.
+  Instance field_representation : FieldRepresentation F := field_representation n s c.
+
+  Instance curve_parameters : CurveParameters F :=
+    (* dummy 'A' parameter since we don't care about scmula24 here *)
+    Build_CurveParameters F (F.of_Z M_pos 2)%F.
+
+  Instance curve_names : CurveNames F := curve_names_prefixed F prefix.
 
   (* Call fiat-crypto pipeline on all field operations *)
   Instance fe1305_ops : unsaturated_solinas_ops n s c.
@@ -43,7 +53,7 @@ Section Field.
   Derive fe1305_from_bytes
          SuchThat (forall functions,
                       spec_of_from_bytes
-                        (field_representation:=field_representation n s c)
+                        (field_representation:=field_representation)
                         (fe1305_from_bytes :: functions))
          As fe1305_from_bytes_correct.
   Proof. Time derive_bedrock2_func from_bytes_op. Qed.
@@ -51,7 +61,7 @@ Section Field.
   Derive fe1305_to_bytes
          SuchThat (forall functions,
                       spec_of_to_bytes
-                        (field_representation:=field_representation n s c)
+                        (field_representation:=field_representation)
                         (fe1305_to_bytes :: functions))
          As fe1305_to_bytes_correct.
   Proof. Time derive_bedrock2_func to_bytes_op. Qed.
@@ -59,7 +69,7 @@ Section Field.
   Derive fe1305_mul
          SuchThat (forall functions,
                       spec_of_BinOp bin_mul
-                        (field_representation:=field_representation n s c)
+                        (field_representation:=field_representation)
                         (fe1305_mul :: functions))
          As fe1305_mul_correct.
   Proof. Time derive_bedrock2_func mul_op. Qed.
@@ -67,7 +77,7 @@ Section Field.
   Derive fe1305_square
          SuchThat (forall functions,
                       spec_of_UnOp un_square
-                        (field_representation:=field_representation n s c)
+                        (field_representation:=field_representation)
                         (fe1305_square :: functions))
          As fe1305_square_correct.
   Proof. Time derive_bedrock2_func square_op. Qed.
@@ -75,7 +85,7 @@ Section Field.
   Derive fe1305_add
          SuchThat (forall functions,
                       spec_of_BinOp bin_add
-                        (field_representation:=field_representation n s c)
+                        (field_representation:=field_representation)
                         (fe1305_add :: functions))
          As fe1305_add_correct.
   Proof. Time derive_bedrock2_func add_op. Qed.
@@ -83,7 +93,7 @@ Section Field.
   Derive fe1305_sub
          SuchThat (forall functions,
                       spec_of_BinOp bin_sub
-                        (field_representation:=field_representation n s c)
+                        (field_representation:=field_representation)
                         (fe1305_sub :: functions))
          As fe1305_sub_correct.
   Proof. Time derive_bedrock2_func sub_op. Qed.
