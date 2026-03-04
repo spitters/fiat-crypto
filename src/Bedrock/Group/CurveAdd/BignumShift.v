@@ -76,7 +76,7 @@ Section generic.
           simpl.
           rewrite !Positional.eval_cons, uweight_eval_shift.
           replace ((List.map _ _) ++ _) with (bignum_shiftr (length l0) (r :: l)).
-          * rewrite <- Heql0. rewrite <- IHl; auto.
+          { rewrite <- Heql0. rewrite <- IHl; auto.
             rewrite uweight_0, ListUtil.nth_default_cons_S, uweight_eq_alt'.
             rewrite !ListUtil.nth_default_cons, !Z.mul_1_l, !Z.mul_1_r.
             rewrite !word.unsigned_add.
@@ -87,7 +87,82 @@ Section generic.
             replace (2 ^ width) with (2 * 2 ^ (width - 1)) at 1.
             rewrite <- Z.mul_assoc.
             rewrite Z.mul_comm.
-            Admitted.
+            (* G2: 2 * 2^(w-1) = 2^w *)
+            2: { rewrite <- Z.pow_succ_r by (destruct width_cases; lia).
+                 f_equal. lia. }
+            (* G3: word.unsigned (word.of_Z (width - 1)) < width *)
+            2: { rewrite word.unsigned_of_Z. unfold word.wrap.
+                 destruct width_cases as [Hw|Hw]; rewrite Hw;
+                 rewrite Z.mod_small by lia; lia. }
+            (* G4: word.unsigned (word.of_Z 1) < width *)
+            2: { rewrite word.unsigned_of_Z_1. destruct width_cases; lia. }
+            (* G1: main arithmetic *)
+            rewrite Z.add_comm, Z.div_add_l by lia.
+            rewrite Z.shiftr_div_pow2 by lia. change (2 ^ 1) with 2.
+            assert (Hwm1: word.unsigned (@word.of_Z _ word (width - 1)) = width - 1).
+            { rewrite word.unsigned_of_Z. unfold word.wrap.
+              apply Z.mod_small. destruct width_cases as [Hw|Hw]; rewrite Hw; lia. }
+            rewrite Hwm1.
+            rewrite Z.shiftl_mul_pow2 by (destruct width_cases; lia).
+            set (ua := word.unsigned a).
+            set (b := word.unsigned (nth_default (word.of_Z 0) l0 0)).
+            set (E := eval (Datatypes.length l0) l0).
+            pose proof (word.unsigned_range a) as [Hau0 Hau1]. fold ua in Hau0, Hau1.
+            assert (Hb : 0 <= b < 2 ^ width) by (subst b; apply word.unsigned_range).
+            assert (Hwp : 1 < width) by (destruct width_cases; lia).
+            assert (Hp1 : 0 < 2 ^ (width - 1)) by (apply Z.pow_pos_nonneg; lia).
+            assert (Hp2 : 2 * 2 ^ (width - 1) = 2 ^ width).
+            { rewrite <- Z.pow_succ_r by lia. f_equal. lia. }
+            assert (Hwb: word.wrap (b * 2 ^ (width - 1)) = (b mod 2) * 2 ^ (width - 1)).
+            { unfold word.wrap.
+              rewrite (Z.div_mod b 2) at 1 by lia.
+              replace ((2 * (b / 2) + b mod 2) * 2 ^ (width - 1))
+                with (b mod 2 * 2 ^ (width - 1) + b / 2 * (2 * 2 ^ (width - 1))) by ring.
+              rewrite Hp2, Z_mod_plus_full.
+              apply Z.mod_small.
+              assert (0 <= b mod 2 < 2) by (apply Z.mod_pos_bound; lia).
+              split; [nia|nia]. }
+            rewrite Hwb.
+            assert (Hwa: word.wrap (ua / 2 + b mod 2 * 2 ^ (width - 1)) =
+                         ua / 2 + b mod 2 * 2 ^ (width - 1)).
+            { unfold word.wrap. apply Z.mod_small.
+              assert (0 <= b mod 2 < 2) by (apply Z.mod_pos_bound; lia).
+              split; [apply Z.add_nonneg_nonneg; [apply Z.div_pos|]; nia|].
+              assert (ua / 2 < 2 ^ (width - 1)).
+              { apply Z.div_lt_upper_bound; nia. }
+              nia. }
+            rewrite Hwa.
+            assert (HbE: b mod 2 = E mod 2).
+            { subst b E. rewrite Heql0.
+              cbn [List.map Datatypes.length nth_default].
+              rewrite Positional.eval_cons by (rewrite ?map_length; reflexivity).
+              rewrite uweight_eval_shift;
+                [| destruct width_cases; lia | rewrite ?map_length; reflexivity].
+              rewrite uweight_0, uweight_1, Z.mul_1_l.
+              rewrite Zplus_mod.
+              replace (2 ^ width) with (2 * 2 ^ (width - 1))
+                by (rewrite <- Z.pow_succ_r by (destruct width_cases; lia); f_equal; lia).
+              rewrite <- Z.mul_assoc, (Z.mul_comm 2), Z_mod_mult, Z.add_0_r, Zmod_mod.
+              reflexivity. }
+            rewrite HbE.
+            assert (HEM: E = 2 * (E / 2) + E mod 2) by (apply Z.div_mod; lia).
+            nia. }
+          { (* replace sub-goal *)
+            subst l0. unfold bignum_shiftr.
+            cbn [Datatypes.length Nat.sub].
+            rewrite !Nat.sub_0_r.
+            rewrite <- seq_shift, map_map.
+            f_equal. }
+          (* side conditions from rewrites on line 77 *)
+          all: try (destruct width_cases; lia).
+          all: try (rewrite ?map_app, ?app_length, ?map_length, ?seq_length;
+                    try subst l0; simpl; lia).
+          all: try (rewrite ?map_length; reflexivity).
+        (* side conditions from rewrite on line 62 *)
+        + destruct width_cases; lia.
+        + rewrite map_length; reflexivity.
+        + rewrite map_length; reflexivity.
+    Qed.
 
 End generic.
 
@@ -117,7 +192,7 @@ Section impl.
   Local Notation store := (cmd.store access_size.word).
   Local Notation lit := (expr.literal).
   Local Notation sr1 x := (expr.op bopname.sru x (expr.literal 1)).
-  Local Notation sl7 x := (expr.op bopname.slu x (expr.literal 63)).
+  Local Notation sl7 x := (expr.op bopname.slu x (expr.literal (width - 1))).
   Local Notation add_words x y := (expr.op bopname.add x y).
   (* Local Notation add8 x := (expr.op bopname.add (expr.var x) (expr.literal 8)). *)
   Local Notation addany n x := (expr.op bopname.add (expr.var x) (expr.literal n)).
@@ -242,6 +317,37 @@ Section impl.
     Local Infix "*w" := word.mul (at level 70).
     Local Infix ">>w" := word.sru (at level 60).
     Local Infix "<<w" := word.slu (at level 60).
+
+    Lemma width_pos : 1 < width.
+    Proof. destruct width_cases; lia. Qed.
+
+    (* (w & 1) << (width-1) = w << (width-1) as words:
+       only bit 0 survives a left shift by width-1. *)
+    Lemma slu_and1_width_minus_1 (w : @word.rep width word) :
+      word.slu (word.and w (word.of_Z 1)) (word.of_Z (width - 1)) =
+      word.slu w (word.of_Z (width - 1)).
+    Proof.
+      apply word.unsigned_inj.
+      pose proof (word.unsigned_range w) as Hwr.
+      assert (Hwp: 1 < width) by (destruct width_cases; lia).
+      rewrite !word.unsigned_slu_shamtZ by lia.
+      unfold word.wrap.
+      rewrite word.unsigned_and_nowrap, word.unsigned_of_Z_1.
+      rewrite !Z.shiftl_mul_pow2 by lia.
+      (* Z.land (unsigned w) 1 * 2^(w-1) mod 2^w = unsigned w * 2^(w-1) mod 2^w *)
+      replace (Z.land (word.unsigned w) 1) with (word.unsigned w mod 2).
+      2: { replace 1 with (Z.ones 1) by reflexivity.
+           rewrite Z.land_ones by lia. reflexivity. }
+      replace (2 ^ width) with (2 * 2 ^ (width - 1))
+        by (rewrite <- Z.pow_succ_r by lia; f_equal; lia).
+      assert (Hdm: word.unsigned w = 2 * (word.unsigned w / 2) + word.unsigned w mod 2)
+        by (apply Z.div_mod; lia).
+      rewrite Hdm at 2.
+      replace ((2 * (word.unsigned w / 2) + word.unsigned w mod 2) * 2 ^ (width - 1))
+        with (word.unsigned w mod 2 * 2 ^ (width - 1) +
+              word.unsigned w / 2 * (2 * 2 ^ (width - 1))) by ring.
+      rewrite Z_mod_plus_full. reflexivity.
+    Qed.
 
     Lemma cmov_ok : program_logic_goal_for_function! shift_scalar.
     Proof.
@@ -368,11 +474,25 @@ Section impl.
           ecancel_assumption.
           }
 
-          (* this is true but annoying to prove, see the previous section for a generic statement *)
-          admit.
-        (* this is true but annoying to prove, see the previous section for a generic statement *)
-        admit.
-        Admitted.
+          (* Goal 1: eval 4 x / 2 = eval 4 x' *)
+          rewrite !slu_and1_width_minus_1.
+          rewrite (eval_shift (scalar_words:=4) [r; r0; r1; r2] 4 eq_refl).
+          reflexivity.
+
+        (* Goal 2: eval 4 x mod 2 = unsigned (and r (of_Z 1)) *)
+        rewrite word.unsigned_and_nowrap, word.unsigned_of_Z_1.
+        replace (Z.land (word.unsigned r) 1) with (word.unsigned r mod 2).
+        2: { replace 1 with (Z.ones 1) by reflexivity.
+             rewrite Z.land_ones by lia. reflexivity. }
+        cbn [List.map].
+        rewrite Positional.eval_cons by reflexivity.
+        rewrite uweight_eval_shift; [| destruct width_cases; lia | reflexivity].
+        rewrite uweight_0, uweight_1, Z.mul_1_l.
+        replace (2 ^ width) with (2 * 2 ^ (width - 1))
+          by (rewrite <- Z.pow_succ_r by (destruct width_cases; lia); f_equal; lia).
+        rewrite <- Z.mul_assoc, (Z.mul_comm 2).
+        rewrite Z_mod_plus_full. reflexivity.
+    Qed.
 
 
 End impl.
