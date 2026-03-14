@@ -2,11 +2,23 @@ COQC := /home/au528660/.opam/rocq-9/bin/coqc
 ROCQPATH := /home/au528660/.opam/rocq-9/lib/coq/user-contrib
 COQFLAGS := -Q src Crypto
 
+# Standard compilation
 %.vo: %.v
 	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) $<
 
+# .vos compilation: skip opaque proof bodies, much faster + less memory.
+# Dependencies loaded from .vos don't carry proof terms in memory.
+%.vos: %.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) -vos $<
+
+# .vok compilation: full proof checking but loads .vos for dependencies.
+# Use after .vos to verify proofs without loading all dependency proofs.
+%.vok: %.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) -vok $<
+
 # Shortcut targets for BLS12 files
 .PHONY: quad quad-mul quad-specs three_b felem_copy fp2 g1 g1_alt g2 bignum_shift curve_add cubic-specs cubic wp-tactics dodecic-specs dodecic pairing-ops
+.PHONY: dodecic-mul dodecic-sqr dodecic-inv dodecic-all dodecic-all-vos
 
 quad:
 	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/QuadraticFieldExtensions.v
@@ -66,6 +78,13 @@ dodecic-inv:
 	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsInv.v
 
 dodecic-all: dodecic dodecic-mul dodecic-sqr dodecic-inv
+
+# Build all dodecic .vos files (fast, skips opaque proofs)
+dodecic-all-vos:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) -vos src/Bedrock/Field/FieldExtensions/DodecicFieldExtensions.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) -vos src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsMul.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) -vos src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsSqr.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) -vos src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsInv.v
 
 pairing-ops:
 	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/PairingFieldOps.v

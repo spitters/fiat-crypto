@@ -25,6 +25,41 @@ ROCQPATH=/home/au528660/.opam/rocq-9/lib/coq/user-contrib \
 - CurveAdd.v compilation uses ~2GB RAM, completes in <1 minute
 - Use `-j1` on 14GB systems
 
+### Memory Optimization (for large Fp12 proofs)
+
+The Fp12 mul/sqr/inv proofs use ~2-3GB each. To avoid OOM:
+
+```bash
+# 1. Use .vos to skip opaque proof bodies when building dependencies (much less RAM):
+make -f Makefile.bls12 dodecic-all-vos
+
+# 2. Or build each proof file individually:
+make -f Makefile.bls12 dodecic-mul   # Fp12_mul_ok
+make -f Makefile.bls12 dodecic-sqr   # Fp12_sqr_ok
+make -f Makefile.bls12 dodecic-inv   # Fp12_inv_ok
+
+# 3. Increase OCaml heap/stack limits:
+OCAMLRUNPARAM="l=8G,s=4M" make -f Makefile.bls12 dodecic-sqr
+
+# 4. Use -vos for dependencies, -vok for the file under test:
+coqc -vos <dependency>.v   # fast, skips proofs
+coqc -vok <file>.v         # checks proofs, loads .vos for deps
+```
+
+### File Structure (Fp12 proofs)
+
+The Fp12 WP proofs are split into separate compilation units to avoid OOM:
+
+```
+DodecicFieldExtensions.v       # base: infrastructure + simple proofs + definitions
+DodecicFieldExtensionsMul.v    # Fp12_mul_ok proof (~1000 lines)
+DodecicFieldExtensionsSqr.v    # Fp12_sqr_ok proof (~850 lines)
+DodecicFieldExtensionsInv.v    # Fp12_inv_ok proof (~850 lines)
+```
+
+Each proof file duplicates the Section context (Rocq Sections can't span files).
+Zero `Admitted` across all files.
+
 ---
 
 ## Current Status (2026-03-12, updated)
