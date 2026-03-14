@@ -2131,9 +2131,8 @@ Section Fp12.
   Instance spec_of_Fp12_mul : spec_of (AbstractField.mul (F:=Fp12)) :=
     AbstractField.binop_spec AbstractField.bin_mul (F:=Fp12).
 
-  Lemma Fp12_mul_ok : program_logic_goal_for_function! Fp12_mul.
-  Proof. Admitted. (* Proved in Fp12MulProofs.v *)
-  (* Original proof:
+  (* Fp12_mul_ok is proved in DodecicFieldExtensionsMul.v *)
+  (* Proof:
     cbv beta delta [program_logic_goal_for].
     intros functions EnvContains HFcopy1 HFcopy2
       HFmul1 HFmul2 HFadd1 HFadd2 HFmul3 HFmulv HFadd3 HFsub1 HFsub2.
@@ -2689,9 +2688,8 @@ Section Fp12.
   Instance spec_of_Fp12_sqr : spec_of (AbstractField.square (F:=Fp12)) :=
     AbstractField.unop_spec AbstractField.un_square (F:=Fp12).
 
-  Lemma Fp12_sqr_ok : program_logic_goal_for_function! Fp12_sqr.
-  Proof. Admitted. (* Proved in Fp12MulProofs.v *)
-  (* Original proof:
+  (* Fp12_sqr_ok is proved in DodecicFieldExtensionsSqr.v *)
+  (* Proof:
     cbv beta delta [program_logic_goal_for].
     intros functions EnvContains HFcopy HFsqr1 HFsqr2 HFmul HFmulv HFadd1 HFadd2.
     unfold spec_of_Fp12_sqr, AbstractField.unop_spec.
@@ -3066,9 +3064,8 @@ Section Fp12.
   Instance spec_of_Fp12_inv : spec_of (AbstractField.inv (F:=Fp12)) :=
     AbstractField.unop_spec AbstractField.un_inv (F:=Fp12).
 
-  Lemma Fp12_inv_ok : program_logic_goal_for_function! Fp12_inv.
-  Proof. Admitted. (* Proved in Fp12MulProofs.v *)
-  (* Original proof:
+  (* Fp12_inv_ok is proved in DodecicFieldExtensionsInv.v *)
+  (* Proof:
     cbv beta delta [program_logic_goal_for].
     intros functions EnvContains HFcopy HFsqr1 HFsqr2 HFmbv HFsub HFinv6 HFmul1 HFmul2 HFopp.
     unfold spec_of_Fp12_inv, AbstractField.unop_spec.

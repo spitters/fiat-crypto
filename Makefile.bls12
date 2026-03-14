@@ -56,5 +56,16 @@ dodecic-specs:
 dodecic:
 	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/DodecicFieldExtensions.v
 
+dodecic-mul:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsMul.v
+
+dodecic-sqr:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsSqr.v
+
+dodecic-inv:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsInv.v
+
+dodecic-all: dodecic dodecic-mul dodecic-sqr dodecic-inv
+
 pairing-ops:
 	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/PairingFieldOps.v
