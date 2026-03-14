@@ -17,8 +17,8 @@ Section Compile.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
   Context {prime_field_parameters : PrimeFieldParameters}.
 
-  Local Instance field_parameters : FieldParameters := PrimeField.prime_field_parameters.
-  
+  Local Instance field_parameters : FieldParameters (F M_pos) := PrimeField.prime_field_parameters.
+
   Context {field_representation : FieldRepresentation}.
 
   (* TODO: uses removed notation.

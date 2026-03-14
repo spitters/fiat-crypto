@@ -221,12 +221,10 @@ Section impl.
   Local Notation bytes := (Memory.bytes_per_word width).
 
     Definition shift_scalar : bedrock2.Syntax.func :=
-        ("shift_scalar", (["c2"; "scalar"], []:list String.string, bedrock_func_body:(
+        (["c2"; "scalar"], []:list String.string, bedrock_func_body:(
             stackalloc bytes as carry;
 
             coq:( store (expr.var "c2") (and (get (expr.var "scalar")) (lit 1)));
-
-
             coq:( store (expr.var "carry")
                     (and (get (addany bytes "scalar")) (lit 1)));
             coq:( store (expr.var "carry")
@@ -249,7 +247,7 @@ Section impl.
                     (add_words (sr1 (get (addany (2 * bytes) "scalar"))) (get (expr.var "carry"))));
 
             coq:( store (addany (3 * bytes) "scalar")
-                    (sr1 (get (addany (3 * bytes) "scalar"))))))).
+                    (sr1 (get (addany (3 * bytes) "scalar")))))).
 
         (* From bedrock2 Require Import ToCString Bytedump. *)
         (* Definition c_mod := (c_module (shift_scalar :: nil)). *)
@@ -278,10 +276,12 @@ Section impl.
           eapply (Bignum.Bignum_of_bytes felem_size_in_words) in H; try lia.
           eexists. cbv [Field.FElem]. eauto.
         Qed. *)
-
-
     Opaque Memory.bytes_per_word.
     Opaque Z.mul.
+    Add Ring __wring: (@word.ring_theory width word word_ok)
+      (preprocess [autorewrite with rew_word_morphism],
+       morphism (@word.ring_morph width word word_ok),
+       constants [Properties.word_cst]).
 
     Ltac update_mem :=
       match goal with
@@ -351,148 +351,95 @@ Section impl.
 
     Lemma cmov_ok : program_logic_goal_for_function! shift_scalar.
     Proof.
-      enter shift_scalar.
-      eexists. split.
-      cbv [map.of_list_zip]; simpl; eauto.
-      cbv [Bignum.Bignum] in *.
-      sepsimpl.
-
-      do 5 (destruct x; try discriminate).
-      repeat seprewrite_in (array_cons (T:=@word.rep width word) (word:=word) (mem:=mem)) H0.
-      repeat seprewrite_in (array_nil (T:=@word.rep width word) (word:=word) (mem:=mem)) H2.
-
-      cbn -[scalar] in H0.
-
-      (* Ltac straightline' := *)
-      (*   match goal with *)
-      (*   | |- store Syntax.access_size.word _ _ _ _ => *)
-      (*       eapply store_word_of_sep_2 *)
-      (*   | _ => straightline *)
-      (*   end. *)
-
-      assert (temp : forall a b, a + b * a = Z.succ b * a) by lia.
-      assert (temp2 : forall a b, b * a + a = Z.succ b * a) by lia.
+      cbv [program_logic_goal_for].
+      cbv beta match delta [shift_scalar].
+      unfold spec_of_shift_scalar6, spec_of_shift_scalar.
+      intros.
+      eapply WeakestPreconditionProperties.start_func; [exact EnvContains | clear EnvContains].
+      cbv match beta delta [WeakestPrecondition.func].
+      (* Step through cmd.seq and stackalloc manually to get anybytes *)
+      repeat straightline.
+      (* After straightline_stackalloc, we have byte array for stack.
+         Decompose Bignum 4 px x into individual scalars for loads/stores. *)
+      cbv [Bignum array] in *.
+      repeat straightline.
+      (* Stackalloc: bytes mod bytes = 0 /\ forall a mStack ..., anybytes -> split -> WP *)
+      split. { apply Z_mod_same_full. }
+      intros.
+      (* Extract length from Bignum in H before update_mem consumes it *)
+      assert (Hlen : Datatypes.length x = 4%nat).
+      { pose proof H as Hb. cbv [Bignum] in Hb.
+        (* sep = exists mp mq, split /\ P /\ Q; emp P m = m = empty /\ P *)
+        repeat match goal with
+        | Hb : sep _ _ _ |- _ => destruct Hb as (?&?&?&Hb&?)
+        | Hb : emp _ _ |- _ => cbv [emp] in Hb; destruct Hb; assumption
+        end. }
+      (* Destruct x into 4 words *)
+      do 4 (destruct x as [|? x]; [simpl in Hlen; lia|]).
+      destruct x; [|simpl in Hlen; lia]. clear Hlen.
+      (* Convert stack anybytes to scalar *)
+      update_mem.
+      (* Unfold Bignum and reduce array on the concrete 4-element list *)
+      cbv [Bignum] in Hmem.
+      cbn [array] in Hmem.
+      (* Normalize iterated addresses to match flat code addresses *)
+      replace ((px +w word.of_Z bytes) +w word.of_Z bytes)
+        with (px +w word.of_Z (2 * bytes)) in Hmem by ring.
+      replace ((px +w word.of_Z (2 * bytes)) +w word.of_Z bytes)
+        with (px +w word.of_Z (3 * bytes)) in Hmem by ring.
+      (* Process all stores/loads, stop at stack dealloc postcondition *)
       repeat match goal with
-             | H : context[ _ +w _ +w _ ] |- _ =>
-                 rewrite <- word.add_assoc, <- word.ring_morph_add, ?Z.add_diag, ?temp, ?temp2 in H
-             end.
-
-      cbn -[scalar] in H0.
-
-      repeat straightline'.
-      update_mem.
-      repeat straightline'.
-      update_mem.
-      repeat straightline.
-      clear dependent mCombined.
-      eexists. split.
-      repeat straightline'.
-      eexists. split.
-      repeat straightline'.
-      repeat straightline.
-      clear dependent m.
-      eexists. split.
-      repeat straightline'.
-      eexists. split.
-      repeat straightline'.
-      repeat straightline.
-      clear dependent m0.
-      eexists. split.
-      repeat straightline'.
-      eexists. split.
-      repeat straightline'.
-      repeat straightline.
-      clear dependent m.
-      eexists. split.
-      repeat straightline'.
-      eexists. split.
-      repeat straightline'.
-      repeat straightline.
-      clear dependent m0.
-      eexists. split.
-      repeat straightline'.
-      eexists. split.
-      repeat straightline'.
-      repeat straightline.
-      clear dependent m.
-      eexists. split.
-      repeat straightline'.
-      eexists. split.
-      repeat straightline'.
-      repeat straightline.
-      clear dependent m0.
-      eexists. split.
-      repeat straightline'.
-      eexists. split.
-      repeat straightline'.
-      repeat straightline.
-      clear dependent m.
-      eexists. split.
-      repeat straightline'.
-      eexists. split.
-      repeat straightline'.
-      repeat straightline.
-      clear dependent m0.
-      eexists. split.
-      repeat straightline'.
-      eexists. split.
-      repeat straightline'.
-      repeat straightline.
-      clear dependent m.
-      eexists. split.
-      repeat straightline'.
-      eexists. split.
-      repeat straightline'.
-      repeat straightline.
-      clear dependent m0.
-
-      eassert ((_ ⋆ scalar a _) m) by ecancel_assumption.
-      destruct H1 as [?[?[?[? ?]]]].
-      clear H0.
-
-      eexists. eexists. split.
-
-      eapply scalar_to_anybytes.
-      eassumption.
-      split.
-      eassumption.
-
-      split; eauto.
-
-      eexists. eexists [_;_;_;_].
-        split; [| split; [|split]].
-        reflexivity.
-
-        3: {
-          sepsimpl; auto.
-          cbn -[scalar].
-          repeat match goal with
-                 | |- context[ _ +w _ +w _ ] =>
-                     rewrite <- word.add_assoc, <- word.ring_morph_add, ?Z.add_diag, ?temp, ?temp2
-                 end.
-          cbn -[scalar].
-          ecancel_assumption.
-          }
-
-          (* Goal 1: eval 4 x / 2 = eval 4 x' *)
-          rewrite !slu_and1_width_minus_1.
-          rewrite (eval_shift (scalar_words:=4) [r; r0; r1; r2] 4 eq_refl).
+      | v := _ : word.rep |- _ => subst v
+      | _ => lazymatch goal with
+             | |- exists _ _, Memory.anybytes _ _ _ /\ _ => fail
+             | _ => straightline'
+             end
+      end.
+      (* Clear intermediate store hypotheses to reduce memory *)
+      clear Hmem H H0 H1 H2 H3 H4 H5 H6 H7 H8.
+      (* Separate stack scalar at address a from final memory *)
+      eassert (Hsep_split : (sep _ (scalar a _)) m9) by ecancel_assumption.
+      destruct Hsep_split as (m_ret & m_stk & Hsplit_mem & Hret & Hstk).
+      eapply Scalars.scalar_to_anybytes in Hstk.
+      clear H9.
+      (* Provide stack dealloc witnesses *)
+      exists m_ret, m_stk.
+      split. { exact Hstk. }
+      split. { exact Hsplit_mem. }
+      (* list_map for empty return values *)
+      cbv beta delta [list_map].
+      split. { reflexivity. }
+      (* Postcondition witnesses *)
+      exists (word.and r (word.of_Z 1)), (bignum_shiftr 4 [r; r0; r1; r2]).
+      refine (conj eq_refl (conj _ (conj _ _))).
+      { apply eval_shift. reflexivity. }
+      { transitivity (word.unsigned r mod 2).
+        - (* eval 4 [r; r0; r1; r2] mod 2 = word.unsigned r mod 2 *)
+          cbn [List.map].
+          rewrite Positional.eval_cons by reflexivity.
+          rewrite uweight_eval_shift;
+            [| destruct width_cases; lia | reflexivity].
+          rewrite uweight_0, uweight_1, Z.mul_1_l.
+          rewrite Zplus_mod.
+          replace (2 ^ width) with (2 * 2 ^ (width - 1))
+            by (rewrite <- Z.pow_succ_r by (destruct width_cases; lia); f_equal; lia).
+          rewrite <- Z.mul_assoc, (Z.mul_comm 2), Z_mod_mult, Z.add_0_r, Zmod_mod.
           reflexivity.
-
-        (* Goal 2: eval 4 x mod 2 = unsigned (and r (of_Z 1)) *)
-        rewrite word.unsigned_and_nowrap, word.unsigned_of_Z_1.
-        replace (Z.land (word.unsigned r) 1) with (word.unsigned r mod 2).
-        2: { replace 1 with (Z.ones 1) by reflexivity.
-             rewrite Z.land_ones by lia. reflexivity. }
-        cbn [List.map].
-        rewrite Positional.eval_cons by reflexivity.
-        rewrite uweight_eval_shift; [| destruct width_cases; lia | reflexivity].
-        rewrite uweight_0, uweight_1, Z.mul_1_l.
-        replace (2 ^ width) with (2 * 2 ^ (width - 1))
-          by (rewrite <- Z.pow_succ_r by (destruct width_cases; lia); f_equal; lia).
-        rewrite <- Z.mul_assoc, (Z.mul_comm 2).
-        rewrite Z_mod_plus_full. reflexivity.
+        - (* word.unsigned r mod 2 = word.unsigned (word.and r (word.of_Z 1)) *)
+          symmetry.
+          rewrite word.unsigned_and_nowrap, word.unsigned_of_Z_1.
+          replace 1 with (Z.ones 1) by reflexivity.
+          rewrite Z.land_ones by lia.
+          reflexivity. }
+      { cbv [bignum_shiftr].
+        cbn [seq Datatypes.length Nat.sub List.map nth_default app array].
+        change (Memory.bytes_per_word width) with bytes.
+        replace ((px +w word.of_Z bytes) +w word.of_Z bytes)
+          with (px +w word.of_Z (2 * bytes)) by ring.
+        replace ((px +w word.of_Z (2 * bytes)) +w word.of_Z bytes)
+          with (px +w word.of_Z (3 * bytes)) by ring.
+        rewrite <- !(slu_and1_width_minus_1).
+        ecancel_assumption. }
     Qed.
-
 
 End impl.

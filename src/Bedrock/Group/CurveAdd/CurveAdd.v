@@ -5,24 +5,29 @@ Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.Interface.CompilationAbstract.
 Local Open Scope Z_scope.
 
+(* Compatibility shim: opam bedrock2 >=0.0.9 removed the name from func *)
+Local Notation function_t := (String.string * (list String.string * list String.string * Syntax.cmd.cmd))%type.
+Local Definition program_logic_goal_for (_ : function_t) (P : Prop) := P.
+Local Notation "program_logic_goal_for_function! proc" :=
+  (program_logic_goal_for proc True) (at level 10, only parsing).
+
 Section Gallina.
 
+Context {field_parameters : FieldParameters}.
 Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
-Context {F : Type} {field_parameters : Field.FieldParameters F}
-        {field_parameters_ok : Field.FieldParameters_ok F}.
-Context {field_representation : FieldRepresentation F}
-        {field_representation_ok : FieldRepresentation_ok F}
-        {three_b : felem}.
+Context {field_representation : FieldRepresentation}.
 
-    Local Infix "+F" := Fadd (at level 100).
-    Local Infix "-F" := Fsub (at level 100).
-    Local Infix "*F" := Fmul (at level 90).
-    Local Notation "x ^F2" := (Fmul x x) (at level 90).
-    Check Fadd.
+Local Notation F := (F M_pos).
+Local Infix "+F" := (@F.add M_pos) (at level 100).
+Local Infix "-F" := (@F.sub M_pos) (at level 100).
+Local Infix "*F" := (@F.mul M_pos) (at level 90).
+Local Notation "x ^F2" := (@F.mul M_pos x x) (at level 90).
+
+Context {three_b_val : F}.
 
   Definition ladderstep_gallina
              (X1 X2 Y1 Y2 Z1 Z2 : F) : \<< F, F, F \>> :=
-    let/n three_b := stack (feval (three_b)) in
+    let/n three_b := stack three_b_val in
     let/n t0 := stack (X1 *F X2) in
     let/n t1 := stack (Y1 *F Y2) in
     let/n t2 := stack (Z1 *F Z2) in
@@ -68,20 +73,23 @@ Section __.
   Context {locals_ok : map.ok locals}.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
-  Context {F : Type} {field_parameters : Field.FieldParameters F}
-          {field_parameters_ok : Field.FieldParameters_ok F}.
-  Context {field_names : FieldNames F}.
+  Context {field_parameters : FieldParameters}
+          {field_parameters_ok : FieldParameters_ok}.
 
-  Context {field_representation : FieldRepresentation F}
-          {field_representation_ok : FieldRepresentation_ok F}.
+  Context {field_representation : FieldRepresentation}
+          {field_representation_ok : FieldRepresentation_ok}.
 
-  Hint Resolve relax_bounds : compiler.
+  Local Notation F := (F M_pos).
+
+  #[local] Hint Resolve relax_bounds : compiler.
   Existing Instance felem_alloc.
 
   Context (Hbounds_eq : loose_bounds = tight_bounds).
   Context (three_b : felem).
   Context (three_b_name : string).
   Context (Hb_bounds : maybe_bounded (Some loose_bounds) three_b).
+
+  Local Definition three_b_val : F := feval (proj1_sig three_b).
 
   Instance spec_of_ladderstep : spec_of "curve_add" :=
     fnspec! "curve_add"
@@ -101,7 +109,7 @@ Section __.
         tr = tr'
         /\ exists Xout Yout Zout (* output values *)
                   : F ,
-                  (@ladderstep_gallina _ _ _ _ _ _ _ three_b X1 X2 Y1 Y2 Z1 Z2
+                  (@ladderstep_gallina _ three_b_val X1 X2 Y1 Y2 Z1 Z2
            = \<Xout, Yout, Zout\>)
           /\ (FElem (Some tight_bounds) pX1 X1
                 * FElem (Some tight_bounds) pX2 X2
@@ -115,7 +123,7 @@ Section __.
 
   Lemma compile_ladderstep {tr m l functions}
         (x1 x2 y1 y2 z1 z2 xout1 yout1 zout1 : F) :
-    let v := @ladderstep_gallina _ _ _ _ _ _ _ three_b x1 x2 y1 y2 z1 z2 in
+    let v := @ladderstep_gallina _ three_b_val x1 x2 y1 y2 z1 z2 in
     forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
            Rout
            X1_ptr X1_var X2_ptr X2_var Y1_ptr Y1_var Y2_ptr Y2_var
@@ -126,7 +134,7 @@ Section __.
       (FElem (Some tight_bounds) X1_ptr x1 * FElem (Some tight_bounds) X2_ptr x2 *
        FElem (Some tight_bounds) Y1_ptr y1 * FElem (Some tight_bounds) Y2_ptr y2 *
        FElem (Some tight_bounds) Z1_ptr z1 * FElem (Some tight_bounds) Z2_ptr z2 *
-       FElem (Some tight_bounds) Xout_ptr xout1 * 
+       FElem (Some tight_bounds) Xout_ptr xout1 *
        FElem (Some tight_bounds) Yout_ptr yout1 * FElem (Some tight_bounds) Zout_ptr zout1 * Rout)%sep m ->
 
       map.get l X1_var = Some X1_ptr ->
@@ -141,11 +149,11 @@ Section __.
 
       (let v := v in
        forall (* output values *) m',
-       let '\<Xout', Yout', Zout'\> := @ladderstep_gallina _ _ _ _ _ _ _ three_b x1 x2 y1 y2 z1 z2 in
+       let '\<Xout', Yout', Zout'\> := @ladderstep_gallina _ three_b_val x1 x2 y1 y2 z1 z2 in
             (FElem (Some tight_bounds) X1_ptr x1 * FElem (Some tight_bounds) X2_ptr x2 *
             FElem (Some tight_bounds) Y1_ptr y1 * FElem (Some tight_bounds) Y2_ptr y2 *
             FElem (Some tight_bounds) Z1_ptr z1 * FElem (Some tight_bounds) Z2_ptr z2 *
-            FElem (Some tight_bounds) Xout_ptr Xout' * 
+            FElem (Some tight_bounds) Xout_ptr Xout' *
             FElem (Some tight_bounds) Yout_ptr Yout' * FElem (Some tight_bounds) Zout_ptr Zout' * Rout)%sep m' ->
          (<{ Trace := tr;
              Memory := m';
@@ -172,171 +180,86 @@ Section __.
   Proof.
     repeat straightline'.
     handle_call.
-    apply H10.
-    rewrite H13.
-    ecancel_assumption.
+    lazymatch goal with
+    | Hcont : (forall m', _ -> _),
+      Heq : ladderstep_gallina _ _ _ _ _ _ = _,
+      Hsep : sep _ _ _ |- _ =>
+      apply Hcont; rewrite Heq; ecancel_assumption
+    end.
   Qed.
 
-  Local Ltac ecancel_assumption ::=  repeat rewrite <- Hbounds_eq in *; ecancel_assumption_impl.
+  Local Ltac ecancel_assumption ::= ecancel_assumption_impl.
 
-  (*Why must these instances be included?*)
+  (* Spec for the three_b constant loader function *)
+  Instance spec_of_three_b_loader : spec_of three_b_name :=
+    fnspec! three_b_name (pout : word) / (outold : F) Rout,
+    { requires tr mem :=
+        (FElem None pout outold * Rout)%sep mem;
+      ensures tr' mem' :=
+        tr = tr' /\
+        (FElem (Some loose_bounds) pout three_b_val * Rout)%sep mem' }.
 
-  Instance spec_of_mul : spec_of mul := binop_spec bin_mul.
-  Instance spec_of_add : spec_of add := binop_spec bin_add.
-  Instance spec_of_sub : spec_of sub := binop_spec bin_sub.
-  Instance spec_of_three_b : spec_of three_b_name := spec_of_from_list (feval three_b) three_b_name.
-
-  (* consider using seprewrite instead *)
-  Lemma relax_bounds_FElem_R : forall R x x_ptr,
-      Lift1Prop.impl1 ((FElem (Some tight_bounds) x_ptr x * R)%sep)
-        ((FElem (Some loose_bounds) x_ptr x * R)%sep).
+  (* Compilation lemma for loading the three_b constant *)
+  Lemma compile_load_three_b {tr m l functions} :
+    let v := three_b_val in
+    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+           R out out_ptr out_var out_bounds,
+      spec_of_three_b_loader functions ->
+      map.get l out_var = Some out_ptr ->
+      (FElem out_bounds out_ptr out * R)%sep m ->
+      (let v := v in
+       forall m',
+         (FElem (Some loose_bounds) out_ptr v * R)%sep m' ->
+         (<{ Trace := tr;
+             Memory := m';
+             Locals := l;
+             Functions := functions }>
+          k_impl
+          <{ pred (k v eq_refl) }>)) ->
+      <{ Trace := tr;
+         Memory := m;
+         Locals := l;
+         Functions := functions }>
+      cmd.seq
+        (cmd.call [] three_b_name [expr.var out_var])
+        k_impl
+      <{ pred (nlet_eq [out_var] v k) }>.
   Proof.
-    intros. cbv [Lift1Prop.impl1]. intros.
-    destruct H, H, H, H0.
-    eexists; eexists; split; [eapply H | ]. split; eauto. eapply relax_bounds_FElem. auto.
+    repeat straightline'.
+    handle_call.
+    lazymatch goal with
+    | |- sep _ _ _ => ecancel_assumption
+    | _ => idtac
+    end.
+    sepsimpl; repeat straightline'; subst; eauto.
   Qed.
 
-  (*tactics for applying field operations*)
-  Ltac find_in_map :=
-    repeat first [ erewrite map.get_put_diff; [| intros contra; discriminate] |
-      eapply map.get_put_same].
+  Local Hint Extern 5
+    (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ three_b_val _))) =>
+    simple eapply compile_load_three_b; shelve : compiler.
 
-  Ltac clear_pred_seps' :=
-    unfold pred_sep;
-    repeat change (fun x => ?h x) with h;
-    repeat match goal with
-      | [ H : _ ?m |- _ ?m] =>
-          eapply Proper_sep_impl1;
-          [ eapply P_to_bytes | clear H m; intros H m |
-            try (eapply drop_bounds_FElem; ecancel_assumption);
-            try (eapply drop_bounds_FElem; eapply relax_bounds_FElem_R; ecancel_assumption)]
-      end.
-
-  Hint Extern 1 (pred_sep _ _ _ _ _ _) =>
-         clear_pred_seps'; shelve : compiler_cleanup_post.
-
-  Hint Extern 1 (Some tight_bounds) =>
-         rewrite <- Hbounds_eq : compiler.
+  (* Bounds tightening: since loose_bounds = tight_bounds, we can go
+     loose→tight (reverse of relax_bounds_FElem). Needed because add
+     produces loose_bounds but sub/mul expect tight_bounds inputs. *)
+  Local Lemma tighten_bounds_FElem x_ptr x
+    : Lift1Prop.impl1 (FElem (Some loose_bounds) x_ptr x)
+                      (FElem (Some tight_bounds) x_ptr x).
+  Proof. rewrite Hbounds_eq. reflexivity. Qed.
+  Local Hint Immediate tighten_bounds_FElem : ecancel_impl.
 
   Derive ladderstep_body SuchThat
-         (defn! "curve_add" ("X1", "X2", "Y1", "Y2", "Z1", "Z2", "Xout", "Yout", "Zout")
+         (defn! "curve_add"
+                ("X1", "X2", "Y1", "Y2", "Z1", "Z2", "Xout", "Yout", "Zout")
               { ladderstep_body },
-           implements @ladderstep_gallina _ _ _ _ _ _ _ three_b
+           implements @ladderstep_gallina _ three_b_val
                       using [mul; add; sub; three_b_name])
          As ladderstep_correct.
-  Proof.
-    assert (1 + 1 = 2) by lia. 
-    compile_setup.
-    compile_step.
-    compile_step.
-
-    epose proof compile_from_list.
-    eapply H7.
-    5: {
-      ecancel_assumption.
-    }
-    4: {
-       eapply map.get_put_same.
-    }
-    2: {
-      repeat compile_step.
-    }
-    1: {
-      (*What is this goal??*)
-      compile_step. repeat compile_step.
-    }
-    1: auto.
-
-
-    compile_step.
-    compile_step.
-    compile_step.
-    compile_step; compile_step.
-    compile_step.
-    compile_step.
-    compile_step; compile_step.
-    compile_step.
-    compile_step.
-    compile_step; compile_step.
-    compile_step.
-    compile_step.
-    compile_step.
-    compile_step; compile_step.
-    compile_step.
-    compile_step.
-    compile_step; compile_step.
-    compile_step.
-    compile_step.
-    compile_step; compile_step.
-    compile_step.
-    compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step.
-    compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step.
-    compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-    compile_step; compile_step.
-  Qed.
+  Proof. compile. Qed.
 
 End __.
 
-Existing Instance spec_of_ladderstep.
+#[global] Existing Instance spec_of_ladderstep.
 
-Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (ladderstep_gallina _ _ _ _ _ _ _) _))) =>
+#[global]
+Hint Extern 8 (WeakestPrecondition.cmd _ _ _ _ _ (_ (nlet_eq _ (ladderstep_gallina _ _ _ _ _ _) _))) =>
        simple eapply compile_ladderstep; shelve : compiler.
-
-(* Import Syntax. *)
-(* Local Unset Printing Coercions. *)
-(* Local Set Printing Depth 70. *)
-
-(* Set the printing width so that arguments are printed on 1 line.
-   Otherwise the build breaks.
-*)
-
-(* Local Set Printing Width 140. *)
-(* Redirect "Crypto.Bedrock.Group.ScalarMult.LadderStep.ladderstep_body" Print ladderstep_body. *)

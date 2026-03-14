@@ -1,13 +1,13 @@
 Require Import Rupicola.Lib.Api.
-(* Require Import Crypto.Arithmetic.PrimeFieldTheorems.
-Require Import Crypto.Arithmetic.FLia. *)
-Require Import Crypto.Bedrock.Specs.Field.
+Require Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.Interface.Compilation2.
+Require Import Crypto.Bedrock.Specs.AbstractField.
+Require Import Crypto.Bedrock.Specs.PrimeField.
 Require Import Crypto.Bedrock.Field.FieldExtensions.Theory.QuadraticExtensions.
 Require Import Crypto.Arithmetic.PrimeFieldTheorems.
 Require Import Crypto.Bedrock.Field.FieldExtensions.Theory.FieldsUtil.
 Require Import Crypto.Algebra.Hierarchy.
-Require Import Numbers.DecimalString.
+From Stdlib Require Import Numbers.DecimalString.
 
 Local Open Scope Z_scope.
 
@@ -15,19 +15,19 @@ Section QuadraticExtension.
 
   Context {width: Z} {BW: Bitwidth width} {word: word.word width} {mem: map.map word Byte.byte}.
   Context {locals: map.map String.string word}.
-  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}. 
+  Context {env: map.map String.string (list String.string * list String.string * Syntax.cmd)}.
   Context {ext_spec: bedrock2.Semantics.ExtSpec}.
   Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
   Context {locals_ok : map.ok locals}.
   Context {env_ok : map.ok env}.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
-  Context {prime_parameters : PrimeParameters}
-          {prime_parameters_ok : PrimeParameters_ok}
+  Context {prime_parameters : PrimeFieldParameters}
+          {prime_parameters_ok : PrimeFieldParameters_ok}
           {M_mod : M_pos mod 4 =? 3 = true}.
   Existing Instance prime_field_parameters.
-  Context {field_representation : FieldRepresentation (F M_pos)}
-          {field_representation_ok : FieldRepresentation_ok (F M_pos)}.
+  Context {field_representation : AbstractField.FieldRepresentation}
+          {field_representation_ok : AbstractField.FieldRepresentation_ok}.
 
   Lemma M_big : 2 < M_pos.
   Proof.
@@ -36,7 +36,10 @@ Section QuadraticExtension.
 
   Local Notation Fp2 := ((F M_pos) * (F M_pos))%type.
 
-  Instance Fp2_field_parameters : FieldParameters Fp2.
+  (* Fp2 function name prefix, provided by downstream code *)
+  Context {fp2_prefix : string}.
+
+  Instance Fp2_field_parameters : AbstractField.FieldParameters Fp2.
   Proof.
       econstructor.
         - exact (zerop2 M_pos).
@@ -47,11 +50,24 @@ Section QuadraticExtension.
         - exact (subp2 M_pos).
         - exact (mulp2 M_pos).
         - exact (divp2 M_pos).
-        - exact (of_Zp2 M_pos).
         - eapply eq_dec_Fp2.
+        - exact (F.zero, F.zero). (* a24 — dummy for Weierstrass curves *)
+        - exact (fp2_prefix ++ "mul")%string.
+        - exact (fp2_prefix ++ "add")%string.
+        - exact (fp2_prefix ++ "sub")%string.
+        - exact (fp2_prefix ++ "opp")%string.
+        - exact (fp2_prefix ++ "square")%string.
+        - exact (fp2_prefix ++ "scmula24")%string.
+        - exact (fp2_prefix ++ "inv")%string.
+        - exact (fp2_prefix ++ "from_bytes")%string.
+        - exact (fp2_prefix ++ "to_bytes")%string.
+        - exact (fp2_prefix ++ "select_znz")%string.
+        - exact (fp2_prefix ++ "felem_copy")%string.
+        - exact (fp2_prefix ++ "from_word")%string.
+        - exact (fp2_prefix ++ "from_list")%string.
   Defined.
 
-  Instance Fp2_field_parameters_ok : FieldParameters_ok Fp2.
+  Instance Fp2_field_parameters_ok : @AbstractField.FieldParameters_ok _ Fp2_field_parameters.
   Proof.
     econstructor;
     exact (@std_to_fiatCrypto_field _ _ _ _ _ _ _ _ _ (FFp2 M_pos M_prime M_big M_mod)).
@@ -63,7 +79,7 @@ Section QuadraticExtension.
   Definition fst_felem_bytes (Fp2_list : list byte) : list byte := firstn (Z.to_nat felem_size_in_bytes) Fp2_list.
   Definition snd_felem_bytes (Fp2_list : list byte) : list byte := skipn (Z.to_nat felem_size_in_bytes) Fp2_list.
 
-  Instance Fp2_field_representation : FieldRepresentation Fp2.
+  Instance Fp2_field_representation : AbstractField.FieldRepresentation (F:=Fp2).
   Proof.
     econstructor.
       - exact (fun y => (feval (fst_felem y), feval (snd_felem y))).
@@ -76,12 +92,10 @@ Section QuadraticExtension.
       - exact tight_bounds.
   Defined.
 
-  Instance Fp2_field_representation_ok : FieldRepresentation_ok Fp2.
+  Instance Fp2_field_representation_ok : @AbstractField.FieldRepresentation_ok _ _ _ _ _ _ Fp2_field_representation.
   Proof.
     econstructor; destruct field_representation_ok; intros.
     split; eapply relax_bounds; apply H.
   Defined.
 
 End QuadraticExtension.
-
-

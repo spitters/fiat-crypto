@@ -1,8 +1,8 @@
 (*move elsewhere?*)
-Require Import ZArith Znumtheory.
-Require Import Eqdep_dec.
-Require Import List.
-Require Import Lia.
+From Coq Require Import ZArith Znumtheory.
+From Coq Require Import Eqdep_dec.
+From Coq Require Import List.
+From Coq Require Import Lia.
 Require Import Crypto.Algebra.Hierarchy.
 Require Import Crypto.Algebra.Field.
 Require Import Crypto.Arithmetic.PrimeFieldTheorems.
@@ -205,32 +205,39 @@ Section Fp2.
             }
             (* case x2 is not zero *)
             {
-              field; split.
-                + intros contra. apply eq1. subst. auto.
-                + intros contra.
-                  apply (f_equal (fun x => (x +p x2 *p x2 *p β) /p (x2 *p x2))) in contra.
-                  field_simplify in contra; try (subst; discriminate).
-                  eapply beta_is_non_res; exists (x1 /p x2); rewrite <- contra; field;
-                  intros contra'; eapply Z.eqb_neq in eq2; subst; auto.
+              field. split.
+              - intros contra. apply eq1. rewrite contra. auto.
+              - intros contra. exfalso. apply beta_is_non_res.
+                exists (x1 /p x2). field_simplify.
+                + apply (f_equal (fun z => F.add z ((x2 *p x2) *p β))) in contra.
+                  replace (x1 *p x1 -p (x2 *p x2) *p β +p (x2 *p x2) *p β) with (x1 *p x1) in contra by field.
+                  replace (F.zero +p (x2 *p x2) *p β) with ((x2 *p x2) *p β) in contra by field.
+                  rewrite contra. field.
+                  intros Hc. apply Z.eqb_neq in eq2. apply eq2. rewrite Hc. auto.
+                + intros Hc. apply Z.eqb_neq in eq2. apply eq2. rewrite Hc. auto.
             }
-        * field. split; [intros contra; apply eq1; subst; auto| ].
-          destruct (F.to_Z x2 =? 0) eqn:eq2.
-          (* case x2 is zero *)
-          {
-            apply Z.eqb_eq in eq2. apply Zerop_iff' in eq2. rewrite eq2.
-            assert ((0 zmod p) = 0%F) as Hzero by auto. rewrite Hzero. intros contra.
-            assert (Hmul0r : forall x, ((0 *p x) = 0%F)) by (intros; field).
-            rewrite Hmul0r in contra.
-            assert (Hsub0r : forall x, (x -p 0) = x) by (intros; field).
-            rewrite Hsub0r in contra. eapply ZpZ_integral_domain; [ | | eapply contra]; intros contra'; apply eq1; subst; auto.
-          }
-          (* case x2 is not zero *)
-          {
-            intros contra.
-            apply (f_equal (fun x => (x +p x2 *p x2 *p β) /p (x2 *p x2))) in contra.
-            field_simplify in contra; try (subst; discriminate).
-            eapply beta_is_non_res; exists (x1 /p x2); rewrite <- contra; field;
-            intros contra'; eapply Z.eqb_neq in eq2; subst; auto.
+        * field. split.
+          { intros contra. apply eq1. rewrite contra. auto. }
+          { intros contra. exfalso.
+            destruct (F.to_Z x2 =? 0) eqn:Hx2.
+            - (* x2 = 0: x1² = 0, contradicts x1 ≠ 0 via integral domain *)
+              apply Z.eqb_eq in Hx2.
+              assert (Hx2z: x2 = @F.zero p).
+              { eapply (f_equal (fun y => F.of_Z p y)) in Hx2.
+                rewrite F.of_Z_to_Z in Hx2. exact Hx2. }
+              assert (Hneq1: x1 <> @F.zero p).
+              { intros Hc. apply eq1. rewrite Hc. auto. }
+              assert (Hsq: (x1 *p x1) = @F.zero p).
+              { rewrite <- contra. rewrite Hx2z. field. }
+              exact (ZpZ_integral_domain x1 x1 Hneq1 Hneq1 Hsq).
+            - (* x2 ≠ 0: (x1/x2)² = β contradicts non-residue *)
+              apply beta_is_non_res. exists (x1 /p x2). field_simplify.
+              + apply (f_equal (fun z => F.add z ((x2 *p x2) *p β))) in contra.
+                replace (x1 *p x1 -p (x2 *p x2) *p β +p (x2 *p x2) *p β) with (x1 *p x1) in contra by field.
+                replace (F.zero +p (x2 *p x2) *p β) with ((x2 *p x2) *p β) in contra by field.
+                rewrite contra. field.
+                intros Hc. apply Z.eqb_neq in Hx2. apply Hx2. rewrite Hc. auto.
+              + intros Hc. apply Z.eqb_neq in Hx2. apply Hx2. rewrite Hc. auto.
           }
   Defined.
 
@@ -255,6 +262,83 @@ Section Fp2.
     }
     rewrite H.
     field.
+  Qed.
+
+  (* The inverse in Fp2 can be expressed using the "plus-norm" formula:
+     inv(a0, a1) = (a0/N, -a1/N) where N = a0² + a1².
+     This holds because β = Quad_non_res = -1 when p mod 4 = 3. *)
+  Lemma invp2_plus_norm : forall a0 a1,
+    invp2 (a0, a1) = (a0 *p F.inv (a0 *p a0 +p a1 *p a1),
+                       F.opp a1 *p F.inv (a0 *p a0 +p a1 *p a1)).
+  Proof.
+    intros a0 a1.
+    assert (Hbeta: Quad_non_res = F.opp (@F.one p)).
+    { cbv [Quad_non_res]. rewrite p_mod3. cbv [F.opp]. simpl.
+      eapply F.eq_of_Z_iff. rewrite <- PullPush.Z.opp_mod_mod. eauto. }
+    unfold invp2. cbn [fst snd].
+    destruct (F.to_Z a0 =? 0) eqn:Ha0.
+    - (* a0 = 0 *)
+      apply Z.eqb_eq in Ha0.
+      assert (Ha0z: a0 = @F.zero p).
+      { eapply (f_equal (fun y => F.of_Z p y)) in Ha0.
+        rewrite F.of_Z_to_Z in Ha0. exact Ha0. }
+      subst a0. rewrite Hbeta. apply Fp2irr; cbn [fst snd].
+      + ring.
+      + destruct (F.to_Z a1 =? 0) eqn:Ha1.
+        * apply Z.eqb_eq in Ha1.
+          assert (Ha1z: a1 = @F.zero p).
+          { eapply (f_equal (fun y => F.of_Z p y)) in Ha1.
+            rewrite F.of_Z_to_Z in Ha1. exact Ha1. }
+          subst a1.
+          replace ((@F.zero p) *p F.opp (@F.one p)) with (@F.zero p) by ring.
+          replace ((@F.zero p) *p (@F.zero p) +p (@F.zero p) *p (@F.zero p))
+            with (@F.zero p) by ring.
+          rewrite !F.inv_0. change (0 zmod p) with (@F.zero p). ring.
+        * apply Z.eqb_neq in Ha1.
+          assert (Ha1nz: a1 <> @F.zero p).
+          { intro Hc. apply Ha1. rewrite Hc. auto. }
+          replace ((@F.zero p) *p (@F.zero p) +p a1 *p a1) with (a1 *p a1) by ring.
+          replace (a1 *p F.opp (@F.one p)) with (F.opp a1) by ring.
+          field. split; [exact Ha1nz|].
+          intro Hc. apply Ha1nz.
+          assert (F.opp (F.opp a1) = F.opp (@F.zero p)) by (rewrite Hc; reflexivity).
+          replace (F.opp (F.opp a1)) with a1 in H by ring.
+          replace (F.opp (@F.zero p)) with (@F.zero p) in H by ring. exact H.
+    - (* a0 ≠ 0 *)
+      apply Z.eqb_neq in Ha0.
+      assert (Ha0nz: a0 <> @F.zero p).
+      { intro Hc. apply Ha0. rewrite Hc. auto. }
+      rewrite Hbeta.
+      assert (Hnorm_nz: (a0 *p a0 +p a1 *p a1) <> @F.zero p).
+      { intro Hnorm_eq.
+        destruct (F.to_Z a1 =? 0) eqn:Ea1.
+        + apply Z.eqb_eq in Ea1.
+          assert (Ha1z: a1 = @F.zero p).
+          { eapply (f_equal (fun y => F.of_Z p y)) in Ea1.
+            rewrite F.of_Z_to_Z in Ea1. exact Ea1. }
+          subst a1.
+          assert (Hsq: (a0 *p a0) = @F.zero p).
+          { replace (a0 *p a0 +p (@F.zero p) *p (@F.zero p))
+              with (a0 *p a0) in Hnorm_eq by ring. exact Hnorm_eq. }
+          exact (ZpZ_integral_domain a0 a0 Ha0nz Ha0nz Hsq).
+        + apply Z.eqb_neq in Ea1.
+          assert (Ha1nz: a1 <> @F.zero p).
+          { intro Hcc. apply Ea1. rewrite Hcc. auto. }
+          apply beta_is_non_res. exists (a0 *p F.inv a1).
+          rewrite Hbeta.
+          assert (Ha0sq: ((a0 *p a0) = F.opp (a1 *p a1))).
+          { apply (f_equal (fun z => (z -p (a1 *p a1)))) in Hnorm_eq.
+            replace (a0 *p a0 +p a1 *p a1 -p (a1 *p a1))
+              with (a0 *p a0) in Hnorm_eq by ring.
+            replace ((@F.zero p) -p (a1 *p a1))
+              with (F.opp (a1 *p a1)) in Hnorm_eq by ring.
+            exact Hnorm_eq. }
+          replace ((a0 *p F.inv a1) *p (a0 *p F.inv a1))
+            with ((a0 *p a0) *p (F.inv a1 *p F.inv a1)) by ring.
+          rewrite Ha0sq. field. exact Ha1nz. }
+      apply Fp2irr; cbn [fst snd].
+      + field. split; exact Hnorm_nz || exact Ha0nz.
+      + field. split; exact Hnorm_nz || exact Ha0nz.
   Qed.
 
   Lemma mul_equiv : forall a b c d, ((((c +p d) *p (a +p b)) -p (a *p c)) -p (b *p d)) = ((a *p d) +p (b *p c)).

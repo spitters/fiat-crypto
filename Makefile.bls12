@@ -1,0 +1,60 @@
+COQC := /home/au528660/.opam/rocq-9/bin/coqc
+ROCQPATH := /home/au528660/.opam/rocq-9/lib/coq/user-contrib
+COQFLAGS := -Q src Crypto
+
+%.vo: %.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) $<
+
+# Shortcut targets for BLS12 files
+.PHONY: quad quad-mul quad-specs three_b felem_copy fp2 g1 g1_alt g2 bignum_shift curve_add cubic-specs cubic wp-tactics dodecic-specs dodecic pairing-ops
+
+quad:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/QuadraticFieldExtensions.v
+
+quad-mul:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/QuadraticFieldExtensionsMul.v
+
+quad-specs:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/QuadraticFieldExtensionsSpecs.v
+
+three_b:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/Synthesis/Examples/bls12_three_b.v
+
+felem_copy:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/Synthesis/Examples/bls12_felem_copy.v
+
+fp2:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/Synthesis/Examples/bls12_Fp2.v
+
+g1:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/Synthesis/Examples/BLS12_G1.v
+
+g1_alt:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/Synthesis/Examples/BLS12_G1_alt.v
+
+g2:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/Synthesis/Examples/BLS12_G2.v
+
+bignum_shift:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Group/CurveAdd/BignumShift.v
+
+curve_add:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Group/CurveAdd/CurveAdd.v
+
+cubic-specs:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/CubicFieldExtensionsSpecs.v
+
+cubic:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/CubicFieldExtensions.v
+
+wp-tactics:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/WPTactics.v
+
+dodecic-specs:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsSpecs.v
+
+dodecic:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/DodecicFieldExtensions.v
+
+pairing-ops:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/PairingFieldOps.v

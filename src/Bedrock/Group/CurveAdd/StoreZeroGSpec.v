@@ -15,6 +15,7 @@ Require Import Crypto.Arithmetic.Partition.
 Require Import Crypto.Arithmetic.WordByWordMontgomery.
 Require Import Crypto.Arithmetic.WordByWordMontgomeryUtil.
 Require Import Crypto.Bedrock.Field.Interface.CompilationAbstract.
+Require Import Crypto.Arithmetic.PrimeFieldTheorems.
 
 Section __.
 
@@ -26,22 +27,17 @@ Section __.
       Context {locals_ok : map.ok locals}.
       Context {env_ok : map.ok env}.
       Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
-      Context {F : Type} {field_parameters : Field.FieldParameters F}
-            {field_parameters_ok : Field.FieldParameters_ok F}.
+      Context {field_parameters : FieldParameters}
+            {field_parameters_ok : FieldParameters_ok}.
 
-      Context {field_representation : FieldRepresentation F}
-            {field_representation_ok : FieldRepresentation_ok F}
+      Context {field_representation : FieldRepresentation}
+            {field_representation_ok : FieldRepresentation_ok}
             {group_cmov : string}
             {store_zero : string}.
 
-    (* curve-defining parameter b *)
-    (* Definition three_b := 0.
-    Definition uw := (uweight 64).
-    Definition n := felem_size_in_words.
-    Definition three_b_list := Partition.partition uw n three_b.
-    Definition word := BasicC64Semantics.word.
-    Definition three_b_mont := Eval vm_compute in (@WordByWordMontgomery.to_montgomerymod 64 n m (@m' bls12_prime.field_parameters 64) three_b_list).
-    Definition three_b_words := List.map (@word.of_Z 64 word) three_b_mont. *)
+    Local Notation F := (F M_pos).
+    Local Notation Fzero := (F.of_Z M_pos 0).
+    Local Notation Fone := (F.of_Z M_pos 1).
 
       Instance spec_of_store_zero : spec_of "store_zero_G" :=
       fnspec! "store_zero_G"
@@ -55,26 +51,5 @@ Section __.
                   (FElem (Some tight_bounds) pX Fzero
             * FElem (Some tight_bounds) pY Fone
             * FElem (Some tight_bounds) pZ Fzero * R)%sep mem'}.
-
-          (* Definition from_list_func : Syntax.func := ("store_zero_F", (["out"], (nil : list string), bedrock_func_body:(
-                coq:(cmd.store access_size.word (expr.var "out") (expr.literal (nth 0 three_b_mont 0)));
-                coq:(cmd.store access_size.word (expr.op bopname.add (expr.var "out") (expr.literal (8))) (nth 1 three_b_mont 0));
-                coq:(cmd.store access_size.word (expr.op bopname.add (expr.var "out") (expr.literal (16))) (nth 2 three_b_mont 0));
-                coq:(cmd.store access_size.word (expr.op bopname.add (expr.var "out") (expr.literal (24))) (nth 3 three_b_mont 0));
-                coq:(cmd.store access_size.word (expr.op bopname.add (expr.var "out") (expr.literal (32))) (nth 4 three_b_mont 0));
-                coq:(cmd.store access_size.word (expr.op bopname.add (expr.var "out") (expr.literal (40))) (nth 5 three_b_mont 0))
-              ))).
-
-        Definition store_zero_func : bedrock2.Syntax.func :=
-        ("store_zero", (["outx"; "outy"; "outz"], []:list String.string, bedrock_func_body:(
-                coq:(cmd.call [] "store_zero_F" [expr.var ("outx")]);
-                coq:(cmd.call [] "store_one_F" [expr.var ("outy")]);
-                coq:(cmd.call [] "store_zero_F" [expr.var ("outz")])
-        ))).
-
-        From bedrock2 Require Import ToCString Bytedump.
-        Definition c_mod := (c_module (store_zero_func:: nil)).
-    
-        Eval native_compute in c_mod. *)
 
 End __.
