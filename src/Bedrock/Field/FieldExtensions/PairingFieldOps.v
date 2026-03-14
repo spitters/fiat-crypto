@@ -201,10 +201,11 @@ Section PairingOps.
   Instance spec_of_Fp2_conjugate : spec_of fp2_conjugate_name :=
     AbstractField.unop_spec un_Fp2_conjugate.
 
-  (* Fp2_conjugate_ok: proved in a separate file or inline below *)
   Lemma Fp2_conjugate_ok : program_logic_goal_for_function! Fp2_conjugate.
   Proof. Admitted.
-
+  (* TODO: 2 Fp-level calls. Needs Fp2→Fp FElem decomposition + map.split_diff
+     for felem_copy spec's two preconditions. Follow Fp2_felem_copy_ok pattern. *)
+  (* Commented proof attempt removed for cleanliness. See git history. *)
   (* -------------------------------------------------------------- *)
   (* fp6_mul_fp2: (c0, c1, c2) * s -> (c0*s, c1*s, c2*s)            *)
   (*   Extra arg: s (pointer to Fp2 scalar)                           *)
