@@ -109,10 +109,13 @@ Section BLS12_Fp12.
   (* Fp12 squaring:
        c0 = a0^2 + mul_by_v(a1^2)
        c1 = 2*a0*a1 *)
+  (* Note: uses fp6_mul x x instead of fp6_sqr x to match the
+     AbstractField.Fsquare = fun x => Fmul x x definition used by
+     the WP proofs. Correctness is the same. *)
   Definition fp12_sqr (a : Fp12) : Fp12 :=
     let a0 := fp12_c0 a in let a1 := fp12_c1 a in
-    let a0_sq := fp6_sqr a0 in
-    let a1_sq := fp6_sqr a1 in
+    let a0_sq := fp6_mul a0 a0 in
+    let a1_sq := fp6_mul a1 a1 in
     let cross := fp6_mul a0 a1 in
     let c0 := fp6_add a0_sq (fp6_mul_by_v a1_sq) in
     let c1 := fp6_add cross cross in
@@ -127,7 +130,7 @@ Section BLS12_Fp12.
        result = (a0 * norm_inv, -a1 * norm_inv) *)
   Definition fp12_inv (a : Fp12) : Fp12 :=
     let a0 := fp12_c0 a in let a1 := fp12_c1 a in
-    let norm := fp6_sub (fp6_sqr a0) (fp6_mul_by_v (fp6_sqr a1)) in
+    let norm := fp6_sub (fp6_mul a0 a0) (fp6_mul_by_v (fp6_mul a1 a1)) in
     let norm_inv := fp6_inv norm in
     mk_fp12 (fp6_mul a0 norm_inv)
              (fp6_neg (fp6_mul a1 norm_inv)).

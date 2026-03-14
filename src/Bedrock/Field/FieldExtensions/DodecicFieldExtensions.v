@@ -369,19 +369,21 @@ Section Fp12.
     repeat (apply pair_equal_spec; split); ring.
   Qed.
 
-  (* Same identity stated with Fp6 module operations directly *)
-  Local Lemma fp6_double_eq_karatsuba' (a0 a1 : Fp6) :
-    Fp6.fp6_add M_pos
-      (Fp6.fp6_mul M_pos a0 a1)
-      (Fp6.fp6_mul M_pos a0 a1) =
-    Fp6.fp6_sub M_pos
-      (Fp6.fp6_sub M_pos
-        (Fp6.fp6_mul M_pos
-          (Fp6.fp6_add M_pos a0 a1)
-          (Fp6.fp6_add M_pos a0 a1))
-        (Fp6.fp6_mul M_pos a0 a0))
-      (Fp6.fp6_mul M_pos a1 a1).
-  Proof. exact (fp6_double_eq_karatsuba a0 a1). Qed.
+  (* Bridge: BLS12Fp6Spec.fp6_* = Fp6.fp6_* (both are module aliases for the same thing) *)
+  Local Lemma fp6_add_bridge : BLS12Fp6Spec.fp6_add M_pos = Fp6.fp6_add M_pos.
+  Proof. reflexivity. Qed.
+  Local Lemma fp6_sub_bridge : BLS12Fp6Spec.fp6_sub M_pos = Fp6.fp6_sub M_pos.
+  Proof. reflexivity. Qed.
+  Local Lemma fp6_mul_bridge : BLS12Fp6Spec.fp6_mul M_pos = Fp6.fp6_mul M_pos.
+  Proof. reflexivity. Qed.
+  Local Lemma fp6_mul_by_v_bridge : BLS12Fp6Spec.fp6_mul_by_v M_pos = Fp6.fp6_mul_by_v M_pos.
+  Proof. reflexivity. Qed.
+  Local Lemma fp6_neg_bridge : BLS12Fp6Spec.fp6_neg M_pos = Fp6.fp6_neg M_pos.
+  Proof. reflexivity. Qed.
+  Local Lemma fp6_inv_bridge : BLS12Fp6Spec.fp6_inv M_pos = Fp6.fp6_inv M_pos.
+  Proof. reflexivity. Qed.
+  Local Lemma fp6_sqr_bridge : BLS12Fp6Spec.fp6_sqr M_pos = Fp6.fp6_sqr M_pos.
+  Proof. reflexivity. Qed.
 
   (* ================================================================ *)
   (* WP proof automation tactics                                       *)
@@ -2623,10 +2625,16 @@ Section Fp12.
            AbstractField.un_model un_Fp6_mul_by_v fp6_mul_by_v_model
            BLS12Fp6Spec.fp6_mul_by_v BLS12Fp6Spec.fp6_c0 BLS12Fp6Spec.fp6_c1
            BLS12Fp6Spec.fp6_c2 BLS12Fp6Spec.fp6_build].
-      change (Fp6.fp6_add M_pos) with (BLS12Fp6Spec.fp6_add M_pos).
-      change (Fp6.fp6_sub M_pos) with (BLS12Fp6Spec.fp6_sub M_pos).
-      change (Fp6.fp6_mul M_pos) with (BLS12Fp6Spec.fp6_mul M_pos).
-      change (Fp6.fp6_mul_by_v M_pos) with (BLS12Fp6Spec.fp6_mul_by_v M_pos).
+      (* Bridge module aliases: convert goal-only occurrences *)
+      match goal with |- ?L = ?R =>
+        let R' := eval cbv [Fp6.fp6_add Fp6.fp6_sub Fp6.fp6_mul Fp6.fp6_mul_by_v
+                            Fp6.fp6_c0 Fp6.fp6_c1 Fp6.fp6_c2 Fp6.fp6_build] in R in
+        change (L = R')
+      end.
+      cbv [BLS12Fp6Spec.fp6_add BLS12Fp6Spec.fp6_sub BLS12Fp6Spec.fp6_mul
+           BLS12Fp6Spec.fp6_mul_by_v
+           BLS12Fp6Spec.fp6_c0 BLS12Fp6Spec.fp6_c1 BLS12Fp6Spec.fp6_c2
+           BLS12Fp6Spec.fp6_build].
       reflexivity. }
     split.
     { fp12_bounded_by_eq. rewrite Hd0_app, Hd1_app.
@@ -2965,22 +2973,43 @@ Section Fp12.
       rewrite Hfeval_t1, Hfeval_t2.
       set (a0 := @AbstractField.feval _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst (d0_felem x)).
       set (a1 := @AbstractField.feval _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst (d1_felem x)).
-      (* Unfold everything to BLS12Fp6Spec level on both sides *)
-      cbv [AbstractField.bin_model AbstractField.bin_mul AbstractField.bin_add AbstractField.bin_sub
-           AbstractField.Fmul AbstractField.Fadd AbstractField.Fsub
-           AbstractField.un_model un_Fp6_mul_by_v fp6_mul_by_v_model
-           Fp12_fp_inst Fp12_field_parameters Fp6_fp_inst Fp6_field_parameters
-           DodecicFieldExtensionsSpecs.fp12_mul_fn
+      (* Unfold LHS to BLS12Fp6Spec level *)
+      cbv [AbstractField.bin_model AbstractField.bin_mul AbstractField.bin_add
+           AbstractField.Fmul AbstractField.Fadd
+           Fp6_fp_inst Fp6_field_parameters
            CubicFieldExtensionsSpecs.fp6_mul_fn CubicFieldExtensionsSpecs.fp6_add_fn
-           CubicFieldExtensionsSpecs.fp6_sub_fn
+           AbstractField.un_model un_Fp6_mul_by_v fp6_mul_by_v_model].
+      (* Unfold RHS Fp12 sqr spec *)
+      cbv [AbstractField.Fmul Fp12_fp_inst Fp12_field_parameters
+           DodecicFieldExtensionsSpecs.fp12_mul_fn
            BLS12Fp12Spec.fp12_mul BLS12Fp12Spec.fp12_c0 BLS12Fp12Spec.fp12_c1
-           BLS12Fp12Spec.mk_fp12 fst snd
-           BLS12Fp6Spec.fp6_mul_by_v BLS12Fp6Spec.fp6_c0 BLS12Fp6Spec.fp6_c1
-           BLS12Fp6Spec.fp6_c2 BLS12Fp6Spec.fp6_build
+           BLS12Fp12Spec.mk_fp12 fst snd].
+      (* Bridge module aliases: unfold both sides to raw Fp6 bodies *)
+      (* Unfold both Fp6.* and BLS12Fp6Spec.* to Fp2-level bodies (keep Fp2 ops opaque) *)
+      cbv [Fp6.fp6_add Fp6.fp6_sub Fp6.fp6_mul Fp6.fp6_mul_by_v
+           Fp6.fp6_c0 Fp6.fp6_c1 Fp6.fp6_c2 Fp6.fp6_build
            BLS12Fp6Spec.fp6_add BLS12Fp6Spec.fp6_sub BLS12Fp6Spec.fp6_mul
-           Fp6.fp6_add Fp6.fp6_sub Fp6.fp6_mul Fp6.fp6_mul_by_v
-           Fp6.fp6_c0 Fp6.fp6_c1 Fp6.fp6_c2 Fp6.fp6_build].
-      reflexivity. }
+           BLS12Fp6Spec.fp6_mul_by_v
+           BLS12Fp6Spec.fp6_c0 BLS12Fp6Spec.fp6_c1 BLS12Fp6Spec.fp6_c2
+           BLS12Fp6Spec.fp6_build
+           BLS12Fp6Spec.fp2_add BLS12Fp6Spec.fp2_sub BLS12Fp6Spec.fp2_mul
+           BLS12Fp6Spec.fp2_mul_xi
+           Fp6.fp2_add Fp6.fp2_sub Fp6.fp2_mul Fp6.fp2_mul_xi
+           fst snd].
+      (* c1 needs the Karatsuba identity; unfold everything to F level in both *)
+      pose proof (fp6_double_eq_karatsuba a0 a1) as Hk.
+      cbv [AbstractField.Fadd AbstractField.Fmul AbstractField.Fsub
+           Fp6_fp_inst Fp6_field_parameters
+           CubicFieldExtensionsSpecs.fp6_add_fn CubicFieldExtensionsSpecs.fp6_mul_fn
+           CubicFieldExtensionsSpecs.fp6_sub_fn
+           BLS12Fp6Spec.fp6_add BLS12Fp6Spec.fp6_sub BLS12Fp6Spec.fp6_mul
+           BLS12Fp6Spec.fp6_c0 BLS12Fp6Spec.fp6_c1 BLS12Fp6Spec.fp6_c2
+           BLS12Fp6Spec.fp6_build
+           BLS12Fp6Spec.fp2_add BLS12Fp6Spec.fp2_sub BLS12Fp6Spec.fp2_mul
+           BLS12Fp6Spec.fp2_mul_xi
+           QuadraticExtensions.mulp2 QuadraticExtensions.addp2 QuadraticExtensions.subp2
+           fst snd] in Hk.
+      rewrite Hk. reflexivity. }
     split.
     { fp12_bounded_by_eq. rewrite Hd0_app, Hd1_app.
       split; solve_bounds. }
@@ -3124,13 +3153,10 @@ Section Fp12.
     rewrite Heq_xr.
     split_all_disjointness.
     (* Derive missing disjointness for m_o0, m_o1, m_rr vs mStack_t1 *)
-    assert (Hd_xr_t1 : map.disjoint (map.putmany m_x m_rx) mStack_t1)
-      by (apply map.disjoint_putmany_l; split; assumption).
-    rewrite Heq_xr in Hd_xr_t1.
-    apply map.disjoint_putmany_l in Hd_xr_t1.
-    destruct Hd_xr_t1 as [Hd_o_t1 Hd_rr_t1].
-    apply map.disjoint_putmany_l in Hd_o_t1.
-    destruct Hd_o_t1 as [Hd_o0_t1 Hd_o1_t1].
+    (* Derive disjointness for m_o0, m_o1, m_rr vs mStack_t1 *)
+    assert (Hd_o0_t1 : map.disjoint m_o0 mStack_t1) by map_disjoint_auto.
+    assert (Hd_o1_t1 : map.disjoint m_o1 mStack_t1) by map_disjoint_auto.
+    assert (Hd_rr_t1 : map.disjoint m_rr mStack_t1) by map_disjoint_auto.
     (* Build master sep fact *)
     assert (Hsep :
       (FElem_Fp6 t0_ptr t0_val ⋆
@@ -3167,7 +3193,6 @@ Section Fp12.
       exists m_o1, m_rr.
       split; [split; [reflexivity |] |]; [map_disjoint_auto |].
       split; [exact Hfe_o1 | exact Hrr_out]. }
-    rewrite Heq_xr.
     (* === Call 1: t0 = Fp6_square(allocx.c0) === *)
     exists [t0_ptr; allocx]. split. { solve_dexprs. }
     eapply Semantics.weaken_call.
@@ -3362,14 +3387,15 @@ Section Fp12.
       cbv [BLS12Fp6Spec.fp6_sqr BLS12Fp6Spec.fp6_mul_by_v
            BLS12Fp6Spec.fp6_c0 BLS12Fp6Spec.fp6_c1 BLS12Fp6Spec.fp6_c2
            BLS12Fp6Spec.fp6_build fst snd].
-      (* Bridge Fp6.* (from Fp12.v inlined Let) to BLS12Fp6Spec.* *)
-      change (Fp6.fp6_mul M_pos) with (BLS12Fp6Spec.fp6_mul M_pos).
-      change (Fp6.fp6_sub M_pos) with (BLS12Fp6Spec.fp6_sub M_pos).
-      change (Fp6.fp6_neg M_pos) with (BLS12Fp6Spec.fp6_neg M_pos).
-      change (Fp6.fp6_inv M_pos) with (BLS12Fp6Spec.fp6_inv M_pos).
-      change (Fp6.fp6_sqr M_pos) with (BLS12Fp6Spec.fp6_sqr M_pos).
-      change (Fp6.fp6_mul_by_v M_pos) with (BLS12Fp6Spec.fp6_mul_by_v M_pos).
-      cbv [BLS12Fp6Spec.fp6_sqr BLS12Fp6Spec.fp6_mul_by_v
+      (* Bridge module aliases *)
+      match goal with |- ?L = ?R =>
+        let R' := eval cbv [Fp6.fp6_mul Fp6.fp6_sub Fp6.fp6_neg Fp6.fp6_inv
+                            Fp6.fp6_sqr Fp6.fp6_mul_by_v
+                            Fp6.fp6_c0 Fp6.fp6_c1 Fp6.fp6_c2 Fp6.fp6_build] in R in
+        change (L = R')
+      end.
+      cbv [BLS12Fp6Spec.fp6_mul BLS12Fp6Spec.fp6_sub BLS12Fp6Spec.fp6_neg
+           BLS12Fp6Spec.fp6_inv BLS12Fp6Spec.fp6_sqr BLS12Fp6Spec.fp6_mul_by_v
            BLS12Fp6Spec.fp6_c0 BLS12Fp6Spec.fp6_c1 BLS12Fp6Spec.fp6_c2
            BLS12Fp6Spec.fp6_build fst snd].
       reflexivity. }
