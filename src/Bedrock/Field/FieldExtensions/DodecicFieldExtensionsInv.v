@@ -782,40 +782,28 @@ Section Fp12.
     assert (Hd1_app : d1_felem (out0' ++ out1'') = out1'').
     { apply d1_felem_app. exact Hlen_B. }
     split.
-    { (* feval *)
+    { (* feval — keep terms at Fp6 level to avoid OOM *)
       fp12_feval_eq. rewrite Hd0_app, Hd1_app.
       rewrite Hfeval_c0, Hfeval_c1'.
       rewrite Hfeval_c1.
       rewrite Hfeval_t0'', Hfeval_t0', Hfeval_t0.
       rewrite Hfeval_t1', Hfeval_t1.
+      (* Unfold LHS: un_model → Finv → fp12_inv spec, then AbstractField F* → BLS12Fp6Spec *)
       unfold un_model, AbstractField.un_inv, Fp12_fp_inst, Fp12_field_parameters.
       cbv [Finv DodecicFieldExtensionsSpecs.fp12_inv_fn
            BLS12Fp12Spec.fp12_inv BLS12Fp12Spec.fp12_c0 BLS12Fp12Spec.fp12_c1 BLS12Fp12Spec.mk_fp12
            fst snd].
-      cbv [Fopp Fp6_fp_inst Fp6_field_parameters
-           CubicFieldExtensionsSpecs.fp6_neg_fn BLS12Fp6Spec.fp6_neg].
-      cbv [Fmul Fp6_fp_inst Fp6_field_parameters
-           CubicFieldExtensionsSpecs.fp6_mul_fn BLS12Fp6Spec.fp6_mul].
-      cbv [Finv Fp6_fp_inst Fp6_field_parameters
-           CubicFieldExtensionsSpecs.fp6_inv_fn BLS12Fp6Spec.fp6_inv].
-      cbv [Fsub Fp6_fp_inst Fp6_field_parameters
-           CubicFieldExtensionsSpecs.fp6_sub_fn BLS12Fp6Spec.fp6_sub].
-      cbv [AbstractField.Fsquare].
-      cbv [un_model un_Fp6_mul_by_v fp6_mul_by_v_model].
-      cbv [BLS12Fp6Spec.fp6_sqr BLS12Fp6Spec.fp6_mul_by_v
-           BLS12Fp6Spec.fp6_c0 BLS12Fp6Spec.fp6_c1 BLS12Fp6Spec.fp6_c2
-           BLS12Fp6Spec.fp6_build fst snd].
-      (* Bridge module aliases *)
-      match goal with |- ?L = ?R =>
-        let R' := eval cbv [Fp6.fp6_mul Fp6.fp6_sub Fp6.fp6_neg Fp6.fp6_inv
-                            Fp6.fp6_sqr Fp6.fp6_mul_by_v
-                            Fp6.fp6_c0 Fp6.fp6_c1 Fp6.fp6_c2 Fp6.fp6_build] in R in
-        change (L = R')
-      end.
-      cbv [BLS12Fp6Spec.fp6_mul BLS12Fp6Spec.fp6_sub BLS12Fp6Spec.fp6_neg
-           BLS12Fp6Spec.fp6_inv BLS12Fp6Spec.fp6_sqr BLS12Fp6Spec.fp6_mul_by_v
-           BLS12Fp6Spec.fp6_c0 BLS12Fp6Spec.fp6_c1 BLS12Fp6Spec.fp6_c2
-           BLS12Fp6Spec.fp6_build fst snd].
+      cbv [Fopp Fmul Finv Fsub AbstractField.Fsquare
+           Fp6_fp_inst Fp6_field_parameters
+           CubicFieldExtensionsSpecs.fp6_neg_fn CubicFieldExtensionsSpecs.fp6_mul_fn
+           CubicFieldExtensionsSpecs.fp6_inv_fn CubicFieldExtensionsSpecs.fp6_sub_fn
+           un_model un_Fp6_mul_by_v fp6_mul_by_v_model].
+      (* RHS (from spec) has Fp6.fp6_*. Bridge to BLS12Fp6Spec.fp6_* *)
+      change (Fp6.fp6_mul M_pos) with (BLS12Fp6Spec.fp6_mul M_pos).
+      change (Fp6.fp6_sub M_pos) with (BLS12Fp6Spec.fp6_sub M_pos).
+      change (Fp6.fp6_neg M_pos) with (BLS12Fp6Spec.fp6_neg M_pos).
+      change (Fp6.fp6_inv M_pos) with (BLS12Fp6Spec.fp6_inv M_pos).
+      change (Fp6.fp6_mul_by_v M_pos) with (BLS12Fp6Spec.fp6_mul_by_v M_pos).
       reflexivity. }
     split.
     { (* bounded *)
