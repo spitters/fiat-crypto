@@ -191,8 +191,18 @@ Section PairingOps.
       coq:(cmd.call [] (AbstractField.opp (F:=Fp)) [expr_fp_snd (expr.var "out"); expr_fp_snd (expr.var "x")])
     ))).
 
+  (* Fp2 conjugation model: (a0, a1) → (a0, -a1) *)
+  Local Instance un_Fp2_conjugate
+    : @AbstractField.UnOp _ _ _ _ Fp2 Fp2_fp_inst Fp2_repr_inst fp2_conjugate_name :=
+    {| AbstractField.un_model := fun x => (fst x, @F.opp M_pos (snd x));
+       AbstractField.un_xbounds := @AbstractField.tight_bounds _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst;
+       AbstractField.un_outbounds := @AbstractField.loose_bounds _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst |}.
+
+  Instance spec_of_Fp2_conjugate : spec_of fp2_conjugate_name :=
+    AbstractField.unop_spec un_Fp2_conjugate.
+
   Lemma Fp2_conjugate_ok : program_logic_goal_for_function! Fp2_conjugate.
-  Proof. exact I. Qed.
+  Proof. Admitted. (* TODO: WP proof — 2 Fp-level calls *)
 
   (* -------------------------------------------------------------- *)
   (* fp6_mul_fp2: (c0, c1, c2) * s -> (c0*s, c1*s, c2*s)            *)
