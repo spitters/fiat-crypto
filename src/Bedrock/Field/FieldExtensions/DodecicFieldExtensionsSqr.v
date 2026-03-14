@@ -498,6 +498,20 @@ Section Fp12.
     repeat (apply pair_equal_spec; split); ring.
   Qed.
 
+  (* Same lemma stated with BLS12Fp6Spec to match the goal after cbv *)
+  Local Corollary fp6_double_eq_karatsuba_concrete (a0 a1 : Fp6) :
+    BLS12Fp6Spec.fp6_add M_pos
+      (BLS12Fp6Spec.fp6_mul M_pos a0 a1)
+      (BLS12Fp6Spec.fp6_mul M_pos a0 a1) =
+    BLS12Fp6Spec.fp6_sub M_pos
+      (BLS12Fp6Spec.fp6_sub M_pos
+        (BLS12Fp6Spec.fp6_mul M_pos
+          (BLS12Fp6Spec.fp6_add M_pos a0 a1)
+          (BLS12Fp6Spec.fp6_add M_pos a0 a1))
+        (BLS12Fp6Spec.fp6_mul M_pos a0 a0))
+      (BLS12Fp6Spec.fp6_mul M_pos a1 a1).
+  Proof. exact (fp6_double_eq_karatsuba a0 a1). Qed.
+
   (* ================================================================ *)
   (* The Fp12_sqr_ok proof                                             *)
   (* ================================================================ *)
@@ -787,43 +801,31 @@ Section Fp12.
       rewrite Hfeval_t1, Hfeval_t2.
       set (a0 := @AbstractField.feval _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst (d0_felem x)).
       set (a1 := @AbstractField.feval _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst (d1_felem x)).
-      (* Unfold LHS to BLS12Fp6Spec level *)
+      (* LHS has bin_model (Fp6 level). Unfold fully to BLS12Fp6Spec.fp6_* *)
       cbv [AbstractField.bin_model AbstractField.bin_mul AbstractField.bin_add
-           AbstractField.Fmul AbstractField.Fadd
+           AbstractField.Fadd AbstractField.Fmul
            Fp6_fp_inst Fp6_field_parameters
            CubicFieldExtensionsSpecs.fp6_mul_fn CubicFieldExtensionsSpecs.fp6_add_fn
            AbstractField.un_model un_Fp6_mul_by_v fp6_mul_by_v_model].
-      (* Unfold RHS Fp12 sqr spec *)
+      (* RHS has Fp12 Fmul. Unfold to Fp6.fp6_* (from Fp12.v's Let bindings) *)
       cbv [AbstractField.Fmul Fp12_fp_inst Fp12_field_parameters
            DodecicFieldExtensionsSpecs.fp12_mul_fn
            BLS12Fp12Spec.fp12_mul BLS12Fp12Spec.fp12_c0 BLS12Fp12Spec.fp12_c1
            BLS12Fp12Spec.mk_fp12 fst snd].
-      (* Bridge module aliases: unfold both sides to raw Fp6 bodies *)
-      (* Unfold both Fp6.* and BLS12Fp6Spec.* to Fp2-level bodies (keep Fp2 ops opaque) *)
-      cbv [Fp6.fp6_add Fp6.fp6_sub Fp6.fp6_mul Fp6.fp6_mul_by_v
-           Fp6.fp6_c0 Fp6.fp6_c1 Fp6.fp6_c2 Fp6.fp6_build
-           BLS12Fp6Spec.fp6_add BLS12Fp6Spec.fp6_sub BLS12Fp6Spec.fp6_mul
-           BLS12Fp6Spec.fp6_mul_by_v
-           BLS12Fp6Spec.fp6_c0 BLS12Fp6Spec.fp6_c1 BLS12Fp6Spec.fp6_c2
-           BLS12Fp6Spec.fp6_build
-           BLS12Fp6Spec.fp2_add BLS12Fp6Spec.fp2_sub BLS12Fp6Spec.fp2_mul
-           BLS12Fp6Spec.fp2_mul_xi
-           Fp6.fp2_add Fp6.fp2_sub Fp6.fp2_mul Fp6.fp2_mul_xi
-           fst snd].
-      (* c1 needs the Karatsuba identity; unfold everything to F level in both *)
-      pose proof (fp6_double_eq_karatsuba a0 a1) as Hk.
-      cbv [AbstractField.Fadd AbstractField.Fmul AbstractField.Fsub
-           Fp6_fp_inst Fp6_field_parameters
-           CubicFieldExtensionsSpecs.fp6_add_fn CubicFieldExtensionsSpecs.fp6_mul_fn
-           CubicFieldExtensionsSpecs.fp6_sub_fn
-           BLS12Fp6Spec.fp6_add BLS12Fp6Spec.fp6_sub BLS12Fp6Spec.fp6_mul
-           BLS12Fp6Spec.fp6_c0 BLS12Fp6Spec.fp6_c1 BLS12Fp6Spec.fp6_c2
-           BLS12Fp6Spec.fp6_build
-           BLS12Fp6Spec.fp2_add BLS12Fp6Spec.fp2_sub BLS12Fp6Spec.fp2_mul
-           BLS12Fp6Spec.fp2_mul_xi
-           QuadraticExtensions.mulp2 QuadraticExtensions.addp2 QuadraticExtensions.subp2
-           fst snd] in Hk.
-      rewrite Hk. reflexivity. }
+      (* LHS has BLS12Fp6Spec.fp6_*, RHS has Fp6.fp6_*.
+         These are the same module (Module BLS12Fp6Spec := Fp6),
+         so we convert RHS to use BLS12Fp6Spec names. *)
+      change (Fp6.fp6_add M_pos) with (BLS12Fp6Spec.fp6_add M_pos).
+      change (Fp6.fp6_sub M_pos) with (BLS12Fp6Spec.fp6_sub M_pos).
+      change (Fp6.fp6_mul M_pos) with (BLS12Fp6Spec.fp6_mul M_pos).
+      change (Fp6.fp6_mul_by_v M_pos) with (BLS12Fp6Spec.fp6_mul_by_v M_pos).
+      (* Now both sides use BLS12Fp6Spec.fp6_* *)
+      (* Use Karatsuba identity to rewrite c1 component, then close *)
+      subst a0 a1.
+      rewrite (fp6_double_eq_karatsuba_concrete
+        (@AbstractField.feval _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst (d0_felem x))
+        (@AbstractField.feval _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst (d1_felem x))).
+      reflexivity. }
     split.
     { fp12_bounded_by_eq. rewrite Hd0_app, Hd1_app.
       split; solve_bounds. }
