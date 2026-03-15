@@ -404,10 +404,15 @@ Section PairingOps.
   (* Fp2 FElem length extraction *)
   Local Notation Fp2_felem_size := (@AbstractField.felem_size_in_words _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst).
 
-  Lemma Fp6_frobenius_p2_ok : program_logic_goal_for_function! Fp6_frobenius_p2.
+  Lemma Fp6_frobenius_p2_ok :
+    forall functions
+      (EnvContains : map.get functions fp6_frobenius_p2_name =
+        Some (snd Fp6_frobenius_p2))
+      (HFcopy : spec_of_Fp2_felem_copy functions)
+      (HFmul : spec_of_Fp2_mul functions),
+    spec_of_Fp6_frobenius_p2 functions.
   Proof.
-    cbv beta delta [program_logic_goal_for].
-    intros functions EnvContains HFcopy HFmul1 HFmul2.
+    intros functions EnvContains HFcopy HFmul.
     unfold spec_of_Fp6_frobenius_p2.
     intros pout px pgamma1_p2 pgamma2_p2 old_out x gamma1_p2 gamma2_p2 Rr tr mem0
       [Hbx [Hbg1 [Hbg2 Hmem_all]]].
@@ -495,8 +500,9 @@ Section PairingOps.
     (* === Call 2: Fp2 mul (out.c1 = x.c1 * gamma1_p2) === *)
     eexists. split. { solve_dexprs. }
     eapply Semantics.weaken_call.
-    1: { unfold spec_of_Fp2_mul, AbstractField.binop_spec in HFmul2.
-         eapply (HFmul2 (word.add pout (CubicFieldExtensions.fp6_c1_offset fp2_prefix))
+    1: { pose proof HFmul as HFmul'.
+         unfold spec_of_Fp2_mul, AbstractField.binop_spec in HFmul'.
+         eapply (HFmul' (word.add pout (CubicFieldExtensions.fp6_c1_offset fp2_prefix))
            (word.add px (CubicFieldExtensions.fp6_c1_offset fp2_prefix))
            pgamma1_p2
            (c1_felem old_out) (c1_felem x) gamma1_p2 _ tr).
@@ -515,7 +521,9 @@ Section PairingOps.
     (* === Call 3: Fp2 mul (out.c2 = x.c2 * gamma2_p2) === *)
     eexists. split. { solve_dexprs. }
     eapply Semantics.weaken_call.
-    1: { eapply (HFmul2 (word.add pout (CubicFieldExtensions.fp6_c2_offset fp2_prefix))
+    1: { pose proof HFmul as HFmul''.
+         unfold spec_of_Fp2_mul, AbstractField.binop_spec in HFmul''.
+         eapply (HFmul'' (word.add pout (CubicFieldExtensions.fp6_c2_offset fp2_prefix))
            (word.add px (CubicFieldExtensions.fp6_c2_offset fp2_prefix))
            pgamma2_p2
            (c2_felem old_out) (c2_felem x) gamma2_p2 _ tr).
