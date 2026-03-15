@@ -347,10 +347,14 @@ Section PairingOps.
         Rr,
     { requires tr mem :=
         Fp6_bounded (@AbstractField.tight_bounds _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst) x /\
-        (exists Rx, (FElem_Fp6 px x ⋆ Rx) mem) /\
-        (exists Rg1, (FElem_Fp2 pgamma1_p2 gamma1_p2 ⋆ Rg1) mem) /\
-        (exists Rg2, (FElem_Fp2 pgamma2_p2 gamma2_p2 ⋆ Rg2) mem) /\
-        (FElem_Fp6 pout old_out ⋆ Rr) mem;
+        @AbstractField.bounded_by _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst
+          (@AbstractField.loose_bounds _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst) gamma1_p2 /\
+        @AbstractField.bounded_by _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst
+          (@AbstractField.loose_bounds _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst) gamma2_p2 /\
+        (FElem_Fp6 px x ⋆
+         (FElem_Fp2 pgamma1_p2 gamma1_p2 ⋆
+          (FElem_Fp2 pgamma2_p2 gamma2_p2 ⋆
+           (FElem_Fp6 pout old_out ⋆ Rr)))) mem;
       ensures tr' mem' :=
         tr = tr' /\
         exists out,
@@ -361,8 +365,23 @@ Section PairingOps.
           Fp6_bounded (@AbstractField.loose_bounds _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst) out /\
           (FElem_Fp6 pout out ⋆ Rr) mem' }.
 
+  (* Local tactics for map manipulation (copies of CubicFieldExtensions locals) *)
+  Local Ltac map_disjoint_auto :=
+    lazymatch goal with
+    | |- map.disjoint (map.putmany _ _) _ =>
+        apply map.disjoint_putmany_l; split; map_disjoint_auto
+    | |- map.disjoint _ (map.putmany _ _) =>
+        apply map.disjoint_putmany_r; split; map_disjoint_auto
+    | |- map.disjoint ?a ?b =>
+        first [ assumption
+              | (unfold map.disjoint; intros ?k ?v1 ?v2 ?Hg1 ?Hg2;
+                 match goal with H : map.disjoint _ _ |- _ => exact (H k v2 v1 Hg2 Hg1) end) ]
+    end.
+
+  Local Notation fp_felem_size := (@AbstractField.felem_size_in_words _ _ _ _ _ _ F_representation).
+
   Lemma Fp6_frobenius_p2_ok : program_logic_goal_for_function! Fp6_frobenius_p2.
-  Proof. Admitted. (* TODO: 3 Fp2-level calls, follows Fp6 add/sub pattern *)
+  Proof. Admitted.
 
   (* -------------------------------------------------------------- *)
   (* fp12_frobenius: raise Fp12 element to p-th power                 *)
