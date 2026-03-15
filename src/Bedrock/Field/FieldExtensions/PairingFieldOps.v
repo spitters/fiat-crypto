@@ -495,9 +495,16 @@ Section PairingOps.
     (* === Call 2: Fp2 mul (out.c1 = x.c1 * gamma1_p2) === *)
     eexists. split. { solve_dexprs. }
     eapply Semantics.weaken_call.
-    1: { unfold spec_of_Fp2_mul, AbstractField.binop_spec in HFmul1.
-         eapply HFmul1.
-         admit. }
+    1: { unfold spec_of_Fp2_mul, AbstractField.binop_spec in HFmul2.
+         eapply (HFmul2 (word.add pout (CubicFieldExtensions.fp6_c1_offset fp2_prefix))
+           (word.add px (CubicFieldExtensions.fp6_c1_offset fp2_prefix))
+           pgamma1_p2
+           (c1_felem old_out) (c1_felem x) gamma1_p2 _ tr).
+         split; [admit (* bounds *) |].
+         split; [admit (* bounds *) |].
+         split; [eexists; pose proof Hsep1 as H'; ecancel_assumption |].
+         split; [eexists; pose proof Hsep1 as H'; ecancel_assumption |].
+         pose proof Hsep1 as H'. ecancel_assumption. }
     (* Post mul1 *)
     intros t'' m'' rets2 [Hrets2 [Htr2 [out1' [Hfeval1 [Hbound1 Hsep2]]]]].
     subst rets2. symmetry in Htr2. subst t''.
@@ -525,31 +532,12 @@ Section PairingOps.
     split. { exact eq_refl. }
     cbv [list_map get]. split. { exact eq_refl. }
     split. { exact eq_refl. }
-    (* === Final postcondition === *)
-    pose proof (Fp2_FElem_length _ _ _ Hnew0) as Hlen0.
+    (* === Final postcondition: feval, bounded_by, sep === *)
+    (* The 3 calls produced: c0 = c0_felem x (copy), c1 = out1' (mul), c2 = out2' (mul) *)
+    (* Join into Fp6 output: c0_felem x ++ out1' ++ out2' *)
     exists (c0_felem x ++ out1' ++ out2').
-    split.
-    { (* feval *)
-      change (@AbstractField.feval _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst) with
-        (fun ws => ((@AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst (c0_felem ws),
-                     @AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst (c1_felem ws)),
-                    @AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst (c2_felem ws))).
-      cbv beta.
-      assert (Hlen1 : length out1' = Fp2_felem_size).
-      { destruct Hsep3 as [? [? [? [? ?]]]]. destruct H0 as [? [? [? [? ?]]]].
-        admit. (* FElem length extraction — mechanical *) }
-      unfold c0_felem, c1_felem, c2_felem.
-      rewrite firstn_app' by exact Hlen0.
-      rewrite skipn_app by exact Hlen0.
-      rewrite firstn_app' by (rewrite Hlen0; exact Hlen1).
-      rewrite skipn_app by (rewrite Hlen0; exact Hlen1).
-      rewrite Hfeval1, Hfeval2.
-      unfold fp6_frobenius_p2_model. simpl.
-      reflexivity. }
-    split.
-    { (* bounded_by *) admit. }
-    { (* sep: join Fp2 components back to Fp6 *)
-      admit. }
+    admit. (* Final postcondition: feval + bounded_by + Fp6 FElem join.
+              Same pattern as DodecicFieldExtensions Fp12 proofs. *)
   Admitted.
   (* Full proof body (follows Fp6_felem_copy_ok / Fp6_add_ok pattern):
     cbv beta delta [program_logic_goal_for].
