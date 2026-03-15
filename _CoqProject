@@ -1,4 +1,13 @@
 -R src Crypto
+-Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/coqprime/src/Coqprime Coqprime
+-Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/deps/coqutil/src/coqutil coqutil
+-Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/src/Rupicola Rupicola 
+-Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/bedrock2/src/bedrock2 bedrock2
+-Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/bedrock2/src/bedrock2Examples bedrock2Examples
+-Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/compiler/src/compiler compiler
+-Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/deps/riscv-coq/src/riscv riscv
+-Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rewriter/src/Rewriter Rewriter
+-I /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rewriter/src/Rewriter/Util/plugins
 -arg -w -arg +implicit-core-hint-db,+implicits-in-term,+non-reversible-notation,+deprecated-intros-until-0,+deprecated-focus,+unused-intro-pattern,+variable-collision,+unexpected-implicit-declaration,+omega-is-deprecated,+deprecated-instantiate-syntax,+non-recursive,+undeclared-scope,+deprecated-hint-rewrite-without-locality,+deprecated-hint-without-locality,+deprecated-instance-without-locality,+deprecated-typeclasses-transparency-without-locality,+fragile-hint-constr,-deprecated-since-9.0,-deprecated-since-8.20,-deprecated-from-Coq
 -arg -native-compiler -arg ondemand
 src/Everything.v
@@ -123,8 +132,19 @@ src/Bedrock/Field/Common/Arrays/MakeListLengths.v
 src/Bedrock/Field/Common/Arrays/MaxBounds.v
 src/Bedrock/Field/Common/Names/MakeNames.v
 src/Bedrock/Field/Common/Names/VarnameGenerator.v
+src/Bedrock/Field/FieldExtensions/CubicFieldExtensions.v
+src/Bedrock/Field/FieldExtensions/CubicFieldExtensionsSpecs.v
+src/Bedrock/Field/FieldExtensions/DodecicFieldExtensions.v
+src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsInv.v
+src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsMul.v
+src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsSpecs.v
+src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsSqr.v
+src/Bedrock/Field/FieldExtensions/PairingFieldOps.v
 src/Bedrock/Field/FieldExtensions/QuadraticFieldExtensions.v
+src/Bedrock/Field/FieldExtensions/QuadraticFieldExtensionsMul.v
 src/Bedrock/Field/FieldExtensions/QuadraticFieldExtensionsSpecs.v
+src/Bedrock/Field/FieldExtensions/WPTactics.v
+src/Bedrock/Field/FieldExtensions/Theory/CubicExtensions.v
 src/Bedrock/Field/FieldExtensions/Theory/FieldsUtil.v
 src/Bedrock/Field/FieldExtensions/Theory/QuadraticExtensions.v
 src/Bedrock/Field/FieldExtensions/Theory/QuadraticExtensionsFiat.v
@@ -141,6 +161,7 @@ src/Bedrock/Field/Synthesis/Examples/ArrayUtil.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_G1.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_G1_alt.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_G2.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_Pairing.v
 src/Bedrock/Field/Synthesis/Examples/ScalarsUtil.v
 src/Bedrock/Field/Synthesis/Examples/bls12_Fp2.v
 src/Bedrock/Field/Synthesis/Examples/bls12_felem_copy.v
@@ -313,6 +334,9 @@ src/Spec/ModularArithmetic.v
 src/Spec/MontgomeryCurve.v
 src/Spec/MxDH.v
 src/Spec/WeierstrassCurve.v
+src/Spec/BLS12Pairing/Fp12.v
+src/Spec/BLS12Pairing/Fp6.v
+src/Spec/BLS12Pairing/Pairing.v
 src/Spec/Test/X25519.v
 src/Stringification/C.v
 src/Stringification/Go.v

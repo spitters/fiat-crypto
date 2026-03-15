@@ -107,11 +107,48 @@ Fp6 ops need Fp6→Fp2 decomposition (CubicFieldExtensions.Fp6_raw_FElem_split).
 Fp12 ops need Fp12→Fp6 decomposition (DodecicFieldExtensions.Fp12_raw_FElem_split).
 Extra pointer args (gamma constants) are just additional FElems in the sep fact.
 
-### Phase 5: BLS12-Specific Helpers (5 proofs)
+### Phase 5: BLS12-Specific Helpers (5 proofs in BLS12_Pairing.v)
+
+**Status:** No specs yet. Function bodies exist. Uses OLD compatibility shim (`exact I`).
+
+| Proof | Calls | Notes |
+|-------|-------|-------|
+| `bls12_Fp2_mul_fp_ok` | 2 Fp mul | Fp2→Fp decomp (like conjugate) |
+| `bls12_make_line_ok` | ~10 Fp2 calls | Line evaluation for Miller loop |
+| `bls12_load_gamma1_p2_ok` | from_list | Frobenius constant loader |
+| `bls12_load_gamma2_p2_ok` | from_list | Frobenius constant loader |
+| `bls12_load_w_frob_p2_c1_ok` | from_list | Frobenius constant loader |
 
 ### Phase 6: Loop Proofs (3 proofs) — HARDEST
 
+**Status:** Function bodies exist. Needs loop invariants.
+
+| Proof | Structure | Notes |
+|-------|-----------|-------|
+| `bls12_miller_loop_ok` | `cmd.while` over 63 bits | Needs loop invariant tracking (f, T, i) |
+| `bls12_final_exp_ok` | Easy part (4 Fp12 ops) + hard part (`cmd.while` over h3 bits) | 1268-bit exponent |
+| `bls12_pairing_ok` | Chains miller_loop + final_exp | Simplest if loop proofs done |
+
 ### Phase 7: Top-Level Instantiation (3 proofs)
+
+| Proof | File | Notes |
+|-------|------|-------|
+| `bls12_G1_ok` | BLS12_G1.v | Uses OLD shim |
+| `bls12_G1_alt_ok` | BLS12_G1_alt.v | Uses OLD shim |
+| `bls12_G2_ok` | BLS12_G2.v | Uses OLD shim |
+
+## Key Infrastructure Built
+
+### WPTactics.v
+- `build_sep`: O(n²) sep construction from individual FElem hypotheses (handles 9+)
+- `split_all_disjointness`: decomposes compound disjointness
+- `map_disjoint_auto`: solves disjointness with symmetric search
+- `solve_dexprs`: solves argument evaluation
+- `wp_binop_precond`/`wp_unop_precond`: solves call preconditions via ecancel
+
+### Instance Resolution Fix
+- spec_of definitions MUST use explicit `(F:=Fp2) (field_representation:=Fp2_repr_inst)` to prevent instance search from picking wrong level
+- Without explicit annotations, `spec_of_Fp2_mul` may resolve to Fp12 mul spec
 
 ## Key Infrastructure & Bridge Lemmas
 

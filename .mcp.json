@@ -1,0 +1,6 @@
+{
+  "rocq-mcp": {
+    "type": "stdio",
+    "command": "/home/au528660/.local/bin/rocq-mcp-rocq9"
+  }
+}
