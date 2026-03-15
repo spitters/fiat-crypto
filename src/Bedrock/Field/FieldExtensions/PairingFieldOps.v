@@ -224,8 +224,42 @@ Section PairingOps.
       coq:(cmd.call [] (AbstractField.mul (F:=Fp2)) [expr_fp6_c2 (expr.var "out"); expr_fp6_c2 (expr.var "x"); expr.var "s_copy"])
     ))).
 
+  Local Notation FElem_Fp2 := (@AbstractField.FElem _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst).
+  Local Notation FElem_Fp6 := (@AbstractField.FElem _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst).
+  Local Notation FElem_Fp12 := (@AbstractField.FElem _ Fp12_fp_inst _ _ _ _ Fp12_repr_inst).
+  Local Notation Fp6_feval := (@AbstractField.feval _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst).
+  Local Notation Fp12_feval := (@AbstractField.feval _ Fp12_fp_inst _ _ _ _ Fp12_repr_inst).
+  Local Notation Fp6_bounded := (@AbstractField.bounded_by _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst).
+  Local Notation Fp12_bounded := (@AbstractField.bounded_by _ Fp12_fp_inst _ _ _ _ Fp12_repr_inst).
+
+  (* Gallina model for fp6_mul_fp2: scale each Fp2 component by s *)
+  Local Definition fp6_mul_fp2_model (x : Fp6) (s : Fp2) : Fp6 :=
+    ((@AbstractField.Fmul _ Fp2_fp_inst (fst (fst x)) s,
+      @AbstractField.Fmul _ Fp2_fp_inst (snd (fst x)) s),
+     @AbstractField.Fmul _ Fp2_fp_inst (snd x) s).
+
+  Instance spec_of_Fp6_mul_fp2 : spec_of fp6_mul_fp2_name :=
+    fnspec! fp6_mul_fp2_name (pout px ps : word)
+      / (old_out : @AbstractField.felem _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst)
+        (x : @AbstractField.felem _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst)
+        (s : @AbstractField.felem _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst)
+        Rr,
+    { requires tr mem :=
+        Fp6_bounded (@AbstractField.tight_bounds _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst) x /\
+        @AbstractField.bounded_by _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst
+          (@AbstractField.tight_bounds _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst) s /\
+        (exists Rx, (FElem_Fp6 px x ⋆ Rx) mem) /\
+        (exists Rs, (FElem_Fp2 ps s ⋆ Rs) mem) /\
+        (FElem_Fp6 pout old_out ⋆ Rr) mem;
+      ensures tr' mem' :=
+        tr = tr' /\
+        exists out,
+          Fp6_feval out = fp6_mul_fp2_model (Fp6_feval x) (@AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst s) /\
+          Fp6_bounded (@AbstractField.loose_bounds _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst) out /\
+          (FElem_Fp6 pout out ⋆ Rr) mem' }.
+
   Lemma Fp6_mul_fp2_ok : program_logic_goal_for_function! Fp6_mul_fp2.
-  Proof. exact I. Qed.
+  Proof. Admitted.
 
   (* -------------------------------------------------------------- *)
   (* fp6_frobenius: raise Fp6 element to p-th power                   *)
@@ -250,8 +284,38 @@ Section PairingOps.
       coq:(cmd.call [] (AbstractField.mul (F:=Fp2)) [expr_fp6_c2 (expr.var "out"); expr_fp6_c2 (expr.var "tmp"); expr.var "gamma2"])
     ))).
 
+  (* Gallina model for Fp6 Frobenius: conj(c0) + conj(c1)*gamma1*v + conj(c2)*gamma2*v^2 *)
+  Local Definition fp2_conj (x : Fp2) : Fp2 := (fst x, @F.opp M_pos (snd x)).
+
+  Local Definition fp6_frobenius_model (gamma1 gamma2 : Fp2) (x : Fp6) : Fp6 :=
+    let c0 := fst (fst x) in let c1 := snd (fst x) in let c2 := snd x in
+    ((fp2_conj c0,
+      @AbstractField.Fmul _ Fp2_fp_inst (fp2_conj c1) gamma1),
+     @AbstractField.Fmul _ Fp2_fp_inst (fp2_conj c2) gamma2).
+
+  Instance spec_of_Fp6_frobenius : spec_of fp6_frobenius_name :=
+    fnspec! fp6_frobenius_name (pout px pgamma1 pgamma2 : word)
+      / (old_out x : @AbstractField.felem _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst)
+        (gamma1 gamma2 : @AbstractField.felem _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst)
+        Rr,
+    { requires tr mem :=
+        Fp6_bounded (@AbstractField.tight_bounds _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst) x /\
+        (exists Rx, (FElem_Fp6 px x ⋆ Rx) mem) /\
+        (exists Rg1, (FElem_Fp2 pgamma1 gamma1 ⋆ Rg1) mem) /\
+        (exists Rg2, (FElem_Fp2 pgamma2 gamma2 ⋆ Rg2) mem) /\
+        (FElem_Fp6 pout old_out ⋆ Rr) mem;
+      ensures tr' mem' :=
+        tr = tr' /\
+        exists out,
+          Fp6_feval out = fp6_frobenius_model
+            (@AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst gamma1)
+            (@AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst gamma2)
+            (Fp6_feval x) /\
+          Fp6_bounded (@AbstractField.loose_bounds _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst) out /\
+          (FElem_Fp6 pout out ⋆ Rr) mem' }.
+
   Lemma Fp6_frobenius_ok : program_logic_goal_for_function! Fp6_frobenius.
-  Proof. exact I. Qed.
+  Proof. Admitted.
 
   (* -------------------------------------------------------------- *)
   (* fp6_frobenius_p2: raise Fp6 element to p^2-th power              *)
@@ -270,8 +334,35 @@ Section PairingOps.
       coq:(cmd.call [] (AbstractField.mul (F:=Fp2)) [expr_fp6_c2 (expr.var "out"); expr_fp6_c2 (expr.var "x"); expr.var "gamma2_p2"])
     ))).
 
+  (* Gallina model for Fp6 Frobenius p^2: c0 + c1*gamma1_p2*v + c2*gamma2_p2*v^2 *)
+  Local Definition fp6_frobenius_p2_model (gamma1_p2 gamma2_p2 : Fp2) (x : Fp6) : Fp6 :=
+    let c0 := fst (fst x) in let c1 := snd (fst x) in let c2 := snd x in
+    ((c0, @AbstractField.Fmul _ Fp2_fp_inst c1 gamma1_p2),
+     @AbstractField.Fmul _ Fp2_fp_inst c2 gamma2_p2).
+
+  Instance spec_of_Fp6_frobenius_p2 : spec_of fp6_frobenius_p2_name :=
+    fnspec! fp6_frobenius_p2_name (pout px pgamma1_p2 pgamma2_p2 : word)
+      / (old_out x : @AbstractField.felem _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst)
+        (gamma1_p2 gamma2_p2 : @AbstractField.felem _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst)
+        Rr,
+    { requires tr mem :=
+        Fp6_bounded (@AbstractField.tight_bounds _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst) x /\
+        (exists Rx, (FElem_Fp6 px x ⋆ Rx) mem) /\
+        (exists Rg1, (FElem_Fp2 pgamma1_p2 gamma1_p2 ⋆ Rg1) mem) /\
+        (exists Rg2, (FElem_Fp2 pgamma2_p2 gamma2_p2 ⋆ Rg2) mem) /\
+        (FElem_Fp6 pout old_out ⋆ Rr) mem;
+      ensures tr' mem' :=
+        tr = tr' /\
+        exists out,
+          Fp6_feval out = fp6_frobenius_p2_model
+            (@AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst gamma1_p2)
+            (@AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst gamma2_p2)
+            (Fp6_feval x) /\
+          Fp6_bounded (@AbstractField.loose_bounds _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst) out /\
+          (FElem_Fp6 pout out ⋆ Rr) mem' }.
+
   Lemma Fp6_frobenius_p2_ok : program_logic_goal_for_function! Fp6_frobenius_p2.
-  Proof. exact I. Qed.
+  Proof. Admitted. (* TODO: 3 Fp2-level calls, follows Fp6 add/sub pattern *)
 
   (* -------------------------------------------------------------- *)
   (* fp12_frobenius: raise Fp12 element to p-th power                 *)
@@ -290,8 +381,37 @@ Section PairingOps.
       coq:(cmd.call [] fp6_mul_fp2_name [expr_fp12_c1 (expr.var "out"); expr_fp12_c1 (expr.var "out"); expr.var "w_frob_c1"])
     ))).
 
+  (* Gallina model for Fp12 Frobenius *)
+  Local Definition fp12_frobenius_model (gamma1 gamma2 : Fp2) (w_frob_c1 : Fp2) (x : Fp12) : Fp12 :=
+    let c0 := fst x in let c1 := snd x in
+    (fp6_frobenius_model gamma1 gamma2 c0,
+     fp6_mul_fp2_model (fp6_frobenius_model gamma1 gamma2 c1) w_frob_c1).
+
+  Instance spec_of_Fp12_frobenius : spec_of fp12_frobenius_name :=
+    fnspec! fp12_frobenius_name (pout px pgamma1 pgamma2 pw_frob_c1 : word)
+      / (old_out x : @AbstractField.felem _ Fp12_fp_inst _ _ _ _ Fp12_repr_inst)
+        (gamma1 gamma2 w_frob_c1 : @AbstractField.felem _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst)
+        Rr,
+    { requires tr mem :=
+        Fp12_bounded (@AbstractField.tight_bounds _ Fp12_fp_inst _ _ _ _ Fp12_repr_inst) x /\
+        (exists Rx, (FElem_Fp12 px x ⋆ Rx) mem) /\
+        (exists Rg1, (FElem_Fp2 pgamma1 gamma1 ⋆ Rg1) mem) /\
+        (exists Rg2, (FElem_Fp2 pgamma2 gamma2 ⋆ Rg2) mem) /\
+        (exists Rw, (FElem_Fp2 pw_frob_c1 w_frob_c1 ⋆ Rw) mem) /\
+        (FElem_Fp12 pout old_out ⋆ Rr) mem;
+      ensures tr' mem' :=
+        tr = tr' /\
+        exists out,
+          Fp12_feval out = fp12_frobenius_model
+            (@AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst gamma1)
+            (@AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst gamma2)
+            (@AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst w_frob_c1)
+            (Fp12_feval x) /\
+          Fp12_bounded (@AbstractField.loose_bounds _ Fp12_fp_inst _ _ _ _ Fp12_repr_inst) out /\
+          (FElem_Fp12 pout out ⋆ Rr) mem' }.
+
   Lemma Fp12_frobenius_ok : program_logic_goal_for_function! Fp12_frobenius.
-  Proof. exact I. Qed.
+  Proof. Admitted.
 
   (* -------------------------------------------------------------- *)
   (* fp12_frobenius_p2: raise Fp12 element to p^2-th power            *)
@@ -310,8 +430,36 @@ Section PairingOps.
       coq:(cmd.call [] fp6_mul_fp2_name [expr_fp12_c1 (expr.var "out"); expr_fp12_c1 (expr.var "out"); expr.var "w_frob_p2_c1"])
     ))).
 
+  Local Definition fp12_frobenius_p2_model (gamma1_p2 gamma2_p2 : Fp2) (w_frob_p2_c1 : Fp2) (x : Fp12) : Fp12 :=
+    let c0 := fst x in let c1 := snd x in
+    (fp6_frobenius_p2_model gamma1_p2 gamma2_p2 c0,
+     fp6_mul_fp2_model (fp6_frobenius_p2_model gamma1_p2 gamma2_p2 c1) w_frob_p2_c1).
+
+  Instance spec_of_Fp12_frobenius_p2 : spec_of fp12_frobenius_p2_name :=
+    fnspec! fp12_frobenius_p2_name (pout px pgamma1_p2 pgamma2_p2 pw_frob_p2_c1 : word)
+      / (old_out x : @AbstractField.felem _ Fp12_fp_inst _ _ _ _ Fp12_repr_inst)
+        (gamma1_p2 gamma2_p2 w_frob_p2_c1 : @AbstractField.felem _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst)
+        Rr,
+    { requires tr mem :=
+        Fp12_bounded (@AbstractField.tight_bounds _ Fp12_fp_inst _ _ _ _ Fp12_repr_inst) x /\
+        (exists Rx, (FElem_Fp12 px x ⋆ Rx) mem) /\
+        (exists Rg1, (FElem_Fp2 pgamma1_p2 gamma1_p2 ⋆ Rg1) mem) /\
+        (exists Rg2, (FElem_Fp2 pgamma2_p2 gamma2_p2 ⋆ Rg2) mem) /\
+        (exists Rw, (FElem_Fp2 pw_frob_p2_c1 w_frob_p2_c1 ⋆ Rw) mem) /\
+        (FElem_Fp12 pout old_out ⋆ Rr) mem;
+      ensures tr' mem' :=
+        tr = tr' /\
+        exists out,
+          Fp12_feval out = fp12_frobenius_p2_model
+            (@AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst gamma1_p2)
+            (@AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst gamma2_p2)
+            (@AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst w_frob_p2_c1)
+            (Fp12_feval x) /\
+          Fp12_bounded (@AbstractField.loose_bounds _ Fp12_fp_inst _ _ _ _ Fp12_repr_inst) out /\
+          (FElem_Fp12 pout out ⋆ Rr) mem' }.
+
   Lemma Fp12_frobenius_p2_ok : program_logic_goal_for_function! Fp12_frobenius_p2.
-  Proof. exact I. Qed.
+  Proof. Admitted.
 
   (* -------------------------------------------------------------- *)
   (* Collected function list for downstream linking                    *)
