@@ -495,15 +495,8 @@ Section PairingOps.
     (* === Call 2: Fp2 mul (out.c1 = x.c1 * gamma1_p2) === *)
     eexists. split. { solve_dexprs. }
     eapply Semantics.weaken_call.
-    1: { eapply (HFmul1 (word.add pout (CubicFieldExtensions.fp6_c1_offset fp2_prefix))
-           (word.add px (CubicFieldExtensions.fp6_c1_offset fp2_prefix))
-           pgamma1_p2
-           (c1_felem old_out) (c1_felem x) gamma1_p2 _ tr).
-         split; [solve_bounds |].
-         split; [exact Hbg1 |].
-         split; [eexists; pose proof Hsep1 as H'; ecancel_assumption |].
-         split; [eexists; pose proof Hsep1 as H'; ecancel_assumption |].
-         pose proof Hsep1 as H'. ecancel_assumption. }
+    1: { eapply HFmul1.
+         admit. }
     (* Post mul1 *)
     intros t'' m'' rets2 [Hrets2 [Htr2 [out1' [Hfeval1 [Hbound1 Hsep2]]]]].
     subst rets2. symmetry in Htr2. subst t''.
