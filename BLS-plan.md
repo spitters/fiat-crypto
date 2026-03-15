@@ -7,14 +7,14 @@ We have a complete BLS12-381 pairing implementation in bedrock2 (Fp -> Fp2 -> Fp
 ## Architecture
 
 ```
-PROVED:  Fp (synthesis) → Fp2 (8/8) → Fp6 add/sub/copy/opp/mul_xi/mul (7/~12)
+PROVED:  Fp (synthesis) → Fp2 (8/8) → Fp6 (ALL) → Fp12 mul/sqr/inv/add/sub/opp/copy/conj/mul_by_v
          G1 add (Rupicola) → G1 scalar mult
 
-TODO:    Fp6 sqr/inv → Fp12 → Frobenius/helpers → Miller loop → final exp → pairing
+TODO:    Frobenius ops (specs defined, proofs Admitted) → Miller loop → final exp → pairing
          G2 add
 ```
 
-## Current Status (2026-03-13)
+## Current Status (2026-03-15)
 
 ### Completed Proofs
 
@@ -63,47 +63,49 @@ TODO:    Fp6 sqr/inv → Fp12 → Frobenius/helpers → Miller loop → final ex
 
 | Proof | Pattern | Calls | Status |
 |-------|---------|-------|--------|
-| `Fp6_opp_ok` | unop, 1 stackalloc + 1 copy + 3 Fp2 opp | 4 | **DONE** |
-| `Fp2_mul_xi_ok` | custom, 4 Fp calls (add, sub, copy) | 4 | **DONE** |
-| `Fp6_mul_ok` | binop, 2 stackalloc + 2 copy + ~27 Fp2 calls | 29 | **~98%** — 3 admits in Copy preconditions |
-| `Fp6_sqr_ok` | unop, 1 stackalloc + 1 copy + ~15 Fp2 calls | 17 | Chung-Hasan SQR3 |
-| `Fp6_inv_ok` | unop, 1 stackalloc + 1 copy + ~20 Fp2 calls | 22 | Cubic inverse |
+| `Fp6_opp_ok` | unop | 4 | **DONE** |
+| `Fp2_mul_xi_ok` | custom | 4 | **DONE** |
+| `Fp6_mul_ok` | binop | 29 | **DONE** |
+| `Fp6_sqr_ok` | unop | 17 | **DONE** |
+| `Fp6_inv_ok` | unop | 22 | **DONE** |
 
-### Phase 2: Fp12 Simple Ops + mul_by_v (6 proofs)
+### Phase 2: Fp12 Simple Ops + mul_by_v — ALL DONE
 
-**Files:** `DodecicFieldExtensions.v`
+| Proof | Status |
+|-------|--------|
+| `Fp12_felem_copy_ok` | **DONE** |
+| `Fp12_add_ok` | **DONE** |
+| `Fp12_sub_ok` | **DONE** |
+| `Fp12_opp_ok` | **DONE** |
+| `Fp12_conjugate_ok` | **DONE** |
+| `Fp6_mul_by_v_ok` | **DONE** |
 
-| Proof | Pattern | Calls | Notes |
-|-------|---------|-------|-------|
-| `Fp12_felem_copy_ok` | copy spec, 2 Fp6 copy calls | 2 | |
-| `Fp12_add_ok` | binop, 0 stackalloc, 2 Fp6 add | 2 | No stackalloc! |
-| `Fp12_sub_ok` | binop, 0 stackalloc, 2 Fp6 sub | 2 | |
-| `Fp12_opp_ok` | unop, 0 stackalloc, 1 Fp6 copy + 1 Fp6 opp | 2 | |
-| `Fp12_conjugate_ok` | custom, 0 stackalloc, 1 Fp6 copy + 1 Fp6 opp | 2 | |
-| `Fp6_mul_by_v_ok` | custom, 1 stackalloc, 6 calls | 6 | |
+### Phase 3: Fp12 Complex Ops — ALL DONE (split files)
 
-### Phase 3: Fp12 Complex Ops (3 proofs)
-
-**Files:** `DodecicFieldExtensions.v`
-
-| Proof | Stackallocs | Calls |
-|-------|-------------|-------|
-| `Fp12_mul_ok` | 4 | 8 Fp6 ops |
-| `Fp12_sqr_ok` | 3 | 7 Fp6 ops |
-| `Fp12_inv_ok` | 2 | 10 Fp6 ops |
+| Proof | File | Status |
+|-------|------|--------|
+| `Fp12_mul_ok` | DodecicFieldExtensionsMul.v | **DONE** |
+| `Fp12_sqr_ok` | DodecicFieldExtensionsSqr.v | **DONE** |
+| `Fp12_inv_ok` | DodecicFieldExtensionsInv.v | **DONE** |
 
 ### Phase 4: Frobenius + Cross-Cutting Ops (6 proofs)
 
 **Files:** `PairingFieldOps.v`
+**Status:** All 6 specs defined (Gallina models + fnspec!). Proofs Admitted.
 
-| Proof | Calls |
-|-------|-------|
-| `Fp2_conjugate_ok` | 2 |
-| `Fp6_mul_fp2_ok` | 4 |
-| `Fp6_frobenius_ok` | 8 |
-| `Fp6_frobenius_p2_ok` | 3 |
-| `Fp12_frobenius_ok` | 3 |
-| `Fp12_frobenius_p2_ok` | 3 |
+| Proof | Calls | Spec | WP Proof |
+|-------|-------|------|----------|
+| `Fp2_conjugate_ok` | 2 Fp | UnOp | Admitted (needs Fp2→Fp decomp) |
+| `Fp6_mul_fp2_ok` | 1 copy + 3 Fp2 mul | custom | Admitted |
+| `Fp6_frobenius_ok` | 3 conj + 1 copy + 2 mul | custom | Admitted |
+| `Fp6_frobenius_p2_ok` | 1 copy + 2 Fp2 mul | custom | Admitted |
+| `Fp12_frobenius_ok` | 2 Fp6 frob + 1 mul_fp2 | custom | Admitted |
+| `Fp12_frobenius_p2_ok` | 2 Fp6 frob_p2 + 1 mul_fp2 | custom | Admitted |
+
+**Proof strategy:** Each follows established weaken_call + ecancel pattern.
+Fp6 ops need Fp6→Fp2 decomposition (CubicFieldExtensions.Fp6_raw_FElem_split).
+Fp12 ops need Fp12→Fp6 decomposition (DodecicFieldExtensions.Fp12_raw_FElem_split).
+Extra pointer args (gamma constants) are just additional FElems in the sep fact.
 
 ### Phase 5: BLS12-Specific Helpers (5 proofs)
 
@@ -199,10 +201,10 @@ After 25+ weaken_call steps, the Rocq proof state is enormous (50K+ characters).
 
 | Phase | Proofs | Status | Estimated |
 |-------|--------|--------|-----------|
-| 1: Fp6 remaining | 5 | 3 done, 1 at 98%, 2 todo | 1-2 days |
-| 2: Fp12 simple | 6 | todo | 1-2 days |
-| 3: Fp12 complex | 3 | todo | 2-3 days |
-| 4: Frobenius | 6 | todo | 2-3 days |
+| 1: Fp6 remaining | 5 | **ALL DONE** | ✓ |
+| 2: Fp12 simple | 6 | **ALL DONE** | ✓ |
+| 3: Fp12 complex | 3 | **ALL DONE** (split files) | ✓ |
+| 4: Frobenius | 6 | specs defined, proofs Admitted | 2-3 days |
 | 5: BLS12 helpers | 5 | todo | 1-2 days |
 | 6: Loop proofs | 3 | todo | 3-5 days |
 | 7: Top-level | 3 | todo | 1-2 days |
