@@ -506,8 +506,11 @@ Section PairingOps.
            (word.add px (CubicFieldExtensions.fp6_c1_offset fp2_prefix))
            pgamma1_p2
            (c1_felem old_out) (c1_felem x) gamma1_p2 _ tr).
-         split; [admit (* bounds *) |].
-         split; [admit (* bounds *) |].
+         split; [cbv [bin_xbounds AbstractField.bin_mul Fp2_repr_inst Fp2_field_representation];
+                 apply (@relax_bounds _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst
+                   (@Fp2_field_representation_ok _ _ _ _ prime_parameters F_representation F_representation_ok fp2_prefix));
+                 exact Hbx1 |].
+         split; [cbv [bin_ybounds AbstractField.bin_mul Fp2_repr_inst Fp2_field_representation]; exact Hbg1 |].
          split; [eexists; pose proof Hsep1 as H'; ecancel_assumption |].
          split; [eexists; pose proof Hsep1 as H'; ecancel_assumption |].
          pose proof Hsep1 as H'. ecancel_assumption. }
@@ -527,8 +530,11 @@ Section PairingOps.
            (word.add px (CubicFieldExtensions.fp6_c2_offset fp2_prefix))
            pgamma2_p2
            (c2_felem old_out) (c2_felem x) gamma2_p2 _ tr).
-         split; [admit (* bounds *) |].
-         split; [admit (* bounds *) |].
+         split; [cbv [bin_xbounds AbstractField.bin_mul Fp2_repr_inst Fp2_field_representation];
+                 apply (@relax_bounds _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst
+                   (@Fp2_field_representation_ok _ _ _ _ prime_parameters F_representation F_representation_ok fp2_prefix));
+                 exact Hbx2 |].
+         split; [cbv [bin_ybounds AbstractField.bin_mul Fp2_repr_inst Fp2_field_representation]; exact Hbg2 |].
          split; [eexists; pose proof Hsep2 as H'; ecancel_assumption |].
          split; [eexists; pose proof Hsep2 as H'; ecancel_assumption |].
          pose proof Hsep2 as H'. ecancel_assumption. }
@@ -541,11 +547,21 @@ Section PairingOps.
     cbv [list_map get]. split. { exact eq_refl. }
     split. { exact eq_refl. }
     (* === Final postcondition: feval, bounded_by, sep === *)
-    (* The 3 calls produced: c0 = c0_felem x (copy), c1 = out1' (mul), c2 = out2' (mul) *)
-    (* Join into Fp6 output: c0_felem x ++ out1' ++ out2' *)
     exists (c0_felem x ++ out1' ++ out2').
-    admit. (* Final postcondition: feval + bounded_by + Fp6 FElem join.
-              Same pattern as DodecicFieldExtensions Fp12 proofs. *)
+    (* feval *)
+    split.
+    { change (@AbstractField.feval _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst) with
+        (fun ws => ((@AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst (c0_felem ws),
+                     @AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst (c1_felem ws)),
+                    @AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst (c2_felem ws))).
+      cbv beta.
+      (* c0/c1/c2 decomposition of (c0_felem x ++ out1' ++ out2') *)
+      admit. (* Mechanical: firstn_app'/skipn_app + Hfeval1/Hfeval2 + reflexivity *) }
+    (* bounded_by *)
+    split.
+    { admit. (* Mechanical: decompose Fp6 bounded into 3 Fp2 bounds *) }
+    (* sep: join Fp2 components back to Fp6 using Fp6_raw_FElem_join *)
+    { admit. (* Mechanical: extract FElems from Hsep3, join + sep *) }
   Admitted.
   (* Full proof body (follows Fp6_felem_copy_ok / Fp6_add_ok pattern):
     cbv beta delta [program_logic_goal_for].
