@@ -202,8 +202,13 @@ Section PairingOps.
   Instance spec_of_Fp2_conjugate : spec_of fp2_conjugate_name :=
     AbstractField.unop_spec un_Fp2_conjugate.
 
-  Lemma Fp2_conjugate_ok : program_logic_goal_for_function! Fp2_conjugate.
-  Proof. Admitted.
+  Lemma Fp2_conjugate_ok :
+    forall functions
+      (EnvContains : map.get functions fp2_conjugate_name = Some (snd Fp2_conjugate))
+      (HFcopy : spec_of_Fp_felem_copy functions)
+      (HFopp : spec_of_Fp_opp functions),
+    spec_of_Fp2_conjugate functions.
+  Proof. Admitted. (* Needs Fp2→Fp FElem decomposition *)
   (* TODO: 2 Fp-level calls. Needs Fp2→Fp FElem decomposition + map.split_diff
      for felem_copy spec's two preconditions. Follow Fp2_felem_copy_ok pattern. *)
   (* Commented proof attempt removed for cleanliness. See git history. *)
@@ -257,8 +262,13 @@ Section PairingOps.
           Fp6_bounded (@AbstractField.loose_bounds _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst) out /\
           (FElem_Fp6 pout out ⋆ Rr) mem' }.
 
-  Lemma Fp6_mul_fp2_ok : program_logic_goal_for_function! Fp6_mul_fp2.
-  Proof. Admitted.
+  Lemma Fp6_mul_fp2_ok :
+    forall functions
+      (EnvContains : map.get functions fp6_mul_fp2_name = Some (snd Fp6_mul_fp2))
+      (HFcopy : spec_of_Fp2_felem_copy functions)
+      (HFmul : spec_of_Fp2_mul functions),
+    spec_of_Fp6_mul_fp2 functions.
+  Proof. Admitted. (* 1 stackalloc + copy + 3 Fp2 mul *)
 
   (* -------------------------------------------------------------- *)
   (* fp6_frobenius: raise Fp6 element to p-th power                   *)
@@ -315,8 +325,14 @@ Section PairingOps.
           Fp6_bounded (@AbstractField.loose_bounds _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst) out /\
           (FElem_Fp6 pout out ⋆ Rr) mem' }.
 
-  Lemma Fp6_frobenius_ok : program_logic_goal_for_function! Fp6_frobenius.
-  Proof. Admitted.
+  Lemma Fp6_frobenius_ok :
+    forall functions
+      (EnvContains : map.get functions fp6_frobenius_name = Some (snd Fp6_frobenius))
+      (HFconj : spec_of_Fp2_conjugate functions)
+      (HFcopy : spec_of_Fp2_felem_copy functions)
+      (HFmul : spec_of_Fp2_mul functions),
+    spec_of_Fp6_frobenius functions.
+  Proof. Admitted. (* 1 stackalloc + 3 conj + copy + 2 mul *)
 
   (* -------------------------------------------------------------- *)
   (* fp6_frobenius_p2: raise Fp6 element to p^2-th power              *)
@@ -798,8 +814,24 @@ Section PairingOps.
           Fp12_bounded (@AbstractField.loose_bounds _ Fp12_fp_inst _ _ _ _ Fp12_repr_inst) out /\
           (FElem_Fp12 pout out ⋆ Rr) mem' }.
 
-  Lemma Fp12_frobenius_ok : program_logic_goal_for_function! Fp12_frobenius.
-  Proof. Admitted.
+  Lemma Fp12_frobenius_ok :
+    forall functions
+      (EnvContains : map.get functions fp12_frobenius_name = Some (snd Fp12_frobenius))
+      (HFfrob : spec_of_Fp6_frobenius functions)
+      (HFmulfp2 : spec_of_Fp6_mul_fp2 functions),
+    spec_of_Fp12_frobenius functions.
+  Proof.
+    intros functions EnvContains HFfrob HFmulfp2.
+    unfold spec_of_Fp12_frobenius.
+    intros pout px pgamma1 pgamma2 pw_frob_c1
+      old_out x gamma1 gamma2 w_frob_c1 Rr tr mem0
+      [Hbx [Hbg1 [Hbg2 [Hbw Hmem_all]]]].
+    eapply start_func; [exact EnvContains | clear EnvContains].
+    cbv match beta delta [WeakestPrecondition.func Fp12_frobenius].
+    eexists. split. { exact eq_refl. }
+    repeat straightline.
+    admit. (* Same pattern as Fp12_frobenius_p2 *)
+  Admitted.
 
   (* -------------------------------------------------------------- *)
   (* fp12_frobenius_p2: raise Fp12 element to p^2-th power            *)
@@ -849,8 +881,27 @@ Section PairingOps.
           Fp12_bounded (@AbstractField.loose_bounds _ Fp12_fp_inst _ _ _ _ Fp12_repr_inst) out /\
           (FElem_Fp12 pout out ⋆ Rr) mem' }.
 
-  Lemma Fp12_frobenius_p2_ok : program_logic_goal_for_function! Fp12_frobenius_p2.
-  Proof. Admitted.
+  Lemma Fp12_frobenius_p2_ok :
+    forall functions
+      (EnvContains : map.get functions fp12_frobenius_p2_name = Some (snd Fp12_frobenius_p2))
+      (HFfrob : spec_of_Fp6_frobenius_p2 functions)
+      (HFmulfp2 : spec_of_Fp6_mul_fp2 functions),
+    spec_of_Fp12_frobenius_p2 functions.
+  Proof.
+    intros functions EnvContains HFfrob HFmulfp2.
+    unfold spec_of_Fp12_frobenius_p2.
+    intros pout px pgamma1_p2 pgamma2_p2 pw_frob_p2_c1
+      old_out x gamma1_p2 gamma2_p2 w_frob_p2_c1 Rr tr mem0
+      [Hbx [Hbg1 [Hbg2 [Hbw Hmem_all]]]].
+    eapply start_func; [exact EnvContains | clear EnvContains].
+    cbv match beta delta [WeakestPrecondition.func Fp12_frobenius_p2].
+    eexists. split. { exact eq_refl. }
+    repeat straightline.
+    (* Decompose Fp12 FElems into Fp6 halves *)
+    admit. (* TODO: Fp12→Fp6 decomposition + 3 Fp6-level calls.
+              Same pattern as Fp6_frobenius_p2 but one level up.
+              Needs DodecicFieldExtensions.Fp12_raw_FElem_split. *)
+  Admitted.
 
   (* -------------------------------------------------------------- *)
   (* Collected function list for downstream linking                    *)
