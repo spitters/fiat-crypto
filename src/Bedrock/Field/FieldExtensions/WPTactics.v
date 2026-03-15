@@ -94,3 +94,70 @@ Ltac wp_destruct_sep H :=
     subst; try wp_destruct_sep H2
   | _ => idtac
   end.
+
+(** ** split_all_disjointness
+
+    Splits all compound [map.disjoint (map.putmany ...) ...] hypotheses
+    into atomic pairwise disjointness facts. *)
+
+Ltac split_all_disjointness :=
+  repeat match goal with
+  | H : map.disjoint ?a (map.putmany ?b ?c) |- _ =>
+      let H1 := fresh "Hd" in let H2 := fresh "Hd" in
+      destruct (proj1 (map.disjoint_putmany_r a b c) H) as [H1 H2]; clear H
+  | H : map.disjoint (map.putmany ?a ?b) ?c |- _ =>
+      let H1 := fresh "Hd" in let H2 := fresh "Hd" in
+      destruct (proj1 (map.disjoint_putmany_l a b c) H) as [H1 H2]; clear H
+  end.
+
+(** ** map_disjoint_auto
+
+    Solves [map.disjoint] goals by decomposing putmany and searching
+    hypotheses (including symmetric matches). *)
+
+Ltac map_disjoint_auto :=
+  lazymatch goal with
+  | |- map.disjoint (map.putmany _ _) _ =>
+      apply map.disjoint_putmany_l; split; map_disjoint_auto
+  | |- map.disjoint _ (map.putmany _ _) =>
+      apply map.disjoint_putmany_r; split; map_disjoint_auto
+  | |- map.disjoint ?a ?b =>
+      first [ assumption
+            | (unfold map.disjoint; intros ?k ?v1 ?v2 ?Hg1 ?Hg2;
+               match goal with H : map.disjoint _ _ |- _ => exact (H k v2 v1 Hg2 Hg1) end) ]
+  end.
+
+(** ** wp_call_setup
+
+    Common setup after [repeat straightline] produces the goal for a function call.
+    Solves the [dexprs] part and prepares for [Semantics.weaken_call]. *)
+
+Ltac solve_dexprs :=
+  cbv [dexprs list_map list_map_body
+       WeakestPrecondition.expr WeakestPrecondition.expr_body];
+  repeat first
+    [ exact eq_refl
+    | eexists; split;
+      [ repeat (first [ apply map.get_put_same
+                      | rewrite map.get_put_diff by congruence ]); try exact eq_refl | ]
+    | straightline ].
+
+(** ** wp_post_call
+
+    Process the postcondition after a [Semantics.weaken_call]:
+    intros the postcondition, provides locals, and straightlines. *)
+
+Ltac wp_post_call locals_term :=
+  let t := fresh "t" in let m := fresh "m" in let rets := fresh "rets" in
+  intros t m rets;
+  let H := fresh "H" in intro H;
+  lazymatch type of H with
+  | _ /\ _ =>
+    let Hrets := fresh "Hrets" in let Htr := fresh "Htr" in
+    destruct H as [Hrets [Htr H]];
+    subst rets; try (symmetry in Htr; subst t);
+    cbv [map.putmany_of_list_zip];
+    exists locals_term;
+    split; [ exact eq_refl | ];
+    repeat straightline
+  end.
