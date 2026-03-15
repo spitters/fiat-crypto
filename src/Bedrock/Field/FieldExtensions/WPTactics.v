@@ -147,6 +147,44 @@ Ltac solve_dexprs :=
     Process the postcondition after a [Semantics.weaken_call]:
     intros the postcondition, provides locals, and straightlines. *)
 
+(** ** build_sep
+
+    Constructs a nested separation logic fact from individual predicates
+    on disjoint sub-maps.  Given a goal of the form:
+
+      (P0 * (P1 * ... * (Pn-1 * Pn))) (putmany m0 (putmany m1 ... (putmany mn-1 mn)))
+
+    with hypotheses [H0 : P0 m0], [H1 : P1 m1], ..., [Hn : Pn mn] and
+    pairwise [map.disjoint mi mj], solves the goal by constructing the
+    nested existential witnesses and proving disjointness/equality/predicate
+    obligations automatically.
+
+    Handles bedrock2's [(P * Q)%sep m] which unfolds to
+    [exists m1 m2, m = putmany m1 m2 /\ disjoint m1 m2 /\ P m1 /\ Q m2]
+    as well as the [exists m1 m2, putmany m1 m2 = m /\ ...] variant.
+
+    Usage: after [split_all_disjointness] derives pairwise disjointness,
+    [build_sep] solves the sep goal in one call.
+
+    Complexity: O(n^2) in the number of conjuncts (from disjointness checks),
+    versus O(2^n) for [sauto]. Handles 9+ conjuncts instantly. *)
+
+Ltac build_sep :=
+  lazymatch goal with
+  | |- (_ * _)%sep _ =>
+    (* bedrock2 sep: exists m1 m2, m = putmany m1 m2 /\ ... *)
+    lazymatch goal with
+    | |- (_ * _)%sep (map.putmany ?m1 ?m2) =>
+      exists m1, m2;
+      split; [split; [reflexivity | map_disjoint_auto] |];
+      split; [assumption | build_sep]
+    | |- (_ * _)%sep ?m =>
+      (* m is not a putmany — leaf case, try assumption *)
+      assumption
+    end
+  | |- ?P ?m => assumption
+  end.
+
 Ltac wp_post_call locals_term :=
   let t := fresh "t" in let m := fresh "m" in let rets := fresh "rets" in
   intros t m rets;
