@@ -103,10 +103,10 @@ Ltac wp_destruct_sep H :=
 Ltac split_all_disjointness :=
   repeat match goal with
   | H : map.disjoint ?a (map.putmany ?b ?c) |- _ =>
-      let H1 := fresh "Hd" in let H2 := fresh "Hd" in
+      let H1 := fresh "Hdj" in let H2 := fresh "Hdj" in
       destruct (proj1 (map.disjoint_putmany_r a b c) H) as [H1 H2]; clear H
   | H : map.disjoint (map.putmany ?a ?b) ?c |- _ =>
-      let H1 := fresh "Hd" in let H2 := fresh "Hd" in
+      let H1 := fresh "Hdj" in let H2 := fresh "Hdj" in
       destruct (proj1 (map.disjoint_putmany_l a b c) H) as [H1 H2]; clear H
   end.
 
@@ -172,17 +172,15 @@ Ltac solve_dexprs :=
 Ltac build_sep :=
   lazymatch goal with
   | |- (_ * _)%sep _ =>
-    (* bedrock2 sep: exists m1 m2, m = putmany m1 m2 /\ ... *)
     lazymatch goal with
     | |- (_ * _)%sep (map.putmany ?m1 ?m2) =>
       exists m1, m2;
       split; [split; [reflexivity | map_disjoint_auto] |];
-      split; [assumption | build_sep]
+      split; [first [eassumption | assumption] | build_sep]
     | |- (_ * _)%sep ?m =>
-      (* m is not a putmany — leaf case, try assumption *)
-      assumption
+      first [eassumption | assumption]
     end
-  | |- ?P ?m => assumption
+  | |- ?P ?m => first [eassumption | assumption]
   end.
 
 Ltac wp_post_call locals_term :=
