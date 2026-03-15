@@ -12,6 +12,7 @@
     WP proofs are currently stubs (exact I).
 *)
 
+Require Import Crypto.Bedrock.Field.FieldExtensions.WPTactics.
 Require Import Crypto.Bedrock.Field.FieldExtensions.DodecicFieldExtensionsSpecs.
 Require Import Crypto.Bedrock.Field.FieldExtensions.DodecicFieldExtensions.
 Require Import Crypto.Bedrock.Field.FieldExtensions.CubicFieldExtensionsSpecs.
@@ -402,6 +403,11 @@ Section PairingOps.
        c0/c1/c2_felem_app, Fp6_list_decomp, ListUtil.firstn/skipn_app_sharp *)
   Lemma Fp6_frobenius_p2_ok : program_logic_goal_for_function! Fp6_frobenius_p2.
   Proof. Admitted.
+  (* Needs Fp6→Fp2 FElem decomposition before ecancel can handle sub-calls.
+     The flat sep spec gives disjointness for free, but ecancel can't match
+     FElem_Fp6 against FElem_Fp2 at different levels. A wp_fp6_split tactic
+     that decomposes Fp6 FElems into 3 Fp2 FElems + builds a new compound
+     sep fact would make this proof ~50 lines. *)
   (* Full proof body (follows Fp6_felem_copy_ok / Fp6_add_ok pattern):
     cbv beta delta [program_logic_goal_for].
     intros functions EnvContains HFcopy HFmul1 HFmul2.
