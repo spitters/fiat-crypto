@@ -495,7 +495,8 @@ Section PairingOps.
     (* === Call 2: Fp2 mul (out.c1 = x.c1 * gamma1_p2) === *)
     eexists. split. { solve_dexprs. }
     eapply Semantics.weaken_call.
-    1: { eapply HFmul1.
+    1: { unfold spec_of_Fp2_mul, AbstractField.binop_spec in HFmul1.
+         eapply HFmul1.
          admit. }
     (* Post mul1 *)
     intros t'' m'' rets2 [Hrets2 [Htr2 [out1' [Hfeval1 [Hbound1 Hsep2]]]]].
