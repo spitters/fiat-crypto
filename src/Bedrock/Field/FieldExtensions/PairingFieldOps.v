@@ -111,8 +111,9 @@ Section PairingOps.
   (* Fp-level *)
   Instance spec_of_Fp_felem_copy : spec_of (AbstractField.felem_copy (F:=Fp)) :=
     AbstractField.spec_of_felem_copy.
-  Instance spec_of_Fp_opp : spec_of (AbstractField.opp (F:=Fp)) :=
-    AbstractField.unop_spec AbstractField.un_opp.
+  Instance spec_of_Fp_opp : spec_of (@AbstractField.opp _ prime_field_parameters) :=
+    AbstractField.unop_spec (F:=Fp) (field_parameters:=prime_field_parameters)
+      (field_representation:=F_representation) AbstractField.un_opp.
 
   (* Fp2-level *)
   Instance spec_of_Fp2_felem_copy : spec_of (AbstractField.felem_copy (F:=Fp2)) :=
@@ -234,18 +235,322 @@ Section PairingOps.
       (HFcopy : spec_of_Fp_felem_copy functions)
       (HFopp : spec_of_Fp_opp functions),
     spec_of_Fp2_conjugate functions.
-  Proof. Admitted.
-  (* NOTE: The proof requires working around a typeclass resolution issue
-     where bedrock2's straightline tactic resolves AbstractField.opp to
-     Fp12_fp_inst instead of prime_field_parameters when multiple
-     FieldParameters instances are in scope. The proof structure is
-     complete (copy + opp at Fp level, then join back into Fp2) but
-     the WP machinery produces wrong function names.
-     Fix: either move this proof to QuadraticFieldExtensions.v (where
-     only one FieldParameters instance exists), or use explicit
-     function name strings instead of AbstractField projections. *)
-
-  (* OLD PROOF BODY REMOVED - was lines 234-534 *)
+  Proof.
+    intros.
+    unfold spec_of_Fp2_conjugate.
+    intros pout px old_out x Rr tr mem0 [Hbx Hsep].
+    eapply start_func; [exact EnvContains | clear EnvContains].
+    cbv match beta delta [WeakestPrecondition.func Fp2_conjugate].
+    eexists. split. { exact eq_refl. }
+    repeat straightline.
+    (* === Set up context === *)
+    (* Decompose precondition sep *)
+    destruct Hsep as [m_x [m_or [Hsep1 [Hx Hor]]]].
+    destruct Hor as [m_o [m_r [Hsep_or [Ho Hr]]]].
+    (* Split Fp2 FElems into Fp halves *)
+    pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_split _ _ _ _
+      word_ok mem_ok prime_parameters F_representation fp2_prefix px x m_x Hx)
+      as [m_x1 [m_x2 [Hsep_x [Hx1 Hx2]]]].
+    pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_split _ _ _ _
+      word_ok mem_ok prime_parameters F_representation fp2_prefix pout old_out m_o Ho)
+      as [m_o1 [m_o2 [Hsep_o [Ho1 Ho2]]]].
+    (* Decompose Fp2 bounded_by into 2 Fp bounded_by *)
+    change (@AbstractField.bounded_by _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst)
+      with (fun b ws => @AbstractField.bounded_by _ _ _ _ _ _ F_representation b
+        (fst_felem ws)
+        /\ @AbstractField.bounded_by _ _ _ _ _ _ F_representation b
+        (snd_felem ws)) in Hbx.
+    destruct Hbx as [Hbx1 Hbx2].
+    (* Derive pairwise disjointness *)
+    destruct Hsep1 as [Heq1 Hd1]. destruct Hsep_or as [Heq_or Hd_or]. subst m_or mem0.
+    destruct Hsep_x as [Heq_x Hd_x12]. destruct Hsep_o as [Heq_o Hd_o12].
+    subst m_x m_o.
+    pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd1) as [Hd_x_o Hd_x_r].
+    pose proof (proj1 (map.disjoint_putmany_l _ _ _) Hd_x_o) as [Hd_x1_o Hd_x2_o].
+    pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_x1_o) as [Hd_x1_o1 Hd_x1_o2].
+    pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_x2_o) as [Hd_x2_o1 Hd_x2_o2].
+    pose proof (proj1 (map.disjoint_putmany_l _ _ _) Hd_x_r) as [Hd_x1_r Hd_x2_r].
+    pose proof (proj1 (map.disjoint_putmany_l _ _ _) Hd_or) as [Hd_o1_r Hd_o2_r].
+    clear Hd_x_o Hd_x_r Hd_or Hd1 Hd_x1_o Hd_x2_o.
+    (* === Call 1: Fp copy (out, x) — copies fst half === *)
+    (* dexprs for [out; x] *)
+    exists [pout; px]. split; [repeat straightline |].
+    exists pout. split.
+    { rewrite map.get_put_diff by congruence. apply map.get_put_same. }
+    cbv [list_map]. eexists. split.
+    { cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body].
+      apply map.get_put_same. }
+    exact eq_refl.
+    (* Set up weaken_call for Fp copy *)
+    eapply Semantics.weaken_call.
+    { eapply (HFcopy pout px
+        (fst_felem old_out)
+        (fst_felem x)
+        (fun m => ((@AbstractField.FElem _ _ _ _ _ _ F_representation)(word.add px (word.of_Z fp_felem_offset))
+          (snd_felem x) ⋆
+          ((@AbstractField.FElem _ _ _ _ _ _ F_representation)(word.add pout (word.of_Z fp_felem_offset))
+            (snd_felem old_out) ⋆ Rr)) m)
+        (fun m => m = map.putmany m_x1
+          (map.putmany m_x2 (map.putmany m_o2 m_r)))
+        tr).
+      split.
+      { (* Condition 1: (FElem px (fst x) * FElem pout (fst out) * frame) mem0 *)
+        exists (map.putmany m_x1 m_o1),
+               (map.putmany m_x2 (map.putmany m_o2 m_r)).
+        split; [split |].
+        { rewrite <- (map.putmany_assoc m_o1 m_o2 m_r).
+          rewrite (map.putmany_assoc (map.putmany m_x1 m_x2) m_o1
+            (map.putmany m_o2 m_r)).
+          rewrite (map.disjoint_putmany_commutes _ _ _ Hd_x2_o1).
+          symmetry. apply map.putmany_assoc. }
+        { apply map.disjoint_putmany_l. split.
+          { apply map.disjoint_putmany_r. split; [exact Hd_x12 |].
+            apply map.disjoint_putmany_r. split; [exact Hd_x1_o2 | exact Hd_x1_r]. }
+          { apply map.disjoint_putmany_r. split.
+            { unfold map.disjoint in *; intros k v1 v2 Hg1 Hg2;
+              exact (Hd_x2_o1 k v2 v1 Hg2 Hg1). }
+            apply map.disjoint_putmany_r. split; [exact Hd_o12 | exact Hd_o1_r]. } }
+        split.
+        { exists m_x1, m_o1.
+          split; [split; [reflexivity | exact Hd_x1_o1] |].
+          split; [exact Hx1 | exact Ho1]. }
+        { exists m_x2, (map.putmany m_o2 m_r).
+          split; [split; [reflexivity |] |].
+          { apply map.disjoint_putmany_r. split; [exact Hd_x2_o2 | exact Hd_x2_r]. }
+          split; [exact Hx2 |].
+          exists m_o2, m_r.
+          split; [split; [reflexivity | exact Hd_o2_r] |].
+          split; [exact Ho2 | exact Hr]. } }
+      { (* Condition 2: (FElem pout (fst out) * Rout1_eq) mem0 *)
+        exists m_o1,
+          (map.putmany m_x1 (map.putmany m_x2 (map.putmany m_o2 m_r))).
+        split; [split |].
+        { assert (Hd_x12_o1 : map.disjoint (map.putmany m_x1 m_x2) m_o1)
+            by (apply map.disjoint_putmany_l; split;
+                [exact Hd_x1_o1 | exact Hd_x2_o1]).
+          rewrite <- (map.putmany_assoc m_o1 m_o2 m_r).
+          rewrite (map.putmany_assoc (map.putmany m_x1 m_x2) m_o1
+            (map.putmany m_o2 m_r)).
+          rewrite (map.putmany_comm _ _ Hd_x12_o1).
+          rewrite <- (map.putmany_assoc m_o1 (map.putmany m_x1 m_x2)
+            (map.putmany m_o2 m_r)).
+          rewrite <- (map.putmany_assoc m_x1 m_x2 (map.putmany m_o2 m_r)).
+          reflexivity. }
+        { apply map.disjoint_putmany_r. split.
+          { unfold map.disjoint in *; intros k v1 v2 Hg1 Hg2;
+            exact (Hd_x1_o1 k v2 v1 Hg2 Hg1). }
+          apply map.disjoint_putmany_r. split.
+          { unfold map.disjoint in *; intros k v1 v2 Hg1 Hg2;
+            exact (Hd_x2_o1 k v2 v1 Hg2 Hg1). }
+          apply map.disjoint_putmany_r. split; [exact Hd_o12 | exact Hd_o1_r]. }
+        split; [exact Ho1 | exact eq_refl]. } }
+    (* === Process postcondition of copy call === *)
+    intros t' m' rets [Hrets [Htr Hsep_post1]].
+    subst rets t'.
+    cbv [map.putmany_of_list_zip].
+    exists (#{ "out" => pout; "x" => px }#). split. { exact eq_refl. }
+    repeat straightline.
+    (* === Call 2: Fp opp (out+off, x+off) — negates snd half === *)
+    (* dexprs for opp call *)
+    exists [word.add pout (word.of_Z fp_felem_offset); word.add px (word.of_Z fp_felem_offset)].
+    split. { solve_dexprs. }
+    (* Decompose copy postcondition before weaken_call *)
+    destruct Hsep_post1 as [m_new1 [m_frame1 [Hsp_post1 [Hnew1 Hframe1]]]].
+    subst m_frame1.
+    destruct Hsp_post1 as [Heq_p1 Hd_p1].
+    pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_p1) as [Hd_n1_x1 Hd_n1_rest].
+    pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_n1_rest) as [Hd_n1_x2 Hd_n1_rest2].
+    pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_n1_rest2) as [Hd_n1_o2 Hd_n1_r].
+    clear Hd_n1_rest Hd_n1_rest2.
+    (* m' = putmany m_new1 (putmany m_x1 (putmany m_x2 (putmany m_o2 m_r))) *)
+    (* We need the opp Rr to include BOTH px halves (fst_x and snd_x), so they *)
+    (* survive in the postcondition. The opp spec's "exists Ra" consumes snd_x, *)
+    (* but the Rr preserves everything else including both x halves. *)
+    (* Rr_opp = snd_x * (fst_copy * (fst_x * Rr)) *)
+    (* After opp: (FElem(pout+off) opp * (snd_x * (fst_copy * (fst_x * Rr)))) m'' *)
+    (* Build master sep on post-copy memory for the opp call *)
+    assert (Hsep_opp :
+      ((@AbstractField.FElem _ _ _ _ _ _ F_representation)(word.add px (word.of_Z fp_felem_offset)) (snd_felem x) ⋆
+       ((@AbstractField.FElem _ _ _ _ _ _ F_representation)(word.add pout (word.of_Z fp_felem_offset)) (snd_felem old_out) ⋆
+        ((@AbstractField.FElem _ _ _ _ _ _ F_representation)pout (fst_felem x) ⋆
+         ((@AbstractField.FElem _ _ _ _ _ _ F_representation)px (fst_felem x) ⋆ Rr)))) m').
+    { subst m'.
+      exists m_x2, (map.putmany m_o2 (map.putmany m_new1 (map.putmany m_x1 m_r))).
+      split; [split |].
+      { (* Rearrange:
+           putmany m_new1 (putmany m_x1 (putmany m_x2 (putmany m_o2 m_r)))
+           = putmany m_x2 (putmany m_o2 (putmany m_new1 (putmany m_x1 m_r))) *)
+        (* Move m_x2 to front: swap m_x1 and m_x2 within the nested structure *)
+        rewrite (map.putmany_assoc m_x1 m_x2 (map.putmany m_o2 m_r)).
+        rewrite (map.putmany_comm m_x1 m_x2 Hd_x12).
+        rewrite <- (map.putmany_assoc m_x2 m_x1 (map.putmany m_o2 m_r)).
+        (* Now: putmany m_new1 (putmany m_x2 (putmany m_x1 (putmany m_o2 m_r))) *)
+        rewrite (map.putmany_assoc m_new1 m_x2).
+        rewrite (map.putmany_comm m_new1 m_x2 Hd_n1_x2).
+        rewrite <- (map.putmany_assoc m_x2 m_new1).
+        (* Now: putmany m_x2 (putmany m_new1 (putmany m_x1 (putmany m_o2 m_r))) *)
+        f_equal.
+        (* putmany m_new1 (putmany m_x1 (putmany m_o2 m_r))
+           = putmany m_o2 (putmany m_new1 (putmany m_x1 m_r)) *)
+        rewrite (map.putmany_assoc m_x1 m_o2 m_r).
+        rewrite (map.putmany_comm m_x1 m_o2 Hd_x1_o2).
+        rewrite <- (map.putmany_assoc m_o2 m_x1 m_r).
+        rewrite (map.putmany_assoc m_new1 m_o2).
+        rewrite (map.putmany_comm m_new1 m_o2 Hd_n1_o2).
+        rewrite <- (map.putmany_assoc m_o2 m_new1).
+        reflexivity. }
+      { apply map.disjoint_putmany_r. split; [exact Hd_x2_o2 |].
+        apply map.disjoint_putmany_r. split.
+        { unfold map.disjoint in *; intros k v1 v2 Hg1 Hg2;
+          exact (Hd_n1_x2 k v2 v1 Hg2 Hg1). }
+        apply map.disjoint_putmany_r. split.
+        { unfold map.disjoint in *; intros k v1 v2 Hg1 Hg2;
+          exact (Hd_x12 k v2 v1 Hg2 Hg1). }
+        { exact Hd_x2_r. } }
+      split; [exact Hx2 |].
+      exists m_o2, (map.putmany m_new1 (map.putmany m_x1 m_r)).
+      split; [split; [reflexivity |] |].
+      { apply map.disjoint_putmany_r. split.
+        { unfold map.disjoint in *; intros k v1 v2 Hg1 Hg2;
+          exact (Hd_n1_o2 k v2 v1 Hg2 Hg1). }
+        apply map.disjoint_putmany_r. split.
+        { unfold map.disjoint in *; intros k v1 v2 Hg1 Hg2;
+          exact (Hd_x1_o2 k v2 v1 Hg2 Hg1). }
+        { exact Hd_o2_r. } }
+      split; [exact Ho2 |].
+      exists m_new1, (map.putmany m_x1 m_r).
+      split; [split; [reflexivity |] |].
+      { apply map.disjoint_putmany_r.
+        split; [exact Hd_n1_x1 | exact Hd_n1_r]. }
+      split; [exact Hnew1 |].
+      exists m_x1, m_r.
+      split; [split; [reflexivity | exact Hd_x1_r] |].
+      split; [exact Hx1 | exact Hr]. }
+    eapply Semantics.weaken_call.
+    1: { eapply (HFopp (word.add pout (word.of_Z fp_felem_offset))
+        (word.add px (word.of_Z fp_felem_offset))
+        (snd_felem old_out)
+        (snd_felem x)
+        _ tr).
+      wp_unop_precond ltac:(first [assumption | apply bounds_equiv; assumption]). }
+    (* === Process postcondition of opp call === *)
+    intros t'' m'' rets [Hrets [Htr2 [opp_out [Hfeval_opp [Hbound_opp Hsep_post2]]]]].
+    subst rets.
+    cbv [map.putmany_of_list_zip].
+    exists (#{ "out" => pout; "x" => px }#). split. { exact eq_refl. }
+    cbv [list_map get]. split. { exact eq_refl. }
+    split. { exact Htr2. }
+    (* === Final: construct Fp2 output === *)
+    (* The opp postcondition sep is: *)
+    (* (FElem(pout+off) opp_out * (snd_x * (fst_copy * (fst_x * Rr)))) m'' *)
+    (* Decompose into 5 maps *)
+    destruct Hsep_post2 as [m_A [m_rest1 [[Heq_opp Hd_A] [HA Hrest1]]]].
+    destruct Hrest1 as [m_B [m_rest2 [[Heq_r1 Hd_B] [HB Hrest2]]]].
+    destruct Hrest2 as [m_C [m_rest3 [[Heq_r2 Hd_C] [HC Hrest3]]]].
+    destruct Hrest3 as [m_D [m_E [[Heq_r3 Hd_DE] [HD HE]]]].
+    subst m_rest1 m_rest2 m_rest3 m''.
+    split_all_disjointness.
+    (* m'' = putmany m_A (putmany m_B (putmany m_C (putmany m_D m_E))) *)
+    (* HA : FElem(pout+off) opp_out on m_A *)
+    (* HB : FElem(px+off) (snd x) on m_B *)
+    (* HC : FElem(pout) (fst x) on m_C *)
+    (* HD : FElem(px) (fst x) on m_D *)
+    (* HE : Rr on m_E *)
+    assert (Hlen_new1 : length (fst_felem x) =
+      @AbstractField.felem_size_in_words _ _ _ _ _ _ F_representation).
+    { exact (@QuadraticFieldExtensions.AbstractFElem_length _ _ _ _
+        prime_parameters F_representation _ _ _ Hnew1). }
+    assert (Hlen_opp : length opp_out =
+      @AbstractField.felem_size_in_words _ _ _ _ _ _ F_representation).
+    { exact (@QuadraticFieldExtensions.AbstractFElem_length _ _ _ _
+        prime_parameters F_representation _ _ _ HA). }
+    assert (Hlen_x2 : length (snd_felem x) =
+      @AbstractField.felem_size_in_words _ _ _ _ _ _ F_representation).
+    { exact (@QuadraticFieldExtensions.AbstractFElem_length _ _ _ _
+        prime_parameters F_representation _ _ _ Hx2). }
+    exists (fst_felem x ++ opp_out).
+    split.
+    { (* feval *)
+      unfold feval. simpl @AbstractField.feval.
+      unfold Fp2_repr_inst, Fp2_field_representation, fst_felem, snd_felem.
+      rewrite (QuadraticFieldExtensions.firstn_app' _ _ _ Hlen_new1).
+      rewrite (QuadraticFieldExtensions.skipn_app _ _ _ Hlen_new1).
+      rewrite Hfeval_opp.
+      cbv [AbstractField.un_model AbstractField.un_opp]. reflexivity. }
+    split.
+    { (* bounded_by loose *)
+      change (@AbstractField.bounded_by _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst)
+        with (fun b ws => @AbstractField.bounded_by _ _ _ _ _ _ F_representation b
+          (fst_felem ws)
+          /\ @AbstractField.bounded_by _ _ _ _ _ _ F_representation b
+          (snd_felem ws)).
+      unfold fst_felem, snd_felem.
+      rewrite (QuadraticFieldExtensions.firstn_app' _ _ _ Hlen_new1).
+      rewrite (QuadraticFieldExtensions.skipn_app _ _ _ Hlen_new1).
+      split.
+      { apply (@AbstractField.relax_bounds _ _ _ _ _ _ F_representation
+          F_representation_ok).
+        exact Hbx1. }
+      { exact Hbound_opp. } }
+    { (* sep: FElem_Fp2 pout (fst x ++ opp_out) * (FElem_Fp2 px x * Rr) *)
+      (* Join two Fp FElems into Fp2 for pout *)
+      assert (Hjoin_out : ((@AbstractField.FElem _ _ _ _ _ _ F_representation)pout
+        (fst_felem x) ⋆
+        (@AbstractField.FElem _ _ _ _ _ _ F_representation)(word.add pout (word.of_Z fp_felem_offset)) opp_out)
+        (map.putmany m_C m_A)).
+      { exists m_C, m_A.
+        split; [split; [reflexivity | map_disjoint_auto] |].
+        split; [exact HC | exact HA]. }
+      pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_join _ _ _ _
+        word_ok mem_ok prime_parameters F_representation fp2_prefix
+        pout (fst_felem x) opp_out
+        (map.putmany m_C m_A) Hlen_new1 Hlen_opp Hjoin_out) as Hfp2_out.
+      (* Join two Fp FElems into Fp2 for px *)
+      assert (Hjoin_x : ((@AbstractField.FElem _ _ _ _ _ _ F_representation)px
+        (fst_felem x) ⋆
+        (@AbstractField.FElem _ _ _ _ _ _ F_representation)(word.add px (word.of_Z fp_felem_offset))
+          (snd_felem x))
+        (map.putmany m_D m_B)).
+      { exists m_D, m_B.
+        split; [split; [reflexivity | map_disjoint_auto] |].
+        split; [exact HD | exact HB]. }
+      pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_join _ _ _ _
+        word_ok mem_ok prime_parameters F_representation fp2_prefix
+        px (fst_felem x)
+        (snd_felem x)
+        (map.putmany m_D m_B) Hlen_new1 Hlen_x2 Hjoin_x) as Hfp2_x.
+      rewrite (@QuadraticFieldExtensions.Fp2_list_decomp _ _ _ _
+        prime_parameters F_representation x) in Hfp2_x.
+      (* Build final sep *)
+      exists (map.putmany m_C m_A),
+             (map.putmany (map.putmany m_D m_B) m_E).
+      split; [split |].
+      { (* Rearrange memory to match witnesses *)
+        transitivity (map.putmany m_C (map.putmany m_A (map.putmany m_D (map.putmany m_B m_E)))).
+        { (* LHS: putmany m_A (putmany m_B (putmany m_C (putmany m_D m_E)))
+             = putmany m_C (putmany m_A (putmany m_D (putmany m_B m_E))) *)
+          rewrite (map.putmany_assoc m_B m_C).
+          rewrite (map.putmany_comm m_B m_C) by map_disjoint_auto.
+          rewrite <- (map.putmany_assoc m_C m_B).
+          rewrite (map.putmany_assoc m_A m_C).
+          rewrite (map.putmany_comm m_A m_C) by map_disjoint_auto.
+          rewrite <- (map.putmany_assoc m_C m_A).
+          f_equal. f_equal.
+          rewrite (map.putmany_assoc m_B m_D m_E).
+          rewrite (map.putmany_comm m_B m_D) by map_disjoint_auto.
+          rewrite <- (map.putmany_assoc m_D m_B m_E).
+          reflexivity. }
+        { (* RHS: putmany (putmany m_C m_A) (putmany (putmany m_D m_B) m_E) *)
+          rewrite (map.putmany_assoc m_C m_A).
+          f_equal.
+          rewrite (map.putmany_assoc m_D m_B m_E).
+          reflexivity. } }
+      { map_disjoint_auto. }
+      split; [exact Hfp2_out |].
+      exists (map.putmany m_D m_B), m_E.
+      split; [split; [reflexivity | map_disjoint_auto] |].
+      split; [exact Hfp2_x | exact HE]. }
+  Qed.
 
 
 
