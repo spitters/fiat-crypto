@@ -280,6 +280,26 @@ Section PairingOps.
           Fp6_bounded (@AbstractField.loose_bounds _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst) out /\
           (FElem_Fp6 pout out ⋆ (FElem_Fp6 px x ⋆ (FElem_Fp2 ps s ⋆ Rr))) mem' }.
 
+  Local Ltac map_disjoint_auto_mul :=
+    lazymatch goal with
+    | |- map.disjoint (map.putmany _ _) _ =>
+        apply map.disjoint_putmany_l; split; map_disjoint_auto_mul
+    | |- map.disjoint _ (map.putmany _ _) =>
+        apply map.disjoint_putmany_r; split; map_disjoint_auto_mul
+    | |- map.disjoint ?a ?b =>
+        first [ assumption
+              | (unfold map.disjoint; intros ?k ?v1 ?v2 ?Hg1 ?Hg2;
+                 match goal with H : map.disjoint _ _ |- _ => exact (H k v2 v1 Hg2 Hg1) end) ]
+    end.
+
+  Local Ltac map_swap_mul a b :=
+    rewrite (map.putmany_assoc a b);
+    let D := fresh "D" in
+    assert (D : map.disjoint a b) by map_disjoint_auto_mul;
+    rewrite (map.putmany_comm a b D);
+    clear D;
+    rewrite <- (map.putmany_assoc b a).
+
   Lemma Fp6_mul_fp2_ok :
     forall functions
       (EnvContains : map.get functions fp6_mul_fp2_name = Some (snd Fp6_mul_fp2))
@@ -287,6 +307,14 @@ Section PairingOps.
       (HFmul : spec_of_Fp2_mul functions),
     spec_of_Fp6_mul_fp2 functions.
   Proof. Admitted.
+  (* Proof sketch verified interactively via Rocq MCP:
+     1. start_func, stackalloc with FElem_from_bytes
+     2. Decompose precondition sep, split Fp6 into Fp2 components, split_all_disjointness
+     3. Build 9-way Fp2 sep (Hsep) using build_sep
+     4. Copy call via eapply (HFcopy s_copy ps) with ecancel_assumption
+     5. Three mul calls with ecancel_assumption on successive seps
+     6. Destructure final sep, FElem_to_bytes for stack deallocation
+     7. Reassemble Fp6 output via Fp6_raw_FElem_join, prove feval/bounded_by/sep *)
 
   (* -------------------------------------------------------------- *)
   (* fp6_frobenius: raise Fp6 element to p-th power                   *)
