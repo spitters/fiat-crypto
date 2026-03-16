@@ -316,6 +316,31 @@ Section PairingOps.
      6. Destructure final sep, FElem_to_bytes for stack deallocation
      7. Reassemble Fp6 output via Fp6_raw_FElem_join, prove feval/bounded_by/sep *)
 
+  (* In-place variant: fp6_mul_fp2(p, p, s) where output aliases input *)
+  Lemma Fp6_mul_fp2_inplace :
+    forall functions
+      (EnvContains : map.get functions fp6_mul_fp2_name = Some (snd Fp6_mul_fp2))
+      (HFcopy : spec_of_Fp2_felem_copy functions)
+      (HFmul : spec_of_Fp2_mul functions),
+    forall p ps
+      (x : @AbstractField.felem _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst)
+      (s : @AbstractField.felem _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst)
+      Rr tr mem,
+      Fp6_bounded (@AbstractField.tight_bounds _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst) x /\
+      @AbstractField.bounded_by _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst
+        (@AbstractField.loose_bounds _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst) s /\
+      (FElem_Fp6 p x ⋆ (FElem_Fp2 ps s ⋆ Rr)) mem ->
+    WeakestPrecondition.call functions fp6_mul_fp2_name tr mem
+      [p; p; ps]
+      (fun tr' mem' rets =>
+        rets = nil /\ tr = tr' /\
+        exists out,
+          Fp6_feval out = fp6_mul_fp2_model (Fp6_feval x)
+            (@AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst s) /\
+          Fp6_bounded (@AbstractField.loose_bounds _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst) out /\
+          (FElem_Fp6 p out ⋆ (FElem_Fp2 ps s ⋆ Rr)) mem').
+  Proof. Admitted. (* Same proof as Fp6_mul_fp2_ok but with px = pout *)
+
   (* -------------------------------------------------------------- *)
   (* fp6_frobenius: raise Fp6 element to p-th power                   *)
   (*   conj(c0) + conj(c1)*gamma1*v + conj(c2)*gamma2*v^2            *)
@@ -871,11 +896,14 @@ Section PairingOps.
   Lemma Fp12_frobenius_p2_ok :
     forall functions
       (EnvContains : map.get functions fp12_frobenius_p2_name = Some (snd Fp12_frobenius_p2))
+      (EnvContains_mulfp2 : map.get functions fp6_mul_fp2_name = Some (snd Fp6_mul_fp2))
       (HFfrob : spec_of_Fp6_frobenius_p2 functions)
-      (HFmulfp2 : spec_of_Fp6_mul_fp2 functions),
+      (HFmulfp2 : spec_of_Fp6_mul_fp2 functions)
+      (HFcopy2 : spec_of_Fp2_felem_copy functions)
+      (HFmul2 : spec_of_Fp2_mul functions),
     spec_of_Fp12_frobenius_p2 functions.
   Proof.
-    intros functions EnvContains HFfrob HFmulfp2.
+    intros functions EnvContains EnvContains_mulfp2 HFfrob HFmulfp2 HFcopy2 HFmul2.
     unfold spec_of_Fp12_frobenius_p2.
     intros pout px pgamma1_p2 pgamma2_p2 pw_frob_p2_c1
       old_out x gamma1_p2 gamma2_p2 w_frob_p2_c1 Rr tr mem0
@@ -898,13 +926,30 @@ Section PairingOps.
       (fun b fe => @AbstractField.bounded_by _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst b (d0_felem fe)
                 /\ @AbstractField.bounded_by _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst b (d1_felem fe)) in Hbx.
     cbv beta in Hbx. destruct Hbx as [Hbx0 Hbx1].
+    (* Derive pairwise disjointness *)
+    split_all_disjointness.
+    (* Flatten memory *)
+    rewrite <- ?map.putmany_assoc.
+    (* Build master sep at Fp6/Fp2 level *)
+    assert (Hsep8 :
+      (FElem_Fp6 px (d0_felem x) ⋆
+       (FElem_Fp6 (word.add px (word.of_Z fp6_felem_offset)) (d1_felem x) ⋆
+        (FElem_Fp2 pgamma1_p2 gamma1_p2 ⋆
+         (FElem_Fp2 pgamma2_p2 gamma2_p2 ⋆
+          (FElem_Fp2 pw_frob_p2_c1 w_frob_p2_c1 ⋆
+           (FElem_Fp6 pout (d0_felem old_out) ⋆
+            (FElem_Fp6 (word.add pout (word.of_Z fp6_felem_offset)) (d1_felem old_out) ⋆
+             Rr)))))))
+      (map.putmany m_x0 (map.putmany m_x1 (map.putmany m_g1 (map.putmany m_g2
+        (map.putmany m_w (map.putmany m_o0 (map.putmany m_o1 m_rr)))))))).
+    { build_sep. }
     (* Call 1: fp6_frobenius_p2(out.c0, x.c0, g1, g2) *)
     eexists. split. { solve_dexprs. }
     eapply Semantics.weaken_call.
     1: { eapply (HFfrob pout px pgamma1_p2 pgamma2_p2
            (d0_felem old_out) (d0_felem x) gamma1_p2 gamma2_p2 _ tr).
          split; [exact Hbx0 |]. split; [exact Hbg1 |]. split; [exact Hbg2 |].
-         admit. }
+         pose proof Hsep8 as H'. ecancel_assumption. }
     intros t1 m1 rets1 [Hrets1 [Htr1 [out0 [Hfeval0 [Hbound0 Hsep1]]]]].
     subst rets1. symmetry in Htr1. subst t1.
     cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
@@ -917,28 +962,63 @@ Section PairingOps.
                         pgamma1_p2 pgamma2_p2
            (d1_felem old_out) (d1_felem x) gamma1_p2 gamma2_p2 _ tr).
          split; [exact Hbx1 |]. split; [exact Hbg1 |]. split; [exact Hbg2 |].
-         admit. }
+         pose proof Hsep1 as H'. ecancel_assumption. }
     intros t2 m2 rets2 [Hrets2 [Htr2 [out1_frob [Hfeval1_frob [Hbound1_frob Hsep2]]]]].
     subst rets2. symmetry in Htr2. subst t2.
     cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
     repeat straightline.
-    (* Call 3: fp6_mul_fp2(out.c1, out.c1, w) -- self-aliasing *)
+    (* Call 3: fp6_mul_fp2(out.c1, out.c1, w) -- self-aliasing, use in-place variant *)
     eexists. split. { solve_dexprs. }
     eapply Semantics.weaken_call.
-    1: { eapply (HFmulfp2
-           (word.add pout (word.of_Z fp6_felem_offset))
+    1: { eapply (Fp6_mul_fp2_inplace functions EnvContains_mulfp2 HFcopy2 HFmul2
            (word.add pout (word.of_Z fp6_felem_offset))
            pw_frob_p2_c1
-           out1_frob out1_frob w_frob_p2_c1 _ tr m2).
+           out1_frob w_frob_p2_c1 _ tr m2).
          split; [apply Fp6_bounds_tight_of_loose; exact Hbound1_frob |].
          split; [exact Hbw |].
-         admit. }
+         pose proof Hsep2 as H'. ecancel_assumption. }
     intros t3 m3 rets3 [Hrets3 [Htr3 [out1 [Hfeval1 [Hbound1 Hsep3]]]]].
     subst rets3. symmetry in Htr3. subst t3.
     cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
     cbv [list_map get]. split. { exact eq_refl. } split. { exact eq_refl. }
     exists (out0 ++ out1).
-    admit.
+    (* Get lengths for d0/d1_felem_app using COPIES *)
+    pose proof Hsep1 as Hsep1_copy.
+    destruct Hsep1_copy as [m_out0' [m_restS1 [[HeqS1 HdS1] [Hout0_elem HrestS1]]]].
+    assert (Hlen_out0 : Datatypes.length out0 = @AbstractField.felem_size_in_words _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst).
+    { unfold AbstractField.FElem, Bignum.Bignum in Hout0_elem.
+      destruct Hout0_elem as [? [? [? [[? Hlen'] ?]]]]. exact Hlen'. }
+    pose proof Hsep3 as Hsep3_copy.
+    destruct Hsep3_copy as [m_out1' [m_rest3 [[Heq3' Hd3'] [Hout1_elem Hrest3]]]].
+    assert (Hlen_out1 : Datatypes.length out1 = @AbstractField.felem_size_in_words _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst).
+    { unfold AbstractField.FElem, Bignum.Bignum in Hout1_elem.
+      destruct Hout1_elem as [? [? [? [[? Hlen''] ?]]]]. exact Hlen''. }
+    assert (Hd0_app : d0_felem (out0 ++ out1) = out0).
+    { unfold d0_felem. apply ListUtil.firstn_app_sharp. exact Hlen_out0. }
+    assert (Hd1_app : d1_felem (out0 ++ out1) = out1).
+    { unfold d1_felem. apply ListUtil.skipn_app_sharp. exact Hlen_out0. }
+    (* feval *)
+    split.
+    { change (@AbstractField.feval _ Fp12_fp_inst _ _ _ _ Fp12_repr_inst) with
+        (fun ws => (@AbstractField.feval _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst (d0_felem ws),
+                    @AbstractField.feval _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst (d1_felem ws))).
+      cbv beta. rewrite Hd0_app, Hd1_app.
+      rewrite Hfeval0, Hfeval1, Hfeval1_frob.
+      unfold fp12_frobenius_p2_model.
+      change (@AbstractField.feval _ Fp12_fp_inst _ _ _ _ Fp12_repr_inst x) with
+        (@AbstractField.feval _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst (d0_felem x),
+         @AbstractField.feval _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst (d1_felem x)).
+      cbv beta. simpl fst. simpl snd.
+      reflexivity. }
+    (* bounded_by *)
+    split.
+    { change (@AbstractField.bounded_by _ Fp12_fp_inst _ _ _ _ Fp12_repr_inst) with
+        (fun b felem => @AbstractField.bounded_by _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst b (d0_felem felem)
+                     /\ @AbstractField.bounded_by _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst b (d1_felem felem)).
+      cbv beta. rewrite Hd0_app, Hd1_app.
+      split; assumption. }
+    (* sep: need Fp12_raw_FElem_join + full sep construction *)
+    { admit. }
   Admitted.
 
 
