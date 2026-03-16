@@ -200,7 +200,24 @@ Section PairingOps.
        AbstractField.un_outbounds := @AbstractField.loose_bounds _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst |}.
 
   Instance spec_of_Fp2_conjugate : spec_of fp2_conjugate_name :=
-    AbstractField.unop_spec un_Fp2_conjugate.
+    fnspec! fp2_conjugate_name (pout px : word)
+      / (old_out x : @AbstractField.felem _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst)
+        Rr,
+    { requires tr mem :=
+        @AbstractField.bounded_by _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst
+          (@AbstractField.tight_bounds _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst) x /\
+        (@AbstractField.FElem _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst px x ⋆
+         (@AbstractField.FElem _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst pout old_out ⋆ Rr)) mem;
+      ensures tr' mem' :=
+        tr = tr' /\
+        exists out,
+          @AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst out =
+            (fst (@AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst x),
+             @F.opp M_pos (snd (@AbstractField.feval _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst x))) /\
+          @AbstractField.bounded_by _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst
+            (@AbstractField.loose_bounds _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst) out /\
+          (@AbstractField.FElem _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst pout out ⋆
+           (@AbstractField.FElem _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst px x ⋆ Rr)) mem' }.
 
   Lemma Fp2_conjugate_ok :
     forall functions
