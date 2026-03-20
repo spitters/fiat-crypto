@@ -5,6 +5,8 @@ Require Import Crypto.Bedrock.P256.Platform.
 
 Import Specs.NotationsCustomEntry Specs.coord Specs.point.
 
+Require Import Crypto.Bedrock.P256.ProgramLogic_compat.
+
 Import bedrock2.Syntax bedrock2.NotationsCustomEntry
 LittleEndianList
 ZArith.BinInt
@@ -223,6 +225,8 @@ Import full_sub full_add.
 Local Existing Instances spec_of_full_sub spec_of_full_add.
 
 Import Specs.
+
+Require Import Crypto.Bedrock.P256.ProgramLogic_compat.
 
 Lemma p256_coord_sub_nonmont_ok :
   let '_ := spec_of_p256_coord_sub_nonmont in
