@@ -121,8 +121,8 @@ final-exp-vos: final-exp-h3
 	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) -vos src/Bedrock/Field/Synthesis/Examples/BLS12_FinalExp.v
 
 # P-256 targets
-# P-256 code uses mixed module paths: Crypto.* AND Curves.*
-P256FLAGS := -Q src Crypto -Q src/Curves Curves
+# P-256: all imports now fully qualified under Crypto.*
+P256FLAGS := -Q src Crypto
 
 p256-deps:
 	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Algebra/Hierarchy.v

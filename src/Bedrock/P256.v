@@ -44,15 +44,14 @@ Import Macros.WithBaseName.
 Import String List. Local Open Scope string_scope. Local Open Scope list_scope.
 
 
-(* Function bodies axiomatized — concrete definitions available in
-   p256_prime.v (synthesis) and p256_bridge.v (extraction).
-   Closing the axioms requires a build system fix: the P-256 code uses
-   mixed -Q flags (-Q src Crypto + -Q src/Curves Curves) which conflicts
-   with the synthesis code (-Q src Crypto only). See Makefile.bls12. *)
-Axiom p256_coord_sqr : Syntax.func.
+(* Concrete function bodies from fiat-crypto synthesis (p256_bridge.v).
+   The _ok proofs are admitted pending the FElem↔coord representation bridge.
+   The bridge infrastructure exists (felem_to_bytes/felem_from_bytes in Signature.v)
+   but connecting spec_of_BinOp to spec_of_p256_coord_mul requires ~100 lines. *)
+Require Import Crypto.Bedrock.Field.Synthesis.Examples.p256_bridge.
+Definition p256_coord_sqr : Syntax.func := p256_coord_sqr_body.
+Definition p256_coord_mul : Syntax.func := p256_coord_mul_body.
 Axiom p256_coord_sqr_ok : forall functions, map.get functions "p256_coord_sqr" = Some p256_coord_sqr -> spec_of_p256_coord_sqr functions.
-
-Axiom p256_coord_mul : Syntax.func.
 Axiom p256_coord_mul_ok : forall functions, map.get functions "p256_coord_mul" = Some p256_coord_mul -> spec_of_p256_coord_mul functions.
 
 Import memcpy shrd full_sub full_add full_mul memmove.

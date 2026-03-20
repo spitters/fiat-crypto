@@ -185,7 +185,7 @@ From bedrock2 Require Import SepAutoArray.
 From coqutil Require Import symmetry.
 Import PeanoNat Lia.
 Import Tactics.
-Require Import UniquePose.
+Require Import Crypto.Util.Tactics.UniquePose.
 
 Require Crypto.Curves.Weierstrass.AffineProofs.
 From bedrock2 Require ToCString.

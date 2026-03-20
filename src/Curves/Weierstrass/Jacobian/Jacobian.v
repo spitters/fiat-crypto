@@ -1,13 +1,13 @@
 From Coq Require Import Morphisms.
 
 Require Import Crypto.Spec.WeierstrassCurve.
-Require Import Curves.Weierstrass.Affine.
+Require Import Crypto.Curves.Weierstrass.Affine.
 Require Import Crypto.Util.Decidable Crypto.Algebra.Field.
 Require Import Crypto.Util.Tactics.BreakMatch.
 Require Import Crypto.Util.Tactics.DestructHead.
 Require Import Crypto.Util.Tactics.SpecializeBy.
 Require Import Crypto.Util.Tactics.SetoidSubst.
-Require Import Util.Tactics.Beta1.
+Require Import Crypto.Util.Tactics.Beta1.
 Require Import Crypto.Util.Notations Crypto.Util.LetIn.
 Require Import Crypto.Util.Sum Crypto.Util.Prod Crypto.Util.Sigma.
 Require Import Crypto.Util.FsatzAutoLemmas.
