@@ -19,6 +19,7 @@ COQFLAGS := -Q src Crypto
 # Shortcut targets for BLS12 files
 .PHONY: quad quad-mul quad-specs three_b felem_copy fp2 g1 g1_alt g2 bignum_shift curve_add cubic-specs cubic wp-tactics dodecic-specs dodecic pairing-ops
 .PHONY: dodecic-mul dodecic-sqr dodecic-inv dodecic-all dodecic-all-vos
+.PHONY: pairing-helpers miller-loop final-exp pairing-top pairing pairing-vos
 
 quad:
 	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/QuadraticFieldExtensions.v
@@ -88,3 +89,33 @@ dodecic-all-vos:
 
 pairing-ops:
 	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/FieldExtensions/PairingFieldOps.v
+
+pairing-helpers:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/Synthesis/Examples/BLS12_PairingHelpers.v
+
+miller-loop:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/Synthesis/Examples/BLS12_MillerLoop.v
+
+final-exp-h3:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/Synthesis/Examples/BLS12_FinalExpH3.v
+
+final-exp: final-exp-h3
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/Synthesis/Examples/BLS12_FinalExp.v
+
+pairing-top:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/Synthesis/Examples/BLS12_PairingTop.v
+
+pairing: pairing-helpers miller-loop final-exp pairing-top
+
+pairing-vos:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) -vos src/Bedrock/Field/Synthesis/Examples/BLS12_PairingHelpers.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) -vos src/Bedrock/Field/Synthesis/Examples/BLS12_MillerLoop.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) -vos src/Bedrock/Field/Synthesis/Examples/BLS12_FinalExpH3.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) -vos src/Bedrock/Field/Synthesis/Examples/BLS12_FinalExp.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) -vos src/Bedrock/Field/Synthesis/Examples/BLS12_PairingTop.v
+
+miller-loop-vos:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) -vos src/Bedrock/Field/Synthesis/Examples/BLS12_MillerLoop.v
+
+final-exp-vos: final-exp-h3
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) -vos src/Bedrock/Field/Synthesis/Examples/BLS12_FinalExp.v
