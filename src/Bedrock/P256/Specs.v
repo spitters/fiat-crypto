@@ -131,7 +131,7 @@ End Byte.
 
 Local Coercion F.to_Z : F >-> Z.
 
-Require Import Curves.Weierstrass.P256.
+Require Import Crypto.Curves.Weierstrass.P256.
 
 Module Import coord. (* bytes in montgomery form *)
   Notation coord := (F p256).
@@ -148,7 +148,7 @@ Module Import coord. (* bytes in montgomery form *)
   Qed.
 End coord.
 
-From Crypto.Curves Require Import Jacobian.
+From Crypto.Curves.Weierstrass.Jacobian Require Import Jacobian.
 Import Coq.Lists.List.
 
 Notation affine_point := (@WeierstrassCurve.W.point coord eq F.add F.mul P256.a P256.b).
@@ -187,7 +187,7 @@ Import PeanoNat Lia.
 Import Tactics.
 Require Import UniquePose.
 
-Require Curves.Weierstrass.AffineProofs.
+Require Crypto.Curves.Weierstrass.AffineProofs.
 From bedrock2 Require ToCString.
 From coqutil Require Macros.WithBaseName.
 

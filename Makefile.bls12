@@ -119,3 +119,31 @@ miller-loop-vos:
 
 final-exp-vos: final-exp-h3
 	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) -vos src/Bedrock/Field/Synthesis/Examples/BLS12_FinalExp.v
+
+# P-256 targets
+# P-256 code uses mixed module paths: Crypto.* AND Curves.*
+P256FLAGS := -Q src Crypto -Q src/Curves Curves
+
+p256-deps:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Algebra/Hierarchy.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Algebra/Monoid.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Algebra/Group.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Algebra/Ring.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Algebra/IntegralDomain.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Algebra/Field.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Spec/WeierstrassCurve.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Curves/Weierstrass/Affine.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Curves/Weierstrass/AffineProofs.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Curves/Weierstrass/Jacobian/Jacobian.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Curves/Weierstrass/P256.v
+
+p256-synth:
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/Synthesis/Examples/p256_prime.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(COQFLAGS) src/Bedrock/Field/Synthesis/Examples/p256_bridge.v
+
+p256-specs: p256-deps
+	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Bedrock/P256/Specs.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Bedrock/P256/Platform.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Bedrock/P256/Coord.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Bedrock/P256/Jacobian.v
+	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Bedrock/P256/JacobianAffine.v

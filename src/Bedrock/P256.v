@@ -44,6 +44,11 @@ Import Macros.WithBaseName.
 Import String List. Local Open Scope string_scope. Local Open Scope list_scope.
 
 
+(* Function bodies axiomatized — concrete definitions available in
+   p256_prime.v (synthesis) and p256_bridge.v (extraction).
+   Closing the axioms requires a build system fix: the P-256 code uses
+   mixed -Q flags (-Q src Crypto + -Q src/Curves Curves) which conflicts
+   with the synthesis code (-Q src Crypto only). See Makefile.bls12. *)
 Axiom p256_coord_sqr : Syntax.func.
 Axiom p256_coord_sqr_ok : forall functions, map.get functions "p256_coord_sqr" = Some p256_coord_sqr -> spec_of_p256_coord_sqr functions.
 

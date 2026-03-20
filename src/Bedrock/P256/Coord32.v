@@ -1,7 +1,7 @@
 Require Import coqutil.Datatypes.List Coq.Lists.List.
-Require Import Curves.Weierstrass.P256.
-Require Import Bedrock.P256.Specs.
-Require Import Bedrock.P256.Platform.
+Require Import Crypto.Curves.Weierstrass.P256.
+Require Import Crypto.Bedrock.P256.Specs.
+Require Import Crypto.Bedrock.P256.Platform.
 Import bedrock2.NotationsCustomEntry Specs.NotationsCustomEntry.
 Import bedrock2Examples.shrd.
 

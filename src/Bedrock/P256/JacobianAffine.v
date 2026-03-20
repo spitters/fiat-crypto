@@ -1,5 +1,5 @@
 Require Import coqutil.Datatypes.List Coq.Lists.List.
-Require Import Bedrock.P256.Specs.
+Require Import Crypto.Bedrock.P256.Specs.
 
 Import Specs.NotationsCustomEntry Specs.coord Specs.point.
 Import Curves.Weierstrass.P256.
