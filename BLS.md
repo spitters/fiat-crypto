@@ -62,7 +62,19 @@ Zero `Admitted` across all files.
 
 ---
 
-## Current Status (2026-03-12, updated)
+## Current Status (2026-03-20)
+
+### COMPLETE: Full BLS12-381 Pairing Pipeline Verified
+
+**All WP proofs are Qed with 0 admits.** The complete pairing pipeline (Fp → Fp2 → Fp6 → Fp12 → G1 → G2 → Miller loop → final exponentiation → pairing) is formally verified in bedrock2.
+
+| Component | File | Status | Compile Time |
+|-----------|------|--------|-------------|
+| Pairing helpers | BLS12_PairingHelpers.v | **Qed** | ~1s |
+| Pairing top-level | BLS12_PairingTop.v | **Qed** | 4.6s |
+| H3 exponent stores | BLS12_FinalExpH3.v | **Qed** | 6s |
+| Final exponentiation | BLS12_FinalExp.v | **Qed** | 1:32 |
+| Miller loop | BLS12_MillerLoop.v | **Defined** | 2:25 |
 
 ### Zero Admitted Statements in Group Operations
 
@@ -214,17 +226,41 @@ The shim exists because bedrock2 ≥0.0.9 removed the name from `func`, but our 
 
 ### Other Curves/Primitives in Scope
 
-The fiat-crypto framework is **generic over the prime**:
+Now that BLS12-381 pairing is complete, the infrastructure (field extension tower, WP tactics, loop invariant patterns) can be reused.
 
-| Primitive | Effort | What's Needed |
-|-----------|--------|---------------|
-| **secp256k1 / P-256** | Low | New prime + curve constants, reuse Weierstrass addition |
-| **BLS12-377** | Low | Same pairing structure, different prime |
-| **BN254** | Low-Medium | Similar pairing-friendly structure |
-| **Curve25519/Ed25519** | Already done | X25519 end-to-end verified in fiat-crypto |
-| **Pasta (Pallas/Vesta)** | Low | Standard Weierstrass, new primes |
-| **Hash-to-curve** | High | Needs square root compilation |
-| **Multi-scalar mult** | High | Pippenger/Straus, complex loop structures |
+#### Pairing-friendly curves (reuse most of the BLS12 tower)
+
+| Curve | Effort | What can be reused | What's new |
+|-------|--------|-------------------|-----------|
+| **BLS12-377** | **Low** | Entire Fp2→Fp12 tower, Miller loop, final exp structure | New prime, new h3 exponent, twist parameters |
+| **BN254** | **Low-Medium** | Fp2→Fp12 tower, most Frobenius/pairing ops | Different twist type (D-twist vs M-twist), different final exp formula, different loop length (log2(6x+2)) |
+| **BLS12-461** | **Low** | Same as BLS12-377 | Larger prime (461-bit), same structure |
+
+#### Non-pairing curves (reuse Fp layer + G1 addition)
+
+| Curve | Effort | What can be reused | What's new |
+|-------|--------|-------------------|-----------|
+| **secp256k1** | **Already done** | `src/Bedrock/Secp256k1/` — CoZ Jacobian + Joye ladder scalar mult, fully proven | — |
+| **P-256 (secp256r1)** | **Mostly done** | `src/Bedrock/P256/` — Jacobian point ops proven, field mul/sqr axiomatized as assembly | Close assembly verification gap |
+| **Pasta (Pallas/Vesta)** | **Low** | Fp synthesis, Weierstrass addition | Two new primes, used in Mina/Pickles |
+| **Ed25519/Curve25519** | **Already done** | X25519 end-to-end in fiat-crypto | — |
+
+#### Higher-level primitives
+
+| Primitive | Effort | Dependencies |
+|-----------|--------|-------------|
+| **Hash-to-curve (BLS12-381 G1)** | **Medium-High** | Needs Fp square root, SWU map. sqrt requires new bedrock2 body. |
+| **Hash-to-curve (BLS12-381 G2)** | **High** | Needs Fp2 square root + SWU over Fp2 |
+| **Multi-scalar multiplication** | **High** | Pippenger/Straus algorithm, complex loop + bucket structures |
+| **BLS signatures** | **Medium** | Hash-to-curve + pairing check (e(sig, g2) = e(H(m), pk)) |
+| **KZG commitments** | **Medium** | Multi-scalar mult + pairing checks |
+
+#### Effort estimates for next targets
+
+1. **BLS12-377** (~1 week): Same tower, different parameters. Most proofs transfer with `change` for constants.
+2. **BN254** (~2 weeks): Similar but different final exponentiation formula. Miller loop has different iteration count.
+3. **Hash-to-curve G1** (~1-2 weeks): Needs Fp sqrt body + SWU map implementation + proof.
+4. **P-256 assembly gap** (~days): Close the axiomatized field mul/sqr in `src/Bedrock/P256/`.
 
 ---
 
