@@ -1,4 +1,4 @@
-Require Import Bedrock.Field.Common.Types.
+Require Import Crypto.Bedrock.Field.Common.Types.
 Require Import coqutil.Byte coqutil.Word.LittleEndianList.
 From coqutil.Macros Require Import symmetry.
 Require Import Crypto.Algebra.Hierarchy.

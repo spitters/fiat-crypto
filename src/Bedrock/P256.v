@@ -56,6 +56,13 @@ Axiom p256_coord_mul_ok : forall functions, map.get functions "p256_coord_mul" =
 
 Import memcpy shrd full_sub full_add full_mul memmove.
 
+(* Aliases for br_-prefixed platform functions.
+   In newer bedrock2, these are exported by the respective modules.
+   In v0.0.9, they need to be defined here. *)
+Definition br_full_add : Syntax.func := full_add.
+Definition br_full_sub : Syntax.func := full_sub.
+Definition br_full_mul : Syntax.func := full_mul.
+
 Definition platform := &[,
   br_full_add; br_full_sub; br_full_mul; shrd;
   br_value_barrier; br_declassify; br_broadcast_negative; br_broadcast_nonzero; br_broadcast_odd; br_cmov;  br_memcxor
