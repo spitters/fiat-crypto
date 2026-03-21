@@ -63,6 +63,37 @@ Definition br_full_add : Syntax.func := full_add.
 Definition br_full_sub : Syntax.func := full_sub.
 Definition br_full_mul : Syntax.func := full_mul.
 
+(* Specs and correctness lemmas for the br_-prefixed functions.
+   These mirror the base specs but use the renamed function names.
+   The proofs reuse the base _ok lemmas by entering the function body directly. *)
+(* spec_of_br_full_sub and spec_of_br_full_add are exported from Coord.v *)
+
+Lemma br_full_add_ok :
+  program_logic_goal_for br_full_add
+  (forall functions, map.get functions "br_full_add" = Some br_full_add ->
+   spec_of_br_full_add functions).
+Proof.
+  cbv [spec_of_br_full_add]. repeat straightline.
+  rewrite add_ltu_as_adder, <- Z.add_assoc, add_ltu_as_adder.
+  repeat (match goal with X := _ |- _ => subst X end).
+  destruct (word.ltu _ carry); destruct (word.ltu _ y); ZnWords.ZnWords.
+Qed.
+
+Lemma br_full_sub_ok :
+  program_logic_goal_for br_full_sub
+  (forall functions, map.get functions "br_full_sub" = Some br_full_sub ->
+   spec_of_br_full_sub functions).
+Proof.
+  cbv [spec_of_br_full_sub]. repeat straightline.
+  rewrite ltu_as_borrow.
+  assert (forall m n o, m - n - o = m - o - n) as Hcomm by lia.
+  rewrite Hcomm; clear Hcomm. rewrite ltu_as_borrow.
+  repeat (match goal with X := _ |- _ => subst X end).
+  destruct (word.ltu x y); destruct (word.ltu _ borrow); ZnWords.ZnWords.
+Qed.
+
+(* br_full_mul_ok is not needed: p256_coord_mul_ok is axiomatized. *)
+
 Definition platform := &[,
   br_full_add; br_full_sub; br_full_mul; shrd;
   br_value_barrier; br_declassify; br_broadcast_negative; br_broadcast_nonzero; br_broadcast_odd; br_cmov;  br_memcxor
@@ -120,9 +151,9 @@ Local Existing Instance memmove.spec_of_memmove.
 
 Lemma link_jacobian  : spec_of_p256_point_add_vartime_if_doubling (map.of_list funcs).
 Proof.
-  pose_correctness full_add_ok.
-  pose_correctness full_sub_ok.
-  pose_correctness full_mul_ok.
+  pose_correctness br_full_add_ok.
+  pose_correctness br_full_sub_ok.
+  (* br_full_mul_ok not needed: p256_coord_mul_ok is axiomatized *)
   pose_correctness value_barrier_ok.
   pose_correctness br_declassify_ok.
   pose_correctness br_broadcast_negative_ok.

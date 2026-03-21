@@ -231,13 +231,13 @@ Import Specs.
 
 (* Specs for br_-prefixed platform callees used by P-256 coord functions.
    These mirror the base specs but use the WithBaseName-prefixed function names. *)
-Local Instance spec_of_br_full_sub : spec_of "br_full_sub" :=
+#[export] Instance spec_of_br_full_sub : spec_of "br_full_sub" :=
   fnspec! "br_full_sub" x y borrow ~> diff out_borrow,
     { requires t m := word.unsigned borrow < 2;
       ensures T M := M = m /\ T = t /\
         word.unsigned diff - 2^64 * word.unsigned out_borrow =
         word.unsigned x - word.unsigned y - word.unsigned borrow }.
-Local Instance spec_of_br_full_add : spec_of "br_full_add" :=
+#[export] Instance spec_of_br_full_add : spec_of "br_full_add" :=
   fnspec! "br_full_add" x y carry ~> sum carry_out,
     { requires t m := word.unsigned carry < 2;
       ensures T M := M = m /\ T = t /\
