@@ -52,15 +52,49 @@ Require Import Crypto.Bedrock.Field.Synthesis.New.WordByWordMontgomery.
 Definition p256_coord_sqr : Syntax.func := p256_coord_sqr_body.
 Definition p256_coord_mul : Syntax.func := p256_coord_mul_body.
 
-(* Correctness of coord_mul/sqr via fiat-crypto synthesis + coord↔FElem bridge.
-   The synthesis framework (WordByWordMontgomery.mul_func_correct) proves
-   spec_of_BinOp bin_mul for the synthesized body. The bridge to
-   spec_of_p256_coord_mul requires connecting:
-   - coord.to_bytes x = Z.to_bytes 32 (x * R)  ↔  FElem px x_felem
-   - feval x_felem = x  (Montgomery decoding)
-   - bin_mul.bin_model = F.mul
-   This is ~100 lines using felem_to_bytes/felem_from_bytes from Specs/Field.v.
-   TODO: close these admits using the synthesis correctness infrastructure. *)
+Require Import Crypto.Bedrock.Field.Synthesis.New.ComputedOp.
+Require Import Crypto.Bedrock.Field.Translation.Proofs.Func.
+Require Import Crypto.Bedrock.Field.Translation.Proofs.Cmd.
+Require Import Crypto.Bedrock.Specs.Field.
+From Stdlib Require Import Lia.
+Import Crypto.Bedrock.Field.Synthesis.Examples.p256_prime.
+
+(* Step 1: Synthesis-level correctness via mul_func_correct/square_func_correct.
+   These prove spec_of_BinOp/UnOp for the synthesized bodies. *)
+Local Ltac solve_valid_func :=
+  repeat first [apply Func.validf_Abs | apply Func.validf_base];
+  repeat first [constructor | lia];
+  try reflexivity; try discriminate;
+  try (cbv; reflexivity); try (cbv; discriminate);
+  try exact I; try lia.
+
+Lemma p256_mul_synthesis_ok :
+  forall functions,
+    map.get functions Field.mul = Some (ComputedOp.b2_func mul_op) ->
+    spec_of_BinOp bin_mul functions.
+Proof.
+  intros functions Hget.
+  eapply mul_func_correct; try eassumption; try reflexivity.
+  - let v := eval cbv in felem_size_in_bytes in change felem_size_in_bytes with v.
+    cbv. discriminate.
+  - cbv [ComputedOp.res mul_op]; solve_valid_func.
+Qed.
+
+Lemma p256_sqr_synthesis_ok :
+  forall functions,
+    map.get functions Field.square = Some (ComputedOp.b2_func square_op) ->
+    spec_of_UnOp un_square functions.
+Proof.
+  intros functions Hget.
+  eapply square_func_correct; try eassumption; try reflexivity.
+  - let v := eval cbv in felem_size_in_bytes in change felem_size_in_bytes with v.
+    cbv. discriminate.
+  - cbv [ComputedOp.res square_op]; solve_valid_func.
+Qed.
+
+(* Step 2: Bridge from spec_of_BinOp/UnOp (FElem) to spec_of_p256_coord_mul/sqr (coord.to_bytes).
+   The bridge requires converting coord.to_bytes ↔ FElem via felem_to_bytes/bs2felem.
+   Pending: ~50 lines of sep-logic rewriting using felem_to_bytes, bs2felem, bs2ws2bs. *)
 Lemma p256_coord_sqr_ok : forall functions, map.get functions "p256_coord_sqr" = Some p256_coord_sqr -> spec_of_p256_coord_sqr functions.
 Proof. Admitted.
 Lemma p256_coord_mul_ok : forall functions, map.get functions "p256_coord_mul" = Some p256_coord_mul -> spec_of_p256_coord_mul functions.
