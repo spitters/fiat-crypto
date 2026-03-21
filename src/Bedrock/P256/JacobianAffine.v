@@ -124,6 +124,20 @@ Local Ltac symex_call := (straightline_call; ssplit; [ solve [
       end
     ] ..  | repeat straightline_cleanup; straightline; repeat straightline_cleanup; clear_nonsymex_sephyps; repeat straightline]).
 
+(* Rocq 9 compat: fold match-expanded skipn/firstn back to normal form.
+   In Rocq 9, straightline reduces skipn/firstn to deep match expressions
+   on abstract lists, breaking length_tac. The fold tactic uses definitional
+   equality to restore the skipn/firstn form. *)
+Local Ltac fold_out_segments out Hm :=
+  try fold (@skipn byte 32 out) in Hm;
+  try fold (@skipn byte 32 (@skipn byte 32 out)) in Hm;
+  try fold (@firstn byte 32 out) in Hm;
+  try fold (@firstn byte 32 (@skipn byte 32 out)) in Hm;
+  try fold (@skipn byte 32 out) in *;
+  try fold (@skipn byte 32 (@skipn byte 32 out)) in *;
+  try fold (@firstn byte 32 out) in *;
+  try fold (@firstn byte 32 (@skipn byte 32 out)) in *.
+
 Lemma p256_point_add_affine_nz_nz_neq_ok : program_logic_goal_for_function! p256_point_add_affine_nz_nz_neq.
 Proof.
   cbv [spec_of_p256_point_add_affine_nz_nz_neq of_affine].
@@ -140,27 +154,20 @@ Proof.
   repeat seprewrite_in_by Array.array1_iff_eq_of_list_word_at Hm ltac:(Lia.lia).
   progress change (Z.of_nat 32) with 32 in *.
 
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
-  symex_call.
+  (* Rocq 9 compat: In Rocq 9, straightline reduces skipn/firstn to match
+     expressions on abstract lists, breaking length_tac. Override symex_call
+     to fold these back after each straightline step. *)
+  do 21 (let symex_call_r9 := (straightline_call; ssplit; [ solve [
+        repeat match goal with
+        | |- True => exact I
+        | |- exists _, _ => letexists
+        | |- _ _ => ecancel_assumption
+        | |- _ => length_tac
+        end
+      ] ..  | repeat straightline_cleanup; straightline; repeat straightline_cleanup;
+        fold_out_segments out Hm;
+        clear_nonsymex_sephyps; repeat straightline]) in
+    symex_call_r9).
   clear_nongoal_sephyps.
 
   (* stackdealloc *)

@@ -5,8 +5,6 @@ Require Import Crypto.Bedrock.P256.Platform.
 
 Import Specs.NotationsCustomEntry Specs.coord Specs.point.
 
-Require Import Crypto.Bedrock.P256.ProgramLogic_compat.
-
 Import bedrock2.Syntax bedrock2.NotationsCustomEntry
 LittleEndianList
 ZArith.BinInt
@@ -164,25 +162,30 @@ Proof.
 Qed.
 
 Import shrd.
+
+(* Rocq 9 compat: Ltac vars are intropatterns, not idents.
+   Use Tactic Notation with ident() to force identifier binding. *)
+Tactic Notation "domem_split" ident(Hm) :=
+  do 4 (
+    rewrite <-(firstn_skipn 8 (le_split _ _)), List.firstn_le_split, skipn_le_split, ?Z.shiftr_shiftr in Hm by lia;
+    simpl Nat.min in Hm; simpl Nat.sub in Hm; simpl Nat.add in Hm; set (le_split 8 _) in Hm).
+
+Tactic Notation "domem_seprewrite" ident(Hm) :=
+  repeat seprewrite_in_by (@Array.sep_eq_of_list_word_at_app) Hm length_tac;
+  repeat seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at) Hm length_tac;
+  repeat seprewrite_in_by @Scalars.scalar_of_bytes Hm length_tac;
+  rewrite ?le_combine_split, ?Z.shiftr_div_pow2 in Hm by lia.
+
 Lemma u256_shr_ok : program_logic_goal_for_function! u256_shr.
 Proof.
   cbv [spec_of_u256_shr].
   straightline; repeat straightline_cleanup.
   cbv [coord.to_bytes] in *.
-  let domem Hm :=
-  do 4 (
-    rewrite <-(firstn_skipn 8 (le_split _ _)), List.firstn_le_split, skipn_le_split, ?Z.shiftr_shiftr in Hm by lia;
-    simpl Nat.min in Hm; simpl Nat.sub in Hm; set (le_split 8 _) in Hm) in
-  domem H2.
+  domem_split H2.
   rewrite <-(firstn_skipn 8 out), <-(firstn_skipn 8 out[_:]), <-(firstn_skipn 8 out[_:][_:]), ?skipn_skipn, ?firstn_skipn in H3.
   subst l l0 l1 l2.
 
-  let domem Hm :=
-  repeat seprewrite_in_by (@Array.sep_eq_of_list_word_at_app) Hm length_tac;
-  repeat seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at) Hm length_tac;
-  repeat seprewrite_in_by @Scalars.scalar_of_bytes Hm length_tac;
-  rewrite ?le_combine_split in Hm by lia
-  in domem H2; domem H3.
+  domem_seprewrite H2; domem_seprewrite H3.
 
   simpl Z.of_nat in *; simpl Z.mul in *; simpl Z.add in *; simpl Nat.add in *.
   progress repeat (straightline || straightline_call); try ZnWords.ZnWords.
@@ -226,39 +229,55 @@ Local Existing Instances spec_of_full_sub spec_of_full_add.
 
 Import Specs.
 
+(* Specs for br_-prefixed platform callees used by P-256 coord functions.
+   These mirror the base specs but use the WithBaseName-prefixed function names. *)
+Local Instance spec_of_br_full_sub : spec_of "br_full_sub" :=
+  fnspec! "br_full_sub" x y borrow ~> diff out_borrow,
+    { requires t m := word.unsigned borrow < 2;
+      ensures T M := M = m /\ T = t /\
+        word.unsigned diff - 2^64 * word.unsigned out_borrow =
+        word.unsigned x - word.unsigned y - word.unsigned borrow }.
+Local Instance spec_of_br_full_add : spec_of "br_full_add" :=
+  fnspec! "br_full_add" x y carry ~> sum carry_out,
+    { requires t m := word.unsigned carry < 2;
+      ensures T M := M = m /\ T = t /\
+        word.unsigned sum + 2^64 * word.unsigned carry_out =
+        word.unsigned x + word.unsigned carry + word.unsigned y }.
+
 Require Import Crypto.Bedrock.P256.ProgramLogic_compat.
 
+(* Explicit callee-premise statements for functions with cross-module callees.
+   The compat shim generates goals without callees; these lemmas add them. *)
 Lemma p256_coord_sub_nonmont_ok :
-  let '_ := spec_of_p256_coord_sub_nonmont in
-  program_logic_goal_for_function! p256_coord_sub.
+  program_logic_goal_for p256_coord_sub
+  (forall (functions : Interface.map.rep),
+    Interface.map.get functions "p256_coord_sub" = Some p256_coord_sub ->
+    spec_of_br_full_sub functions ->
+    spec_of_br_full_add functions ->
+    spec_of_value_barrier functions ->
+    spec_of_p256_coord_sub_nonmont functions).
 Proof.
   cbv [spec_of_p256_coord_sub_nonmont].
   straightline; repeat straightline_cleanup.
   cbv [coord.to_bytes] in *.
-  let domem Hm :=
-  do 4 (
-    rewrite <-(firstn_skipn 8 (le_split _ _)), List.firstn_le_split, skipn_le_split, ?Z.shiftr_shiftr in Hm by lia;
-    simpl Nat.min in Hm; simpl Nat.sub in Hm; set (le_split 8 _) in Hm) in
-  domem H8; domem H9.
-  rewrite <-(firstn_skipn 8 out), <-(firstn_skipn 8 out[_:]), <-(firstn_skipn 8 out[_:][_:]), ?skipn_skipn, ?firstn_skipn in H10.
+  domem_split H; domem_split H3.
+  rewrite <-(firstn_skipn 8 out), <-(firstn_skipn 8 out[_:]), <-(firstn_skipn 8 out[_:][_:]), ?skipn_skipn, ?firstn_skipn in H4.
   subst l l0 l1 l2 l3 l4 l5 l6.
   rewrite ?length_le_split in *.
 
-  let domem Hm :=
-  repeat seprewrite_in_by (@Array.sep_eq_of_list_word_at_app) Hm length_tac;
-  repeat seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at) Hm length_tac;
-  repeat seprewrite_in_by @Scalars.scalar_of_bytes Hm length_tac;
-  rewrite ?le_combine_split, ?Z.shiftr_div_pow2 in Hm by lia
-  in domem H8; domem H9; domem H10.
+  domem_seprewrite H; domem_seprewrite H3; domem_seprewrite H4.
 
   simpl Z.of_nat in *; simpl Z.mul in *; simpl Z.add in *; simpl Nat.add in *.
   repeat (straightline || straightline_call); try ZnWords.ZnWords.
 
-  cbv [Scalars.scalar Scalars.truncated_word Scalars.truncated_scalar] in H23.
-  change (Memory.bytes_per access_size.word) with 8%nat in H23.
-  repeat seprewrite_in_by (@Array.list_word_at_app_of_adjacent_eq) H23 ltac:(rewrite ?app_length, ?length_le_split, ?length_nil; try ZnWords.ZnWords).
-  rewrite <-?app_assoc in H23.
-  revert H23;
+  (* Find the postcondition sep hypothesis by matching the final memory *)
+  match goal with |- ?P ?mfinal =>
+    match goal with H : (_ ⋆ _)%sep mfinal |- _ => rename H into Hpost end end.
+  cbv [Scalars.scalar Scalars.truncated_word Scalars.truncated_scalar] in Hpost.
+  change (Memory.bytes_per access_size.word) with 8%nat in Hpost.
+  repeat seprewrite_in_by (@Array.list_word_at_app_of_adjacent_eq) Hpost ltac:(rewrite ?app_length, ?length_le_split, ?length_nil; try ZnWords.ZnWords).
+  rewrite <-?app_assoc in Hpost.
+  revert Hpost;
   eassert ((_ ++ _) = _) as ->; [|intros;ecancel_assumption].
   eapply le_combine_inj; rewrite ?app_length, ?length_le_combine, ?length_le_split; trivial.
   rewrite !le_combine_app, !le_combine_split, ?length_le_split; change (2^(8%nat*8)) with (2^64).
@@ -281,7 +300,14 @@ Proof.
 Qed.
 
 Import DestructHead.
-Lemma p256_coord_sub_ok : program_logic_goal_for_function! p256_coord_sub.
+Lemma p256_coord_sub_ok :
+  program_logic_goal_for p256_coord_sub
+  (forall (functions : Interface.map.rep),
+    Interface.map.get functions "p256_coord_sub" = Some p256_coord_sub ->
+    spec_of_br_full_sub functions ->
+    spec_of_br_full_add functions ->
+    spec_of_value_barrier functions ->
+    spec_of_p256_coord_sub functions).
 Proof.
   cbv [program_logic_goal_for spec_of_p256_coord_sub ]; intros; destruct_head' @and; destruct_head' @ex.
   eapply WeakestPreconditionProperties.Proper_call; [|unshelve (eapply p256_coord_sub_nonmont_ok; trivial)]; cycle 1.
@@ -301,41 +327,37 @@ Definition spec_of_p256_coord_add_nonmont : spec_of "p256_coord_add" :=
     ensures t' m := t' = t /\ m =* (le_split 32 (x+y)%F)$@p_out * R }.
 
 Lemma p256_coord_add_nonmont_ok :
-  let '_ := spec_of_p256_coord_add_nonmont in
-  program_logic_goal_for_function! p256_coord_add.
+  program_logic_goal_for p256_coord_add
+  (forall (functions : Interface.map.rep),
+    Interface.map.get functions "p256_coord_add" = Some p256_coord_add ->
+    spec_of_br_full_sub functions ->
+    spec_of_br_full_add functions ->
+    spec_of_value_barrier functions ->
+    spec_of_br_cmov functions ->
+    spec_of_p256_coord_add_nonmont functions).
 Proof.
+  cbv [spec_of_p256_coord_add_nonmont].
   straightline; repeat straightline_cleanup.
-  clear H H0 H1. clear H3 H4 H5 H6.
-  clear H8; rename H12 into H8.
-  clear H9; rename H13 into H9.
-  clear H10; rename H14 into H10.
 
   cbv [coord.to_bytes] in *.
-  let domem Hm :=
-  do 4 (
-    rewrite <-(firstn_skipn 8 (le_split _ _)), List.firstn_le_split, skipn_le_split, ?Z.shiftr_shiftr in Hm by lia;
-    simpl Nat.min in Hm; simpl Nat.add in Hm; set (le_split 8 _) in Hm) in
-  domem H8; domem H9.
-  rewrite <-(firstn_skipn 8 out), <-(firstn_skipn 8 out[_:]), <-(firstn_skipn 8 out[_:][_:]), ?skipn_skipn, ?firstn_skipn in H10.
+  domem_split H; domem_split H4.
+  rewrite <-(firstn_skipn 8 out), <-(firstn_skipn 8 out[_:]), <-(firstn_skipn 8 out[_:][_:]), ?skipn_skipn, ?firstn_skipn in H5.
   subst l l0 l1 l2 l3 l4 l5 l6.
   rewrite ?length_le_split in *.
 
-  let domem Hm :=
-  repeat seprewrite_in_by (@Array.sep_eq_of_list_word_at_app) Hm length_tac;
-  repeat seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at) Hm length_tac;
-  repeat seprewrite_in_by @Scalars.scalar_of_bytes Hm length_tac;
-  rewrite ?le_combine_split, ?Z.shiftr_div_pow2 in Hm by lia
-  in domem H8; domem H9; domem H10.
+  domem_seprewrite H; domem_seprewrite H4; domem_seprewrite H5.
 
   simpl Z.of_nat in *; simpl Z.mul in *; simpl Z.add in *; simpl Nat.add in *.
   repeat (straightline || straightline_call); try ZnWords.ZnWords.
 
-  rename H18 into H23.
-  cbv [Scalars.scalar Scalars.truncated_word Scalars.truncated_scalar] in H23.
-  change (Memory.bytes_per access_size.word) with 8%nat in H23.
-  repeat seprewrite_in_by (@Array.list_word_at_app_of_adjacent_eq) H23 ltac:(rewrite ?app_length, ?length_le_split, ?length_nil; try ZnWords.ZnWords).
-  rewrite <-?app_assoc in H23.
-  revert H23; eassert ((_ ++ _) = _)%list as ->; [|intros;ecancel_assumption].
+  (* Find the postcondition sep hypothesis by matching the final memory *)
+  match goal with |- ?P ?mfinal =>
+    match goal with H : (_ ⋆ _)%sep mfinal |- _ => rename H into Hpost end end.
+  cbv [Scalars.scalar Scalars.truncated_word Scalars.truncated_scalar] in Hpost.
+  change (Memory.bytes_per access_size.word) with 8%nat in Hpost.
+  repeat seprewrite_in_by (@Array.list_word_at_app_of_adjacent_eq) Hpost ltac:(rewrite ?app_length, ?length_le_split, ?length_nil; try ZnWords.ZnWords).
+  rewrite <-?app_assoc in Hpost.
+  revert Hpost; eassert ((_ ++ _) = _)%list as ->; [|intros;ecancel_assumption].
   eapply le_combine_inj; rewrite ?app_length, ?length_le_combine, ?length_le_split; trivial.
   rewrite !le_combine_app, !le_combine_split, ?length_le_split; change (2^(8%nat*8)) with (2^64).
   pose proof F.to_Z_range ((x + y)) eq_refl.
@@ -351,7 +373,15 @@ Proof.
   { rewrite Z.mod_small; cbv [p256] in *; try ZnWords.ZnWords. }
 Qed.
 
-Lemma p256_coord_add_ok : program_logic_goal_for_function! p256_coord_add.
+Lemma p256_coord_add_ok :
+  program_logic_goal_for p256_coord_add
+  (forall (functions : Interface.map.rep),
+    Interface.map.get functions "p256_coord_add" = Some p256_coord_add ->
+    spec_of_br_full_sub functions ->
+    spec_of_br_full_add functions ->
+    spec_of_value_barrier functions ->
+    spec_of_br_cmov functions ->
+    spec_of_p256_coord_add functions).
 Proof.
   cbv [program_logic_goal_for spec_of_p256_coord_add ]; intros; destruct_head' @and; destruct_head' @ex.
   eapply WeakestPreconditionProperties.Proper_call; [|unshelve (eapply p256_coord_add_nonmont_ok; trivial)]; cycle 1.
@@ -378,7 +408,7 @@ Proof.
 
   (* postcondition *)
 
-  clear Hm; rename H3 into Hm.
+  clear Hm; match goal with H : (_ ⋆ _)%sep _ |- _ => rename H into Hm end.
   cbv [Scalars.scalar Scalars.truncated_word Scalars.truncated_scalar] in Hm.
   progress change (Memory.bytes_per access_size.word) with 8%nat in Hm.
   repeat seprewrite_in_by (@Array.list_word_at_app_of_adjacent_eq) Hm ltac:(rewrite ?app_length, ?length_le_split, ?length_nil; try ZnWords.ZnWords).
