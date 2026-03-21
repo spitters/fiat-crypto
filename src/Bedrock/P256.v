@@ -44,15 +44,27 @@ Import Macros.WithBaseName.
 Import String List. Local Open Scope string_scope. Local Open Scope list_scope.
 
 
-(* Concrete function bodies from fiat-crypto synthesis (p256_bridge.v).
-   The _ok proofs are admitted pending the FElem↔coord representation bridge.
-   The bridge infrastructure exists (felem_to_bytes/felem_from_bytes in Signature.v)
-   but connecting spec_of_BinOp to spec_of_p256_coord_mul requires ~100 lines. *)
+(* Concrete function bodies from fiat-crypto synthesis *)
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.p256_bridge.
+Require Import Crypto.Bedrock.Field.Synthesis.Examples.p256_prime.
+Require Import Crypto.Bedrock.Field.Synthesis.New.WordByWordMontgomery.
+
 Definition p256_coord_sqr : Syntax.func := p256_coord_sqr_body.
 Definition p256_coord_mul : Syntax.func := p256_coord_mul_body.
-Axiom p256_coord_sqr_ok : forall functions, map.get functions "p256_coord_sqr" = Some p256_coord_sqr -> spec_of_p256_coord_sqr functions.
-Axiom p256_coord_mul_ok : forall functions, map.get functions "p256_coord_mul" = Some p256_coord_mul -> spec_of_p256_coord_mul functions.
+
+(* Correctness of coord_mul/sqr via fiat-crypto synthesis + coord↔FElem bridge.
+   The synthesis framework (WordByWordMontgomery.mul_func_correct) proves
+   spec_of_BinOp bin_mul for the synthesized body. The bridge to
+   spec_of_p256_coord_mul requires connecting:
+   - coord.to_bytes x = Z.to_bytes 32 (x * R)  ↔  FElem px x_felem
+   - feval x_felem = x  (Montgomery decoding)
+   - bin_mul.bin_model = F.mul
+   This is ~100 lines using felem_to_bytes/felem_from_bytes from Specs/Field.v.
+   TODO: close these admits using the synthesis correctness infrastructure. *)
+Lemma p256_coord_sqr_ok : forall functions, map.get functions "p256_coord_sqr" = Some p256_coord_sqr -> spec_of_p256_coord_sqr functions.
+Proof. Admitted.
+Lemma p256_coord_mul_ok : forall functions, map.get functions "p256_coord_mul" = Some p256_coord_mul -> spec_of_p256_coord_mul functions.
+Proof. Admitted.
 
 Import memcpy shrd full_sub full_add full_mul memmove.
 
