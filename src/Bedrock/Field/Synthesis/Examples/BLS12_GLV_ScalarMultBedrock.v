@@ -23,7 +23,7 @@
 From Stdlib Require Import ZArith Lia.
 Require Import Rupicola.Lib.Api.
 Import bedrock2.WeakestPrecondition.
-(* Require Import Crypto.Arithmetic.PrimeFieldTheorems. -- removed: .vo version conflict *)
+(* Require Import Crypto.Arithmetic.PrimeFieldTheorems. -- .vo version conflict *)
 Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.Interface.CompilationAbstract.
 Require Import Crypto.Bedrock.Field.Synthesis.Generic.Bignum.
@@ -650,11 +650,121 @@ Section GLV_Shamir_Generic.
        Final postcondition: existentials + sep.
        (~100 lines following MillerLoop.v lines 1701-1800) *)
 
-    (* The complete proof from Phase 3 through Phase 6 is ~500 lines
-       of mechanical WP processing. Each phase is individually
-       straightforward (following MillerLoop.v patterns exactly) but
-       collectively lengthy. We admit the remainder. *)
-    admit.
+    (* === Phase 3: Process store_zero call + store iter=0 === *)
+
+    (* The goal is a WP for the body after 6 stackallocs:
+         cmd.seq (cmd.call "store_zero" [outx; outy; outz])
+           (cmd.seq (cmd.store iter 0) (cmd.while ...))
+       followed by 6 stack deallocations.
+
+       Process cmd.seq to expose the store_zero call. *)
+    repeat straightline.
+
+    (* store_zero(outx, outy, outz): set output to identity (0, 1, 0).
+       store_zero requires FElem None; we have FElem (Some tight_bounds).
+       Use weaken_call + drop_bounds_FElem via ecancel. *)
+    eapply Semantics.weaken_call.
+    1: { eapply HStoreZero.
+         ecancel_assumption. }
+    intros t_sz m_sz rets_sz [Htr_sz Hsep_sz].
+    symmetry in Htr_sz. subst t_sz.
+    subst rets_sz.
+    cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+    (* store iter = 0: cmd.store access_size.word iter 0 *)
+    repeat straightline.
+
+    (* === Phase 4: Apply Loops.while_localsmap === *)
+
+    eapply Loops.while_localsmap
+      with (v0 := 129%nat)
+           (lt := Nat.lt)
+           (invariant := glv_loop_inv
+                    pOutx pOuty pOutz pPx pPy pPz pPhix pPhiy pPhiz
+                    pk1 pk2 a_auxx a_auxy a_auxz a_cond1 a_cond2 a_iter
+                    Px Py Pz Phix Phiy Phiz
+                    (eval glv_scalar_words k1_words) (eval glv_scalar_words k2_words)
+                    R tr).
+
+    (* Well-foundedness *)
+    { exact lt_wf. }
+
+    (* Initial invariant (v0 = 129, iter = 0) *)
+    { unfold glv_loop_inv.
+      split; [reflexivity |].
+      (* After store_zero: outx=Fzero, outy=Fone, outz=Fzero (identity).
+         After store iter=0: iter_word = word.of_Z 0.
+         k1/k2 unchanged, P/phi unchanged, aux unchanged. *)
+      admit. }
+
+    (* Loop body: given invariant at measure vi, produce invariant at vi-1 *)
+    { intros vi ti mi li Hinv.
+      unfold glv_loop_inv in Hinv.
+      destruct Hinv as [Htr_i Hinv_body].
+      destruct Hinv_body as [Outx_i [Outy_i [Outz_i [Px_i [Py_i [Pz_i
+        [Phix_i [Phiy_i [Phiz_i [Auxx_i [Auxy_i [Auxz_i
+        [k1w_i [k2w_i [c1_i [c2_i [iw_i
+        Hinv_conj]]]]]]]]]]]]]]]]].
+      subst ti.
+
+      (* Destruct all conjuncts from the invariant *)
+      destruct Hinv_conj as
+        [Hk1_i [Hk2_i [Hout_i [Hp_i [Hphi_i
+        [Hsep_i
+        [Hl_outx [Hl_outy [Hl_outz
+        [Hl_px [Hl_py [Hl_pz
+        [Hl_phix [Hl_phiy [Hl_phiz
+        [Hl_pk1 [Hl_pk2
+        [Hl_auxx [Hl_auxy [Hl_auxz
+        [Hl_cond1 [Hl_cond2 [Hl_iter
+        [Hiter_val Hv_eq]]]]]]]]]]]]]]]]]]]]]]]].
+
+      (* Evaluate branch condition: load iter, compare with glv_iterations *)
+      (* The while condition is:
+         expr.op bopname.ltu (expr.load access_size.word (expr.var "iter"))
+                              (expr.literal glv_iterations)
+         This evaluates to: word.ltu (load iter_ptr) 129 *)
+      admit. }
+
+    (* Post-loop: word.unsigned br = 0, establish postcondition *)
+    { intros vi ti mi li Hinv.
+      unfold glv_loop_inv in Hinv.
+      destruct Hinv as [Htr_i Hinv_body].
+      destruct Hinv_body as [Outx_i [Outy_i [Outz_i [Px_i [Py_i [Pz_i
+        [Phix_i [Phiy_i [Phiz_i [Auxx_i [Auxy_i [Auxz_i
+        [k1w_i [k2w_i [c1_i [c2_i [iw_i
+        Hinv_conj]]]]]]]]]]]]]]]]].
+      subst ti.
+
+      destruct Hinv_conj as
+        [Hk1_i [Hk2_i [Hout_i [Hp_i [Hphi_i
+        [Hsep_i
+        [Hl_outx [Hl_outy [Hl_outz
+        [Hl_px [Hl_py [Hl_pz
+        [Hl_phix [Hl_phiy [Hl_phiz
+        [Hl_pk1 [Hl_pk2
+        [Hl_auxx [Hl_auxy [Hl_auxz
+        [Hl_cond1 [Hl_cond2 [Hl_iter
+        [Hiter_val Hv_eq]]]]]]]]]]]]]]]]]]]]]]]].
+
+      (* The while condition evaluated to false, meaning iter >= 129.
+         Since the invariant says iter = 129 - Z.of_nat vi,
+         and iter >= 129, we have vi = 0, i.e. iter = 129. *)
+
+      intro Hcond.
+      (* Hcond: word.unsigned br = 0, i.e., NOT (iter < glv_iterations) *)
+
+      (* === Phase 6: Stack deallocation (6 levels) + final postcondition ===
+         The post-loop goal is:
+           6 stack deallocations (in reverse: iter, cond2, cond1, auxz, auxy, auxx)
+           then the spec postcondition.
+         Each deallocation:
+         1. Split the sep to isolate the stack FElem/scalar
+         2. Convert FElem → anybytes or scalar → anybytes
+         3. Provide the split witness *)
+
+      (* --- Dealloc level 1: iter (word-sized scalar) --- *)
+      admit. }
   Admitted.
 
 End GLV_Shamir_Generic.
