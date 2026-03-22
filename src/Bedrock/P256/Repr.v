@@ -103,12 +103,11 @@ Proof.
   intro x.
   rewrite feval_eq.
   unfold feval_expand.
-  cbv [bs2felem proj1_sig coord.to_bytes felem_to_list].
+  (* Use felem_to_list_bs2felem to resolve the bs2felem + felem_to_list chain *)
+  rewrite (felem_to_list_bs2felem (coord.to_bytes x) (coord_length_felem x)).
+  cbv [coord.to_bytes].
   cbv beta.
-  (* Goal: F.of_Z M_pos (Positional.eval (uweight 64) 4
-       (eval_trans (map word.unsigned (bs2ws 8 (le_split 32 (F.to_Z (x * R))))))) = x *)
   set (z := F.to_Z (x * coord.R)%F).
-  (* Rewrite word representation to partition *)
   rewrite (words_of_coord_eq_partition z ltac:(subst z; apply F.to_Z_range; reflexivity)).
   (* Now: F.of_Z M_pos (Positional.eval (uweight 64) 4 (eval_trans (partition (uweight 64) 4 z))) = x *)
   (* eval_trans = from_montgomerymod. By eval_from_montgomerymod:
@@ -138,9 +137,8 @@ Proof.
        @list_in_bounds 64 m b (List.map (@word.unsigned _ word) ws)).
   change (@loose_bounds _ _ _ _ _ p256_frep) with wordlist.
   cbv beta.
-  cbv [bs2felem proj1_sig coord.to_bytes felem_to_list list_in_bounds].
-  (* Goal: WordByWordMontgomery.valid 64 4 m
-       (map word.unsigned (bs2ws 8 (le_split 32 (F.to_Z (x * R))))) *)
+  rewrite (felem_to_list_bs2felem (coord.to_bytes x) (coord_length_felem x)).
+  cbv [coord.to_bytes list_in_bounds].
   set (z := F.to_Z (x * coord.R)%F).
   rewrite (words_of_coord_eq_partition z ltac:(subst z; apply F.to_Z_range; reflexivity)).
   (* Goal: valid (partition (uweight 64) 4 z) *)
