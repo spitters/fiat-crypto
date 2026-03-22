@@ -79,19 +79,59 @@ Qed.
 (* This is the key fact connecting byte-level and word-level reprs.  *)
 (* ================================================================ *)
 
-(* We prove this via the ArrayCasts roundtrip:
-   bs2zs 8 (le_split 32 z) gives the 4 limbs,
-   and word.unsigned ∘ word.of_Z is identity on [0, 2^64). *)
+(* Step 1: word.unsigned ∘ word.of_Z ∘ le_combine = le_combine on 8-byte chunks *)
+(* Step 2: map le_combine (chunk 8 (le_split 32 z)) = partition (uweight 64) 4 z *)
+(*   via: le_split 32 z = zs2bs 8 (partition ...), then zs2bs2zs roundtrip *)
+
+Import coqutil.Datatypes.List.
+
+(* Helper: le_split 32 z = flat_map (le_split 8) (partition (uweight 64) 4 z) *)
+Local Lemma le_split_eq_zs2bs_partition (z : Z) (Hz : 0 <= z) :
+  le_split 32 z = zs2bs 8 (Partition.partition (uweight 64) 4%nat z).
+Proof.
+  (* le_split distributes: le_split (n*k) z = flat_map (le_split k) (partition ...) *)
+  (* This is a fundamental property of positional ↔ byte representations *)
+  admit.
+Admitted.
 
 Local Lemma words_of_coord_eq_partition (z : Z) (Hz : 0 <= z) :
   List.map (@word.unsigned _ word) (bs2ws 8 (le_split 32 z)) =
   Partition.partition (uweight 64) 4 z.
 Proof.
-  (* Both sides compute the 4 limbs of z in base 2^64.
-     This should be provable by showing bs2zs 8 (le_split 32 z) = partition ... z
-     and that word.unsigned ∘ word.of_Z is identity on the range. *)
-  admit.
-Admitted.
+  unfold bs2ws, zs2ws, bs2zs.
+  rewrite !map_map.
+  (* LHS = map (word.unsigned ∘ word.of_Z ∘ le_combine) (chunk 8 (le_split 32 z)) *)
+  erewrite map_ext_in with (g := le_combine).
+  2: { intros a Ha.
+       change (word.unsigned (word.of_Z (le_combine a)) = le_combine a).
+       rewrite word.unsigned_of_Z. unfold word.wrap.
+       rewrite Z.mod_small; [reflexivity|].
+       pose proof (le_combine_bound a).
+       pose proof (Forall_chunk_length_le (le_split 32 z) 8).
+       rewrite Forall_forall in H0. specialize (H0 a Ha). lia. }
+  (* LHS = map le_combine (chunk 8 (le_split 32 z)) = bs2zs 8 (le_split 32 z) *)
+  fold (bs2zs 8 (le_split 32 z)).
+  rewrite le_split_eq_zs2bs_partition by assumption.
+  unfold bs2zs, zs2bs.
+  rewrite zs2bs2zs by lia.
+  (* map (mod 2^64) (partition ...) = partition ... (each element < 2^64) *)
+  apply map_ext_in. intros a Ha.
+  rewrite Z.mod_small; [reflexivity|].
+  (* a ∈ partition (uweight 64) 4 z, so 0 <= a < 2^64 *)
+  (* a = (z mod uweight 64 (S i)) / uweight 64 i for some i < 4 *)
+  (* 0 <= a < uweight 64 (S i) / uweight 64 i = 2^64 *)
+  apply In_nth_error in Ha. destruct Ha as [i Hi].
+  rewrite nth_error_map, ListUtil.nth_error_seq in Hi.
+  destruct (Nat.lt_dec i 4); [|discriminate].
+  simpl in Hi. injection Hi as Hi.
+  subst a. cbv [uweight ModOps.weight]. simpl Z.of_nat.
+  rewrite Z.div_between_if; try lia.
+  all: try (apply Z.pow_pos_nonneg; lia).
+  split; [apply Z.div_pos; [apply Z.mod_pos_bound|]; apply Z.pow_pos_nonneg; lia|].
+  apply Z.div_lt_upper_bound; [apply Z.pow_pos_nonneg; lia|].
+  rewrite <- Z.pow_add_r by lia.
+  apply Z.mod_pos_bound. apply Z.pow_pos_nonneg; lia.
+Qed.
 
 (* ================================================================ *)
 (* coord_feval: feval (bs2felem (coord.to_bytes x)) = x              *)
