@@ -73,15 +73,51 @@ Qed.
 (* feval ws = F.of_Z _ (Positional.eval weight n (eval_trans (map word.unsigned ws)))
    where eval_trans = from_montgomerymod for WBW Montgomery. *)
 
+(* Strategy: avoid expanding the FieldRepresentation record directly.
+   Instead, use `change` to replace feval with its known expansion,
+   keeping p256_ops and the synthesis data opaque. *)
+
 Lemma coord_feval : forall (x : coord),
   feval (bs2felem (coord.to_bytes x)) = x.
-Proof. admit. Admitted.
+Proof.
+  intro x.
+  (* Step 1: replace feval with eval_words without expanding the record *)
+  change (@feval _ _ _ _ _ p256_frep) with
+    (fun ws : list word.rep =>
+       F.of_Z _ (Core.Positional.eval (UniformWeight.uweight 64) 4
+                    (eval_trans (List.map (@word.unsigned _ word) ws)))).
+  (* Step 2: unfold bs2felem, coord.to_bytes *)
+  cbv [bs2felem proj1_sig coord.to_bytes felem_to_list].
+  cbv [coord_length_felem coord.length_coord].
+  (* Step 3: the goal is now about F.of_Z _ (Positional.eval ... (eval_trans ...)) = x *)
+  rewrite <- (F.of_Z_to_Z x).
+  apply F.eq_of_Z_iff.
+  rewrite Zdiv.Zmod_small by (apply F.to_Z_range; reflexivity).
+  (* Step 4: eval(from_mont(words)) mod M = F.to_Z x *)
+  (* eval_trans = from_montgomerymod. Use eval_from_montgomerymod. *)
+  admit.
+Admitted.
 
 Lemma coord_bounded : forall (x : coord),
   bounded_by loose_bounds (bs2felem (coord.to_bytes x)).
-Proof. admit. Admitted.
+Proof.
+  intro x.
+  change (@bounded_by _ _ _ _ _ p256_frep) with
+    (fun b ws => list_in_bounds b (List.map (@word.unsigned _ word) ws)).
+  change (@loose_bounds _ _ _ _ _ p256_frep) with wordlist.
+  cbv [list_in_bounds bs2felem proj1_sig coord.to_bytes felem_to_list].
+  (* Goal: WordByWordMontgomery.valid 64 4 m (map word.unsigned (bs2ws ...)) *)
+  admit.
+Admitted.
 
 Lemma FElem_to_coord : forall (r : coord) pout (out_felem : felem),
   feval (felem_to_list out_felem) = r ->
   Lift1Prop.impl1 (FElem pout out_felem) ((coord.to_bytes r)$@pout).
-Proof. admit. Admitted.
+Proof.
+  intros r pout out_felem Heval m Hfelem.
+  apply (felem_to_bytes pout out_felem) in Hfelem.
+  (* Need: ws2bs out_felem = coord.to_bytes r *)
+  (* This is the reverse of coord_feval: if feval out = r,
+     then the bytes of out encode r in Montgomery form. *)
+  admit.
+Admitted.
