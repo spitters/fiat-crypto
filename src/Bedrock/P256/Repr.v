@@ -100,14 +100,13 @@ Lemma coord_bounded : forall (x : coord),
   bounded_by loose_bounds (bs2felem (coord.to_bytes x)).
 Proof.
   intro x.
-  (* Use change to avoid expanding the FieldRepresentation record *)
-  change (@bounded_by _ _ _ _ _ p256_frep) with
-    (fun b (ws : felem) => @list_in_bounds 64 m b
-       (List.map (@word.unsigned _ word) (felem_to_list ws))).
-  change (@loose_bounds _ _ _ _ _ p256_frep) with wordlist.
+  (* bounded_by takes bounds_type and felem (sig type).
+     Use change to replace it without expanding the record. *)
+  change (@bounded_by _ _ _ _ _ p256_frep (@loose_bounds _ _ _ _ _ p256_frep))
+    with (fun ws : felem => @list_in_bounds 64 m wordlist
+       (List.map (@word.unsigned _ word) (@felem_to_list _ _ _ _ _ p256_frep ws))).
   cbv beta.
-  cbv [felem_to_list bs2felem proj1_sig coord.to_bytes].
-  cbv [list_in_bounds].
+  cbv [felem_to_list bs2felem proj1_sig coord.to_bytes list_in_bounds].
   (* Goal: WordByWordMontgomery.valid 64 4 m (map word.unsigned (bs2ws 8 (le_split 32 (F.to_Z (x * R))))) *)
   (* valid a = small a /\ 0 <= eval a < m
      - small: a = partition weight 4 (eval a), true because bs2ws(le_split 32 z) is canonical
