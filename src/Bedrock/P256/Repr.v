@@ -86,7 +86,7 @@ Proof.
     (fun ws : list word.rep =>
        let zs := List.map (@word.unsigned _ word) ws in
        let decoded := @eval_trans 64 m zs in
-       F.of_Z _ (Core.Positional.eval (UniformWeight.uweight 64) 4%nat decoded)).
+       F.of_Z M_pos (Core.Positional.eval (UniformWeight.uweight 64) 4%nat decoded)).
   (* Step 2: unfold bs2felem, coord.to_bytes *)
   cbv [bs2felem proj1_sig coord.to_bytes felem_to_list].
   cbv [coord_length_felem coord.length_coord].
