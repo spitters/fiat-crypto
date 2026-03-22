@@ -36,7 +36,20 @@ Local Notation "xs $@ a" := (map.of_list_word_at a xs)
   (at level 10, format "xs $@ a").
 
 (* ================================================================ *)
-(* coord.to_bytes length matches felem_size_in_bytes                 *)
+(* Helper: feval = F.of_Z (Positional.eval (eval_trans (map unsigned ws))) *)
+(* Proved by reflexivity — avoids expanding the huge FieldRepresentation record *)
+(* ================================================================ *)
+
+Local Definition feval_expand (ws : list word.rep) : coord :=
+  let zs := List.map (@word.unsigned _ word) ws in
+  let decoded := @eval_trans 64 m zs in
+  F.of_Z M_pos (Core.Positional.eval (UniformWeight.uweight 64) 4%nat decoded).
+
+Local Lemma feval_eq : @feval _ _ _ _ _ p256_frep = feval_expand.
+Proof. reflexivity. Qed.
+
+(* ================================================================ *)
+(* coord.to_bytes length = felem_size_in_bytes                       *)
 (* ================================================================ *)
 
 Lemma coord_length_felem (x : coord) :
@@ -50,75 +63,72 @@ Proof. rewrite coord.length_coord. vm_compute. reflexivity. Qed.
 Lemma coord_to_FElem (x : coord) px :
   Lift1Prop.impl1 ((coord.to_bytes x)$@px) (FElem px (bs2felem (coord.to_bytes x))).
 Proof.
-  intros m H.
+  intros m0 H.
   apply (felem_from_bytes px (coord.to_bytes x) (coord_length_felem x)).
   exact H.
 Qed.
 
 (* ================================================================ *)
 (* coord_feval: feval (bs2felem (coord.to_bytes x)) = x              *)
-(*                                                                    *)
-(* Chain: feval ws = F.of_Z _ (eval(from_mont(map word.unsigned ws))) *)
-(*   coord.to_bytes x = le_split 32 (F.to_Z(x*R))                   *)
-(*   bs2felem converts bytes→words, from_mont undoes Montgomery,     *)
-(*   result is F.of_Z _ (F.to_Z x) = x.                             *)
 (* ================================================================ *)
-
-(* All three bridge lemmas need the Montgomery encoding chain.
-   Direct cbv creates terms that OOM (~10GB needed).
-   We use small targeted unfoldings + abstract lemmas instead. *)
-
-(* Helper: feval for WBW Montgomery = F.of_Z _ (eval(from_mont(map word.unsigned ws)))
-   This avoids cbv-unfolding feval which creates huge terms. *)
-(* feval ws = F.of_Z _ (Positional.eval weight n (eval_trans (map word.unsigned ws)))
-   where eval_trans = from_montgomerymod for WBW Montgomery. *)
-
-(* Strategy: avoid expanding the FieldRepresentation record directly.
-   Instead, use `change` to replace feval with its known expansion,
-   keeping p256_ops and the synthesis data opaque. *)
 
 Lemma coord_feval : forall (x : coord),
   feval (bs2felem (coord.to_bytes x)) = x.
 Proof.
   intro x.
-  (* Step 1: replace feval with eval_words without expanding the record *)
-  change (@feval _ _ _ _ _ p256_frep) with
-    (fun ws : list word.rep =>
-       let zs := List.map (@word.unsigned _ word) ws in
-       let decoded := @eval_trans 64 m zs in
-       F.of_Z M_pos (Core.Positional.eval (UniformWeight.uweight 64) 4%nat decoded)).
-  (* Step 2: unfold bs2felem, coord.to_bytes *)
+  rewrite feval_eq.
+  unfold feval_expand.
   cbv [bs2felem proj1_sig coord.to_bytes felem_to_list].
-  cbv [coord_length_felem coord.length_coord].
-  (* Step 3: the goal is now about F.of_Z _ (Positional.eval ... (eval_trans ...)) = x *)
+  cbv beta.
   rewrite <- (F.of_Z_to_Z x).
   apply F.eq_of_Z_iff.
-  rewrite Zdiv.Zmod_small by (apply F.to_Z_range; reflexivity).
-  (* Step 4: eval(from_mont(words)) mod M = F.to_Z x *)
-  (* eval_trans = from_montgomerymod. Use eval_from_montgomerymod. *)
+  (* Goal: Positional.eval ... (eval_trans ...) mod Z.pos M_pos
+         = F.to_Z x mod Z.pos M_pos *)
+  (* RHS: F.to_Z x is in [0, M), so mod is identity *)
+  (* LHS: eval_trans = from_montgomerymod, applied to the canonical
+     partition of F.to_Z(x*R). The result mod M = F.to_Z(x*R) * r'^n mod M = F.to_Z x. *)
+  (* For now this is admitted — closing requires eval_from_montgomerymod
+     + eval_partition + the Montgomery inverse identity R * R^{-1} = 1 mod M. *)
   admit.
 Admitted.
+
+(* ================================================================ *)
+(* coord_bounded: bounded_by loose_bounds (bs2felem (coord.to_bytes x)) *)
+(* ================================================================ *)
 
 Lemma coord_bounded : forall (x : coord),
   bounded_by loose_bounds (bs2felem (coord.to_bytes x)).
 Proof.
   intro x.
+  (* Use change to avoid expanding the FieldRepresentation record *)
   change (@bounded_by _ _ _ _ _ p256_frep) with
-    (fun b ws => list_in_bounds b (List.map (@word.unsigned _ word) ws)).
+    (fun b (ws : felem) => @list_in_bounds 64 m b
+       (List.map (@word.unsigned _ word) (felem_to_list ws))).
   change (@loose_bounds _ _ _ _ _ p256_frep) with wordlist.
-  cbv [list_in_bounds bs2felem proj1_sig coord.to_bytes felem_to_list].
-  (* Goal: WordByWordMontgomery.valid 64 4 m (map word.unsigned (bs2ws ...)) *)
+  cbv beta.
+  cbv [felem_to_list bs2felem proj1_sig coord.to_bytes].
+  cbv [list_in_bounds].
+  (* Goal: WordByWordMontgomery.valid 64 4 m (map word.unsigned (bs2ws 8 (le_split 32 (F.to_Z (x * R))))) *)
+  (* valid a = small a /\ 0 <= eval a < m
+     - small: a = partition weight 4 (eval a), true because bs2ws(le_split 32 z) is canonical
+     - 0 <= eval a < m: eval a = F.to_Z(x*R) in [0, m) *)
   admit.
 Admitted.
+
+(* ================================================================ *)
+(* FElem_to_coord: FElem → coord.to_bytes (reverse direction)        *)
+(* ================================================================ *)
 
 Lemma FElem_to_coord : forall (r : coord) pout (out_felem : felem),
   feval (felem_to_list out_felem) = r ->
   Lift1Prop.impl1 (FElem pout out_felem) ((coord.to_bytes r)$@pout).
 Proof.
-  intros r pout out_felem Heval m Hfelem.
+  intros r pout out_felem Heval m0 Hfelem.
   apply (felem_to_bytes pout out_felem) in Hfelem.
-  (* Need: ws2bs out_felem = coord.to_bytes r *)
-  (* This is the reverse of coord_feval: if feval out = r,
-     then the bytes of out encode r in Montgomery form. *)
+  (* Have: (ws2bs 8 out_felem)$@pout m0 *)
+  (* Need: (coord.to_bytes r)$@pout m0 *)
+  (* Suffices: ws2bs 8 out_felem = coord.to_bytes r *)
+  (* From Heval + feval_eq: the words encode r in Montgomery form,
+     so ws2bs gives le_split 32 (F.to_Z (r * R)) = coord.to_bytes r *)
   admit.
 Admitted.
