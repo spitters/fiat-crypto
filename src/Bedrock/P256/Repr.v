@@ -84,7 +84,7 @@ Qed.
    and word.unsigned ∘ word.of_Z is identity on [0, 2^64). *)
 
 Local Lemma words_of_coord_eq_partition (z : Z) (Hz : 0 <= z) :
-  List.map (@word.unsigned _ word) (bs2ws (width:=64) 8 (le_split 32 z)) =
+  List.map (@word.unsigned _ word) (bs2ws 8 (le_split 32 z)) =
   Partition.partition (uweight 64) 4 z.
 Proof.
   (* Both sides compute the 4 limbs of z in base 2^64.
@@ -104,23 +104,14 @@ Proof.
   rewrite feval_eq.
   unfold feval_expand.
   (* Use felem_to_list_bs2felem to resolve the bs2felem + felem_to_list chain *)
-  rewrite (felem_to_list_bs2felem (coord.to_bytes x) (coord_length_felem x)).
-  cbv [coord.to_bytes].
-  cbv beta.
+  set (bs := coord.to_bytes x).
+  rewrite (felem_to_list_bs2felem bs (coord_length_felem x)).
+  (* Goal: F.of_Z M_pos (Positional.eval ... (eval_trans (map word.unsigned (bs2ws 8 bs)))) = x *)
+  subst bs. cbv [coord.to_bytes].
   set (z := F.to_Z (x * coord.R)%F).
   rewrite (words_of_coord_eq_partition z ltac:(subst z; apply F.to_Z_range; reflexivity)).
-  (* Now: F.of_Z M_pos (Positional.eval (uweight 64) 4 (eval_trans (partition (uweight 64) 4 z))) = x *)
-  (* eval_trans = from_montgomerymod. By eval_from_montgomerymod:
-     Positional.eval ... (from_montgomerymod (partition ...)) mod M
-     = (Positional.eval ... (partition ...) * r'^4) mod M
-     = (z mod 2^256 * r'^4) mod M  [by eval_partition]
-     = (z * r'^4) mod M            [since z < 2^256]
-     = (F.to_Z(x*R) * R^{-1}) mod M
-     = F.to_Z(x) mod M
-     = F.to_Z(x)                   [since F.to_Z(x) < M] *)
   rewrite <- (F.of_Z_to_Z x).
   apply F.eq_of_Z_iff.
-  (* Goal: Positional.eval ... (eval_trans (partition ...)) mod M = F.to_Z x mod M *)
   admit.
 Admitted.
 
@@ -137,8 +128,9 @@ Proof.
        @list_in_bounds 64 m b (List.map (@word.unsigned _ word) ws)).
   change (@loose_bounds _ _ _ _ _ p256_frep) with wordlist.
   cbv beta.
-  rewrite (felem_to_list_bs2felem (coord.to_bytes x) (coord_length_felem x)).
-  cbv [coord.to_bytes list_in_bounds].
+  set (bs := coord.to_bytes x).
+  rewrite (felem_to_list_bs2felem bs (coord_length_felem x)).
+  subst bs. cbv [coord.to_bytes list_in_bounds].
   set (z := F.to_Z (x * coord.R)%F).
   rewrite (words_of_coord_eq_partition z ltac:(subst z; apply F.to_Z_range; reflexivity)).
   (* Goal: valid (partition (uweight 64) 4 z) *)
