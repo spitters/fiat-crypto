@@ -68,15 +68,10 @@ Qed.
    Direct cbv creates terms that OOM (~10GB needed).
    We use small targeted unfoldings + abstract lemmas instead. *)
 
-(* Helper: feval for WBW Montgomery = F.of_Z _ (eval(from_mont(map word.unsigned ws))) *)
-Local Definition feval_eq : feval = fun ws =>
-  F.of_Z _ (Core.Positional.eval
-    (UniformWeight.uweight 64)
-    (Crypto.Arithmetic.WordByWordMontgomery.WordByWordMontgomery.n m 64)
-    (eval_trans (List.map word.unsigned ws))).
-Proof.
-  reflexivity.
-Defined.
+(* Helper: feval for WBW Montgomery = F.of_Z _ (eval(from_mont(map word.unsigned ws)))
+   This avoids cbv-unfolding feval which creates huge terms. *)
+(* feval ws = F.of_Z _ (Positional.eval weight n (eval_trans (map word.unsigned ws)))
+   where eval_trans = from_montgomerymod for WBW Montgomery. *)
 
 Lemma coord_feval : forall (x : coord),
   feval (bs2felem (coord.to_bytes x)) = x.
