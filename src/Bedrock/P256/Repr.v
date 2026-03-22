@@ -84,8 +84,9 @@ Proof.
   (* Step 1: replace feval with eval_words without expanding the record *)
   change (@feval _ _ _ _ _ p256_frep) with
     (fun ws : list word.rep =>
-       F.of_Z _ (Core.Positional.eval (UniformWeight.uweight 64) 4
-                    (eval_trans (List.map (@word.unsigned _ word) ws)))).
+       let zs := List.map (@word.unsigned _ word) ws in
+       let decoded := eval_trans zs in
+       F.of_Z _ (@Core.Positional.eval (UniformWeight.uweight 64) 4%nat decoded)).
   (* Step 2: unfold bs2felem, coord.to_bytes *)
   cbv [bs2felem proj1_sig coord.to_bytes felem_to_list].
   cbv [coord_length_felem coord.length_coord].
