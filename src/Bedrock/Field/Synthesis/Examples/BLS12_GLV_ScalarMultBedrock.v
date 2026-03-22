@@ -650,14 +650,22 @@ Section GLV_Shamir_Generic.
        Final postcondition: existentials + sep.
        (~100 lines following MillerLoop.v lines 1701-1800) *)
 
+    (* === Tactic: gcall processes one call in the GLV loop body === *)
+    (* Similar to mcall in BLS12_MillerLoop.v *)
+    Local Ltac gcall spec :=
+      (* Peel cmd.seq if present *)
+      try glv_straightline;
+      unfold1_cmd_goal; cbv beta match delta [cmd_body]; (* cmd.call *)
+      letexists; split; [solve [eval_dexprs_abstract] |]; (* args+dexprs *)
+      (* Apply spec via weaken_call *)
+      eapply Semantics.weaken_call;
+      [ eapply spec; ecancel_assumption
+      | cbv beta; intros ? ? ? ?; subst;
+        cbv [map.putmany_of_list_zip];
+        eexists; split; [exact eq_refl |]
+      ].
+
     (* === Phase 3: Process store_zero call + store iter=0 === *)
-
-    (* The goal is a WP for the body after 6 stackallocs:
-         cmd.seq (cmd.call "store_zero" [outx; outy; outz])
-           (cmd.seq (cmd.store iter 0) (cmd.while ...))
-       followed by 6 stack deallocations.
-
-       Process cmd.seq to expose the store_zero call. *)
     repeat straightline.
 
     (* store_zero(outx, outy, outz): set output to identity (0, 1, 0).
@@ -694,10 +702,45 @@ Section GLV_Shamir_Generic.
       split; [reflexivity |].
       (* After store_zero: outx=Fzero, outy=Fone, outz=Fzero (identity).
          After store iter=0: iter_word = word.of_Z 0.
-         k1/k2 unchanged, P/phi unchanged, aux unchanged. *)
+         k1/k2 unchanged, P/phi unchanged, aux/cond unchanged.
+
+         Provide existential witnesses: the current values of all fields.
+         Identity point: (Fzero, Fone, Fzero)
+         P unchanged: (Px, Py, Pz)
+         phi unchanged: (Phix, Phiy, Phiz)
+         aux: initial values from P_from_bytes
+         k1/k2: unchanged from input
+         cond1/cond2: initial from anybytes_to_scalar
+         iter_word: word.of_Z 0 (from the store we just did)
+
+         Scalar invariants at iter=0:
+         - Z.shiftr k1_init 0 = k1_init = eval k1_words  (OK)
+         - Z.shiftr k2_init 0 = k2_init = eval k2_words  (OK)
+         - k1_init mod 2^0 = 0, so scmul_glv 0 P = identity  (OK)
+         - k2_init mod 2^0 = 0, so scmul_glv 0 phi = identity  (OK)
+         - curve_add identity identity = identity  (need id properties)
+         - 2^0 = 1, scmul_glv 1 P = curve_add P identity = P  (OK)
+
+         The sep and locals follow from the current state after
+         store_zero + store iter. *)
       admit. }
 
-    (* Loop body: given invariant at measure vi, produce invariant at vi-1 *)
+    (* Loop body + post-loop: Loops.while_localsmap generates 2 subgoals:
+       1. Loop body: forall vi, invariant vi -> exists br,
+            expr ... br /\
+            (br <> 0 -> body; exists vi', invariant vi' /\ vi' < vi) /\
+            (br = 0  -> postcondition)
+       2. (already handled by well_founded + initial invariant above)
+
+       Actually, while_localsmap generates 3 subgoals:
+       a. well_founded (done above)
+       b. initial invariant (done above)
+       c. forall v t m l, invariant v t m l ->
+            exists br, expr ... br /\
+            (br <> 0 -> loop body WP) /\
+            (br = 0  -> post-loop WP)
+
+       So we have ONE subgoal here combining body and post-loop. *)
     { intros vi ti mi li Hinv.
       unfold glv_loop_inv in Hinv.
       destruct Hinv as [Htr_i Hinv_body].
@@ -719,52 +762,63 @@ Section GLV_Shamir_Generic.
         [Hl_cond1 [Hl_cond2 [Hl_iter
         [Hiter_val Hv_eq]]]]]]]]]]]]]]]]]]]]]]]].
 
-      (* Evaluate branch condition: load iter, compare with glv_iterations *)
-      (* The while condition is:
-         expr.op bopname.ltu (expr.load access_size.word (expr.var "iter"))
-                              (expr.literal glv_iterations)
-         This evaluates to: word.ltu (load iter_ptr) 129 *)
-      admit. }
+      (* Evaluate branch condition:
+         expr.op bopname.ltu
+           (expr.load access_size.word (expr.var "iter"))
+           (expr.literal glv_iterations)
+         This loads the iter counter from memory, compares with 129.
+         Result is word.b2w (word.ltu iter_word (word.of_Z 129)). *)
 
-    (* Post-loop: word.unsigned br = 0, establish postcondition *)
-    { intros vi ti mi li Hinv.
-      unfold glv_loop_inv in Hinv.
-      destruct Hinv as [Htr_i Hinv_body].
-      destruct Hinv_body as [Outx_i [Outy_i [Outz_i [Px_i [Py_i [Pz_i
-        [Phix_i [Phiy_i [Phiz_i [Auxx_i [Auxy_i [Auxz_i
-        [k1w_i [k2w_i [c1_i [c2_i [iw_i
-        Hinv_conj]]]]]]]]]]]]]]]]].
-      subst ti.
+      (* The branch value is computed from memory (load from a_iter).
+         We need to provide the value and show the expression evaluates to it.
+         From Hsep_i: (scalar a_iter iw_i ⋆ ...) mi
+         From Hiter_val: word.unsigned iw_i = 129 - Z.of_nat vi *)
 
-      destruct Hinv_conj as
-        [Hk1_i [Hk2_i [Hout_i [Hp_i [Hphi_i
-        [Hsep_i
-        [Hl_outx [Hl_outy [Hl_outz
-        [Hl_px [Hl_py [Hl_pz
-        [Hl_phix [Hl_phiy [Hl_phiz
-        [Hl_pk1 [Hl_pk2
-        [Hl_auxx [Hl_auxy [Hl_auxz
-        [Hl_cond1 [Hl_cond2 [Hl_iter
-        [Hiter_val Hv_eq]]]]]]]]]]]]]]]]]]]]]]]].
+      (* Provide branch value: word encoding of (iter < 129) *)
+      exists (word.b2w (word.ltu iw_i (word.of_Z glv_iterations))).
+      split.
+      { (* Evaluate branch expression *)
+        admit. }
 
-      (* The while condition evaluated to false, meaning iter >= 129.
-         Since the invariant says iter = 129 - Z.of_nat vi,
-         and iter >= 129, we have vi = 0, i.e. iter = 129. *)
+      split.
+      { (* TRUE branch: iter < 129, i.e. vi > 0 *)
+        intro Hne.
 
-      intro Hcond.
-      (* Hcond: word.unsigned br = 0, i.e., NOT (iter < glv_iterations) *)
+        (* Process store: iter = iter + 1 *)
+        glv_straightline.  (* cmd.seq *)
+        (* The store writes iter+1 to the iter location.
+           This is cmd.store, processed by straightline. *)
+        admit. }
 
-      (* === Phase 6: Stack deallocation (6 levels) + final postcondition ===
-         The post-loop goal is:
-           6 stack deallocations (in reverse: iter, cond2, cond1, auxz, auxy, auxx)
-           then the spec postcondition.
-         Each deallocation:
-         1. Split the sep to isolate the stack FElem/scalar
-         2. Convert FElem → anybytes or scalar → anybytes
-         3. Provide the split witness *)
+      { (* FALSE branch: iter >= 129, i.e. vi = 0 *)
+        intro Hcond.
+        (* The while condition is false: NOT (iter < 129), so iter >= 129.
+           From Hiter_val: word.unsigned iw_i = 129 - Z.of_nat vi.
+           From Hcond: word.unsigned (word.b2w (word.ltu ...)) = 0.
+           This means NOT (iw_i < 129), so iw_i >= 129.
+           Combined with iter = 129 - Z.of_nat vi, we get vi = 0.
 
-      (* --- Dealloc level 1: iter (word-sized scalar) --- *)
-      admit. }
+           Post-loop goal: WP for 6 stack deallocations, then postcondition.
+           After the while loop, there's no more code in the function body
+           (the while is the last statement before the stack deallocs).
+
+           The stack deallocs are automatic from the stackalloc construct:
+           they require providing anybytes for each stack buffer.
+
+           We need to convert:
+           - FElem None a_auxx/y/z → anybytes (via FElem_to_bytes)
+           - scalar a_cond1/2 → anybytes (via scalar_to_anybytes)
+           - scalar a_iter → anybytes (via scalar_to_anybytes)
+
+           Then provide the final postcondition existentials. *)
+
+        (* vi = 0 means iter = 129, all bits processed *)
+
+        (* --- Dealloc level 1: iter (word-sized scalar → anybytes) --- *)
+        (* The goal requires: exists mRest mStack,
+             anybytes a_iter (bytes_per_word) mStack /\
+             map.split m mRest mStack /\ <rest on mRest> *)
+        admit. } }
   Admitted.
 
 End GLV_Shamir_Generic.
