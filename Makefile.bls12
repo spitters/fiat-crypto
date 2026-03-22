@@ -1,6 +1,6 @@
-COQC := /home/au528660/.opam/rocq-9/bin/coqc
-ROCQPATH := /home/au528660/.opam/rocq-9/lib/coq/user-contrib
-COQFLAGS := -Q src Crypto
+COQC := rocq c
+ROCQPATH := /home/au528660/.opam/rocq-native/lib/coq/user-contrib
+COQFLAGS := -Q src Crypto -native-compiler no
 
 # Standard compilation
 %.vo: %.v
@@ -122,7 +122,7 @@ final-exp-vos: final-exp-h3
 
 # P-256 targets
 # P-256: all imports now fully qualified under Crypto.*
-P256FLAGS := -Q src Crypto
+P256FLAGS := -Q src Crypto -native-compiler no
 
 p256-deps:
 	ROCQPATH=$(ROCQPATH) $(COQC) $(P256FLAGS) src/Algebra/Hierarchy.v

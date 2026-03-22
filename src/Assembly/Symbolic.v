@@ -14,7 +14,7 @@ From Coq Require Import FMapPositive.
 From Coq Require Import FMapFacts.
 Require Crypto.Util.ZRange.
 Require Crypto.Util.Tuple.
-Require Import Util.OptionList.
+Require Import Crypto.Util.OptionList.
 Require Import Crypto.Util.ErrorT.
 Require Import Crypto.Util.ZUtil.Tactics.PullPush.Modulo.
 Require Import Crypto.Util.ZUtil.Tactics.LtbToLt.
