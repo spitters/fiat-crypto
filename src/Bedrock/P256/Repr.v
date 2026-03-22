@@ -104,12 +104,9 @@ Proof.
   rewrite feval_eq.
   unfold feval_expand.
   (* Use felem_to_list_bs2felem to resolve the bs2felem + felem_to_list chain *)
-  set (bs := coord.to_bytes x).
-  rewrite (felem_to_list_bs2felem bs (coord_length_felem x)).
-  (* Goal: F.of_Z M_pos (Positional.eval ... (eval_trans (map word.unsigned (bs2ws 8 bs)))) = x *)
-  subst bs. cbv [coord.to_bytes].
-  set (z := F.to_Z (x * coord.R)%F).
-  rewrite (words_of_coord_eq_partition z ltac:(subst z; apply F.to_Z_range; reflexivity)).
+  rewrite (felem_to_list_bs2felem (coord.to_bytes x) (coord_length_felem x)).
+  unfold coord.to_bytes.
+  rewrite words_of_coord_eq_partition by (apply F.to_Z_range; reflexivity).
   rewrite <- (F.of_Z_to_Z x).
   apply F.eq_of_Z_iff.
   admit.
@@ -128,11 +125,9 @@ Proof.
        @list_in_bounds 64 m b (List.map (@word.unsigned _ word) ws)).
   change (@loose_bounds _ _ _ _ _ p256_frep) with wordlist.
   cbv beta.
-  set (bs := coord.to_bytes x).
-  rewrite (felem_to_list_bs2felem bs (coord_length_felem x)).
-  subst bs. cbv [coord.to_bytes list_in_bounds].
-  set (z := F.to_Z (x * coord.R)%F).
-  rewrite (words_of_coord_eq_partition z ltac:(subst z; apply F.to_Z_range; reflexivity)).
+  rewrite (felem_to_list_bs2felem (coord.to_bytes x) (coord_length_felem x)).
+  unfold coord.to_bytes. cbv [list_in_bounds].
+  rewrite words_of_coord_eq_partition by (apply F.to_Z_range; reflexivity).
   (* Goal: valid (partition (uweight 64) 4 z) *)
   (* valid a = small a /\ 0 <= eval a < m
      small a = (a = partition (uweight 64) 4 (eval a))
