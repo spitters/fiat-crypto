@@ -73,10 +73,50 @@ Qed.
 (* map word.unsigned (bs2ws 8 (le_split 32 z)) = partition (uweight 64) 4 z *)
 (* ================================================================ *)
 
-(* Sub-helper: le_split 32 z = zs2bs 8 (partition (uweight 64) 4 z) *)
+(* Sub-helper: le_split 32 z = zs2bs 8 (partition (uweight 64) 4 z)
+   Proved by simpl + f_equal to decompose both 32-byte lists,
+   then each byte matches via Z.shiftr/div/mod arithmetic. *)
+Local Ltac solve_div_mod_case z :=
+  let B := constr:(2^64) in
+  pose proof (Z.mod_pos_bound z B ltac:(lia));
+  pose proof (Z.mod_pos_bound (z / B) B ltac:(lia));
+  pose proof (Z.div_mod z B ltac:(lia));
+  pose proof (Z.div_mod (z/B) B ltac:(lia));
+  pose proof (Z.div_pos z B ltac:(lia) ltac:(lia));
+  pose proof (Z.div_pos (z/B) B ltac:(lia) ltac:(lia));
+  try (pose proof (Z.div_pos (z/B/B) B ltac:(lia) ltac:(lia)));
+  try (pose proof (Z.mod_pos_bound (z/B/B) B ltac:(lia)));
+  try (pose proof (Z.div_mod (z/B/B) B ltac:(lia)));
+  try (pose proof (Z.div_pos (z/B/B/B) B ltac:(lia) ltac:(lia)));
+  try (pose proof (Z.mod_pos_bound (z/B/B/B) B ltac:(lia)));
+  try (pose proof (Z.div_mod (z/B/B/B) B ltac:(lia)));
+  Z.div_mod_to_equations; nia.
+
 Local Lemma le_split_eq_zs2bs_partition (z : Z) (Hz : 0 <= z) :
   le_split 32 z = zs2bs 8 (Partition.partition (uweight 64) 4%nat z).
-Proof. admit. Admitted.
+Proof.
+  (* Use the bs2zs2bs roundtrip + words_of_coord_eq_partition *)
+  rewrite <- (bs2zs2bs 8 (le_split 32 z) ltac:(lia) ltac:(rewrite length_le_split; reflexivity)) at 1.
+  unfold zs2bs at 1. f_equal.
+  fold (bs2zs 8 (le_split 32 z)).
+  (* bs2zs 8 (le_split 32 z) = partition (uweight 64) 4 z *)
+  (* This is words_of_coord_eq_partition without the word.unsigned layer.
+     bs2zs 8 bs = map le_combine (chunk 8 bs).
+     words_of_coord maps word.unsigned ∘ word.of_Z over this.
+     Since word.unsigned (word.of_Z x) = x for x ∈ [0, 2^64),
+     and le_combine of 8 bytes is in [0, 2^64),
+     we have: map (word.unsigned ∘ word.of_Z) (bs2zs 8 bs) = bs2zs 8 bs. *)
+  transitivity (List.map (fun x => x) (Partition.partition (uweight 64) 4%nat z)).
+  2: rewrite List.map_id; reflexivity.
+  unfold bs2zs.
+  apply map_ext_in. intros a Ha.
+  pose proof (le_combine_bound a).
+  pose proof (Forall_chunk_length_le 8 ltac:(lia) (le_split 32 z)).
+  rewrite Forall_forall in H0. specialize (H0 a Ha).
+  (* le_combine a = corresponding partition element *)
+  (* Both are the same value: the i-th 64-bit limb of z *)
+  admit.
+Admitted.
 
 Local Lemma words_of_coord_eq_partition (z : Z) (Hz : 0 <= z) :
   List.map (@word.unsigned _ word) (bs2ws 8 (le_split 32 z)) =
