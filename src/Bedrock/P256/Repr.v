@@ -86,7 +86,7 @@ Proof.
   unfold bs2ws, zs2ws.
   rewrite zs2bs2zs by lia.
   rewrite !map_map.
-  cbv [Partition.partition].
+  cbv [Partition.partition]. rewrite map_map.
   apply map_ext_in. intros a Ha. apply in_seq in Ha.
   rewrite (@word.unsigned_of_Z _ _ wordok). unfold word.wrap.
   rewrite Z.mod_mod by lia.
