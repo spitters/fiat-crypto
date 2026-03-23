@@ -107,7 +107,7 @@ Proof.
        rewrite word.unsigned_of_Z. unfold word.wrap.
        rewrite Z.mod_small; [reflexivity|].
        pose proof (le_combine_bound a).
-       pose proof (Forall_chunk_length_le 8 (le_split 32 z)).
+       pose proof (Forall_chunk_length_le 8 ltac:(lia) (le_split 32 z)).
        rewrite Forall_forall in H0. specialize (H0 a Ha). lia. }
   (* LHS = map le_combine (chunk 8 (le_split 32 z)) = bs2zs 8 (le_split 32 z) *)
   fold (bs2zs 8 (le_split 32 z)).
