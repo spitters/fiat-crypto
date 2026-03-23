@@ -22,8 +22,7 @@ Section Fp2_mul_proof.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Context {prime_parameters : PrimeFieldParameters}
-          {prime_parameters_ok : PrimeFieldParameters_ok}
-          {M_mod : (Z.pos M_pos) mod 4 =? 3 = true}.
+          {prime_parameters_ok : PrimeFieldParameters_ok}.
 
   Local Notation F := (F M_pos).
   Local Notation Fp2 := ((F * F)%type).
@@ -35,17 +34,24 @@ Section Fp2_mul_proof.
 
   Context {bounds_equiv : forall x, bounded_by loose_bounds x -> bounded_by tight_bounds x}.
 
+  Variable beta : F.
+  Hypothesis beta_nz : beta <> @F.zero M_pos.
+  Hypothesis beta_qnr : ~(exists x, @F.mul M_pos x x = beta).
+  Hypothesis M_big : 2 < Z.pos M_pos.
   Variable fp2_prefix : string.
 
-  (* Explicit instance wiring — fp2_prefix/M_mod are non-typeclass implicits *)
+  (* Bridge: β*y = -y (only true for β = -1).
+     Each curve instantiation provides this or uses a different Fp2_mul body. *)
+  Hypothesis mul_neg_1 : forall x y : F, F.sub x y = F.add x (F.mul beta y).
+
   Local Instance Fp2_fp : AbstractField.FieldParameters Fp2 :=
-    Fp2_field_parameters (fp2_prefix:=fp2_prefix).
+    Fp2_field_parameters beta fp2_prefix.
   Local Instance Fp2_fp_ok : AbstractField.FieldParameters_ok (F:=Fp2) :=
-    Fp2_field_parameters_ok (M_mod:=M_mod) (fp2_prefix:=fp2_prefix).
+    Fp2_field_parameters_ok beta beta_nz beta_qnr M_big fp2_prefix.
   Local Instance Fp2_repr : AbstractField.FieldRepresentation (F:=Fp2) :=
-    Fp2_field_representation (fp2_prefix:=fp2_prefix).
+    @Fp2_field_representation width BW word mem prime_parameters F_representation beta fp2_prefix.
   Local Instance Fp2_repr_ok : AbstractField.FieldRepresentation_ok (F:=Fp2) :=
-    Fp2_field_representation_ok (fp2_prefix:=fp2_prefix).
+    @Fp2_field_representation_ok width BW word mem prime_parameters F_representation F_representation_ok beta fp2_prefix.
 
   Context {Fp2_names : FieldNames (F:=Fp2)}.
   Context {F_names : FieldNames (F:=F)}.
@@ -134,7 +140,7 @@ Section Fp2_mul_proof.
 
   Instance spec_of_Fp2_mul : spec_of (AbstractField.mul (F:=Fp2)) := AbstractField.binop_spec AbstractField.bin_mul (F:=Fp2).
 
-  Lemma Fp2_mul_ok : program_logic_goal_for_function! (Fp2_mul fp2_prefix).
+  Lemma Fp2_mul_ok : program_logic_goal_for_function! (Fp2_mul beta fp2_prefix).
   Proof.
     cbv beta delta [program_logic_goal_for].
     intros functions EnvContains HFmul1 HFmul2 HFadd1 HFadd2 HFmul3 HFsub1 HFsub2 HFsub3.
@@ -182,15 +188,15 @@ Section Fp2_mul_proof.
     (* Decompose output/x/y sep *)
     destruct Hmemout as [m_out [m_rr [Hmemout_sp [Hfelem_out Hrr]]]].
     destruct Hmemout_sp as [Heq_mem0 Hd_out_rr]. subst mem0.
-    pose proof (Fp2_raw_FElem_split fp2_prefix pout old_out m_out Hfelem_out) as [m_o1 [m_o2 [Hsp_out [Hfe_o1 Hfe_o2]]]].
+    pose proof (Fp2_raw_FElem_split beta fp2_prefix pout old_out m_out Hfelem_out) as [m_o1 [m_o2 [Hsp_out [Hfe_o1 Hfe_o2]]]].
     destruct Hsp_out as [Heq_out Hd_o12]. clear Hfelem_out. subst m_out.
     destruct Hmemx as [m_x [m_rx [Hmemx_sp [Hfelem_x Hrx]]]].
     destruct Hmemx_sp as [Heq_memx Hd_xrx].
-    pose proof (Fp2_raw_FElem_split fp2_prefix px x m_x Hfelem_x) as [m_x1 [m_x2 [Hsp_x [Hfe_x1 Hfe_x2]]]].
+    pose proof (Fp2_raw_FElem_split beta fp2_prefix px x m_x Hfelem_x) as [m_x1 [m_x2 [Hsp_x [Hfe_x1 Hfe_x2]]]].
     destruct Hsp_x as [Heq_x Hd_x12]. clear Hfelem_x. subst m_x.
     destruct Hmemy as [m_y [m_ry [Hmemy_sp [Hfelem_y Hry]]]].
     destruct Hmemy_sp as [Heq_memy Hd_yry].
-    pose proof (Fp2_raw_FElem_split fp2_prefix py y m_y Hfelem_y) as [m_y1 [m_y2 [Hsp_y [Hfe_y1 Hfe_y2]]]].
+    pose proof (Fp2_raw_FElem_split beta fp2_prefix py y m_y Hfelem_y) as [m_y1 [m_y2 [Hsp_y [Hfe_y1 Hfe_y2]]]].
     destruct Hsp_y as [Heq_y Hd_y12]. clear Hfelem_y. subst m_y.
     (* Decompose bounded_by *)
     cbv [AbstractField.bounded_by Fp2_repr Fp2_field_representation
@@ -727,7 +733,7 @@ Section Fp2_mul_proof.
       f_equal.
       { (* real part: a*c + (β*b)*d = a*c - b*d *)
         symmetry. rewrite (F_mul_assoc M_pos M_prime).
-        rewrite (mul_neg_1 M_pos M_prime M_mod). reflexivity. }
+        rewrite mul_neg_1. reflexivity. }
       { (* im part: (c+d)*(a+b) - a*c - b*d = a*d + b*c *)
         apply (mul_equiv M_pos M_prime). } }
     split.
@@ -745,7 +751,7 @@ Section Fp2_mul_proof.
     { rewrite map.putmany_assoc. reflexivity. }
     { apply (proj2 (map.disjoint_putmany_l _ _ _)). split; assumption. }
     split.
-    { apply (Fp2_raw_FElem_join fp2_prefix pout out_re out_im_4).
+    { apply (Fp2_raw_FElem_join beta fp2_prefix pout out_re out_im_4).
       { exact (AbstractFElem_length _ _ _ Hfe_re). }
       { exact (AbstractFElem_length _ _ _ Hfe_oi4). }
       { exists m_o1'. exists m_oi4.
