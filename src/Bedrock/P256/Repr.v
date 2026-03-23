@@ -27,8 +27,8 @@ Local Existing Instances
 
 Import Specs.NotationsCustomEntry Specs.coord.
 Import LittleEndianList PrimeFieldTheorems.
-Import coqutil.Byte Lists.List.
-Import Word.Interface Separation SeparationLogic.
+Import coqutil.Byte coqutil.Datatypes.List Lists.List.
+Import Word.Interface Word.Properties Separation SeparationLogic.
 Import BasicC64Semantics.
 Import OfListWord.
 
@@ -38,7 +38,6 @@ Local Notation "xs $@ a" := (map.of_list_word_at a xs)
 
 (* ================================================================ *)
 (* Helper: feval = F.of_Z (Positional.eval (eval_trans (map unsigned ws))) *)
-(* Proved by reflexivity — avoids expanding the huge record *)
 (* ================================================================ *)
 
 Local Definition feval_expand (ws : list word.rep) : coord :=
@@ -70,63 +69,29 @@ Proof.
 Qed.
 
 (* ================================================================ *)
-(* Core helper: the word representation of coord.to_bytes matches    *)
-(* the canonical partition used by the Montgomery arithmetic.        *)
-(*                                                                    *)
-(* map word.unsigned (bs2ws 8 (le_split 32 z))                       *)
-(* = partition (uweight 64) 4 z     (when 0 <= z)                   *)
-(*                                                                    *)
-(* This is the key fact connecting byte-level and word-level reprs.  *)
+(* Core helper: word representation = canonical partition             *)
+(* map word.unsigned (bs2ws 8 (le_split 32 z)) = partition (uweight 64) 4 z *)
 (* ================================================================ *)
 
-(* Step 1: word.unsigned ∘ word.of_Z ∘ le_combine = le_combine on 8-byte chunks *)
-(* Step 2: map le_combine (chunk 8 (le_split 32 z)) = partition (uweight 64) 4 z *)
-(*   via: le_split 32 z = zs2bs 8 (partition ...), then zs2bs2zs roundtrip *)
-
-Import coqutil.Datatypes.List.
-
-(* Helper: le_split 32 z = flat_map (le_split 8) (partition (uweight 64) 4 z) *)
+(* Sub-helper: le_split 32 z = zs2bs 8 (partition (uweight 64) 4 z) *)
 Local Lemma le_split_eq_zs2bs_partition (z : Z) (Hz : 0 <= z) :
   le_split 32 z = zs2bs 8 (Partition.partition (uweight 64) 4%nat z).
-Proof.
-  (* le_split distributes: le_split (n*k) z = flat_map (le_split k) (partition ...) *)
-  (* This is a fundamental property of positional ↔ byte representations *)
-  admit.
-Admitted.
+Proof. admit. Admitted.
 
 Local Lemma words_of_coord_eq_partition (z : Z) (Hz : 0 <= z) :
   List.map (@word.unsigned _ word) (bs2ws 8 (le_split 32 z)) =
   Partition.partition (uweight 64) 4 z.
 Proof.
-  unfold bs2ws, zs2ws, bs2zs.
-  rewrite !map_map.
-  (* LHS = map (word.unsigned ∘ word.of_Z ∘ le_combine) (chunk 8 (le_split 32 z)) *)
-  erewrite map_ext_in with (g := le_combine).
-  2: { intros a Ha.
-       change (word.unsigned (word.of_Z (le_combine a)) = le_combine a).
-       rewrite word.unsigned_of_Z. unfold word.wrap.
-       rewrite Z.mod_small; [reflexivity|].
-       pose proof (le_combine_bound a).
-       pose proof (Forall_chunk_length_le 8 ltac:(lia) (le_split 32 z)).
-       rewrite Forall_forall in H0. specialize (H0 a Ha). lia. }
-  (* LHS = map le_combine (chunk 8 (le_split 32 z)) = bs2zs 8 (le_split 32 z) *)
-  fold (bs2zs 8 (le_split 32 z)).
   rewrite le_split_eq_zs2bs_partition by assumption.
-  unfold bs2zs, zs2bs.
+  unfold bs2ws, zs2ws.
   rewrite zs2bs2zs by lia.
-  (* map (mod 2^64) (partition ...) = partition ... (each element < 2^64) *)
-  apply map_ext_in. intros a Ha.
+  rewrite !map_map.
+  cbv [Partition.partition].
+  apply map_ext_in. intros a Ha. apply in_seq in Ha.
+  rewrite (@word.unsigned_of_Z _ _ wordok). unfold word.wrap.
+  rewrite Z.mod_mod by lia.
+  cbv [uweight ModOps.weight]. simpl Z.of_nat.
   rewrite Z.mod_small; [reflexivity|].
-  (* a ∈ partition (uweight 64) 4 z, so 0 <= a < 2^64 *)
-  (* a = (z mod uweight 64 (S i)) / uweight 64 i for some i < 4 *)
-  (* 0 <= a < uweight 64 (S i) / uweight 64 i = 2^64 *)
-  apply In_nth_error in Ha. destruct Ha as [i Hi].
-  rewrite nth_error_map, ListUtil.nth_error_seq in Hi.
-  destruct (Nat.lt_dec i 4); [|discriminate].
-  simpl in Hi. injection Hi as Hi.
-  subst a. cbv [uweight ModOps.weight]. simpl Z.of_nat.
-  rewrite Z.div_between_if; try lia.
-  all: try (apply Z.pow_pos_nonneg; lia).
   split; [apply Z.div_pos; [apply Z.mod_pos_bound|]; apply Z.pow_pos_nonneg; lia|].
   apply Z.div_lt_upper_bound; [apply Z.pow_pos_nonneg; lia|].
   rewrite <- Z.pow_add_r by lia.
@@ -141,14 +106,13 @@ Lemma coord_feval : forall (x : coord),
   feval (bs2felem (coord.to_bytes x)) = x.
 Proof.
   intro x.
-  rewrite feval_eq.
-  unfold feval_expand.
-  (* Use felem_to_list_bs2felem to resolve the bs2felem + felem_to_list chain *)
+  rewrite feval_eq. unfold feval_expand.
   rewrite (felem_to_list_bs2felem (coord.to_bytes x) (coord_length_felem x)).
   unfold coord.to_bytes.
   rewrite words_of_coord_eq_partition by (apply F.to_Z_range; reflexivity).
   rewrite <- (F.of_Z_to_Z x).
   apply F.eq_of_Z_iff.
+  (* Positional.eval ... (eval_trans (partition ...)) mod M = F.to_Z x mod M *)
   admit.
 Admitted.
 
@@ -168,12 +132,7 @@ Proof.
   rewrite (felem_to_list_bs2felem (coord.to_bytes x) (coord_length_felem x)).
   unfold coord.to_bytes. cbv [list_in_bounds].
   rewrite words_of_coord_eq_partition by (apply F.to_Z_range; reflexivity).
-  (* Goal: valid (partition (uweight 64) 4 z) *)
-  (* valid a = small a /\ 0 <= eval a < m
-     small a = (a = partition (uweight 64) 4 (eval a))
-     eval (partition w n z) = z mod w(n) = z mod 2^256 = z (since z < 2^256 < m is wrong, z < m < 2^256)
-     So eval(partition(z)) = z, and partition(z) = partition(eval(partition(z))), so small holds.
-     And 0 <= z < m since z = F.to_Z(x*R) and F.to_Z gives [0, m). *)
+  (* Goal: WordByWordMontgomery.valid 64 4 m (partition (uweight 64) 4 (F.to_Z (x * R))) *)
   admit.
 Admitted.
 
@@ -190,13 +149,5 @@ Proof.
   (* Have: (ws2bs 8 out_felem)$@pout m0 *)
   (* Need: (coord.to_bytes r)$@pout m0 *)
   (* Suffices: ws2bs 8 (proj1_sig out_felem) = coord.to_bytes r *)
-  (* From Heval: feval (proj1_sig out_felem) = r.
-     By feval_eq: F.of_Z M_pos (Positional.eval ... (eval_trans (map word.unsigned (proj1_sig out_felem)))) = r.
-     The words of out_felem satisfy bounded_by (from the synthesis postcondition),
-     so map word.unsigned gives a valid partition.
-     eval_trans(partition) gives the Montgomery-decoded value.
-     The reverse: ws2bs 8 out = le_split 32 (Positional.eval (map word.unsigned out))
-                              = le_split 32 (F.to_Z (r * R))
-                              = coord.to_bytes r. *)
   admit.
 Admitted.
