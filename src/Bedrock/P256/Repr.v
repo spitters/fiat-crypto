@@ -89,13 +89,15 @@ Proof.
   cbv [Partition.partition]. rewrite map_map.
   apply map_ext_in. intros a Ha. apply in_seq in Ha.
   rewrite (@word.unsigned_of_Z _ _ wordok). unfold word.wrap.
-  rewrite Z.mod_mod by lia.
-  cbv [uweight ModOps.weight]. simpl Z.of_nat.
+  cbv [uweight ModOps.weight]. rewrite !Z.div_1_r, !Z.opp_involutive.
+  rewrite Z.mod_mod by (apply Z.pow_pos_nonneg; lia).
   rewrite Z.mod_small; [reflexivity|].
-  split; [apply Z.div_pos; [apply Z.mod_pos_bound|]; apply Z.pow_pos_nonneg; lia|].
-  apply Z.div_lt_upper_bound; [apply Z.pow_pos_nonneg; lia|].
-  rewrite <- Z.pow_add_r by lia.
-  apply Z.mod_pos_bound. apply Z.pow_pos_nonneg; lia.
+  split.
+  - apply Z.div_pos; [apply Z.mod_pos_bound|]; apply Z.pow_pos_nonneg; lia.
+  - apply Z.div_lt_upper_bound; [apply Z.pow_pos_nonneg; lia|].
+    rewrite <- Z.pow_add_r by lia.
+    replace (64 * Z.of_nat a + 64) with (64 * Z.of_nat (S a)) by lia.
+    apply Z.mod_pos_bound. apply Z.pow_pos_nonneg; lia.
 Qed.
 
 (* ================================================================ *)
