@@ -1,15 +1,8 @@
 (* BLS12-377 Fp2 = Fp[u]/(u² + 5) where β = -5 is a QNR.
-   Unlike BLS12-381 which uses u² + 1 (β = -1), BLS12-377 has p ≡ 1 (mod 4)
-   so -1 is a QR and cannot be used.
+   Unlike BLS12-381 (β = -1, p ≡ 3 mod 4), BLS12-377 has p ≡ 1 mod 8.
 
-   The Karatsuba Fp2 multiplication:
-     (a + bu)(c + du) = (ac + β·bd) + ((a+b)(c+d) - ac - bd)u
-   For β = -5: ac + β·bd = ac - 5·bd
-
-   Implementation: scmul_neg5(x) = -(x + x + x + x + x) = -(4x + x)
-   Realized as: tmp = add(x, x); tmp = add(tmp, tmp); out = add(tmp, x); out = opp(out)
-   Or more efficiently: out = sub(0, x); tmp = add(out, out); tmp = add(tmp, tmp); out = add(tmp, out)
-   i.e., out = -x; out = -4x + (-x) = -5x *)
+   All operations except mul and sqr are component-wise (same as BLS12-381).
+   Mul and sqr inline the multiply-by-5 as 3 adds. *)
 
 Require Import Coq.Strings.String.
 Require Import Coq.ZArith.ZArith.
@@ -91,53 +84,54 @@ Section bls377_Fp2.
     Local Notation F := (F PrimeField.M_pos).
     Local Notation Fp2 := (F * F)%type.
 
-    (* Pointer to the second Fp element in an Fp2 pair *)
-    Local Definition felem_offset : Z :=
-      AbstractField.felem_size_in_bytes (F:=F).
+    Local Definition felem_offset : Z := AbstractField.felem_size_in_bytes (F:=F).
     Local Definition expr_2nd_felem (x : Syntax.expr) :=
       expr.op bopname.add x (expr.literal felem_offset).
 
-    (* β = -5 is a QNR for BLS12-377 *)
-    Definition beta_val : Z := -5.
+    (* ================================================================ *)
+    (* Component-wise operations (identical to BLS12-381)                *)
+    (* ================================================================ *)
 
-    (* scmul_neg5: compute -5 * x in Fp.
-       Implementation: neg_x = 0 - x; t = neg_x + neg_x; t = t + t; out = t + neg_x
-       i.e., out = -4x + (-x) = -5x *)
-    Definition bls377_scmul_beta : string * Syntax.func :=
-      ("bls377_scmul_beta", (["out"; "x"], []:list String.string, bedrock_func_body:(
-        (* out = 0 - x = -x *)
-        coq:(cmd.call [] (AbstractField.sub (F:=F)) [expr.var "out"; expr.var "out"; expr.var "x"]);
-        (* BUG: out is uninitialized. Need a zero constant or use opp. *)
-        (* Actually for sub(out, out, x): out starts as whatever was there.
-           Better approach: use the fact that sub(out, 0, x) = -x
-           But we need 0 in an felem. Use a temp or a different strategy. *)
-        (* Simple 4-add approach: *)
-        (* t = x + x *)
-        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "out"; expr.var "x"; expr.var "x"]);
-        (* t = t + t = 4x *)
-        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "out"; expr.var "out"; expr.var "out"]);
-        (* t = t + x = 5x *)
-        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "out"; expr.var "out"; expr.var "x"]);
-        (* out = 0 - t = -5x. Use sub(out, x, out) and then sub(out, x, out) again? No. *)
-        (* Actually: sub(out, out, out) = 0, then sub that from... *)
-        (* Simplest: compute 5x then negate. But we don't have opp in AbstractField. *)
-        (* We DO have sub. sub(out, zero, 5x)? But zero needs to be in memory. *)
-        (* Alternative: sub(out, x, out) after computing 6x in out? No. *)
-        (* Let's just use: out = sub(0_const, 5x). But 0_const needs a memory location. *)
-        (* Actually the simplest approach: just use sub(out, v0, 5*v1) in the Fp2_mul body.
-           That is: replace the last line "sub(out.re, v0, v1)" with:
-             tmp = add(v1, v1)      -- 2*v1
-             tmp = add(tmp, tmp)    -- 4*v1
-             tmp = add(tmp, v1)     -- 5*v1
-             out.re = sub(v0, tmp)  -- v0 - 5*v1 = ac + (-5)*bd = ac + β·bd
-           This avoids needing a separate scmul_beta function. *)
-        coq:(cmd.skip)
+    Definition Fp2_felem_copy : string * Syntax.func :=
+      ("bls377_Fp2_felem_copy", (["out"; "x"], []:list String.string, bedrock_func_body:(
+        coq:(cmd.call [] (AbstractField.felem_copy (F:=F)) [expr.var "out"; expr.var "x"]);
+        coq:(cmd.call [] (AbstractField.felem_copy (F:=F)) [expr_2nd_felem (expr.var "out"); expr_2nd_felem (expr.var "x")])
       ))).
 
-    (* Fp2 multiplication for BLS12-377: (a+bu)(c+du) = (ac + β·bd) + ((a+b)(c+d)-ac-bd)u
-       where β = -5.
-       Karatsuba with scmul by -5 inlined as 5 additions + 1 subtraction. *)
-    Definition Fp2_mul_377 : string * Syntax.func :=
+    Definition Fp2_add : string * Syntax.func :=
+      ("bls377_Fp2_add", (["out"; "inx"; "iny"], []:list String.string, bedrock_func_body:(
+        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "out"; expr.var "inx"; expr.var "iny"]);
+        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr_2nd_felem (expr.var "out"); expr_2nd_felem (expr.var "inx"); expr_2nd_felem (expr.var "iny")])
+      ))).
+
+    Definition Fp2_sub : string * Syntax.func :=
+      ("bls377_Fp2_sub", (["out"; "inx"; "iny"], []:list String.string, bedrock_func_body:(
+        coq:(cmd.call [] (AbstractField.sub (F:=F)) [expr.var "out"; expr.var "inx"; expr.var "iny"]);
+        coq:(cmd.call [] (AbstractField.sub (F:=F)) [expr_2nd_felem (expr.var "out"); expr_2nd_felem (expr.var "inx"); expr_2nd_felem (expr.var "iny")])
+      ))).
+
+    (* select_znz needs Fp2 AbstractField instances — deferred until needed *)
+
+    Definition Fp2_zero : string * Syntax.func :=
+      ("bls377_Fp2_zero", (["out"], []:list String.string, bedrock_func_body:(
+        coq:(cmd.call [] (AbstractField.from_word (F:=F)) [expr.var "out"; expr.literal 0]);
+        coq:(cmd.call [] (AbstractField.from_word (F:=F)) [expr_2nd_felem (expr.var "out"); expr.literal 0])
+      ))).
+
+    Definition Fp2_one : string * Syntax.func :=
+      ("bls377_Fp2_one", (["out"], []:list String.string, bedrock_func_body:(
+        coq:(cmd.call [] (AbstractField.from_word (F:=F)) [expr.var "out"; expr.literal 1]);
+        coq:(cmd.call [] (AbstractField.from_word (F:=F)) [expr_2nd_felem (expr.var "out"); expr.literal 0])
+      ))).
+
+    (* ================================================================ *)
+    (* β-dependent operations: mul, sqr                                  *)
+    (* ================================================================ *)
+
+    (* Fp2 multiplication: (a+bu)(c+du) = (ac + β·bd) + ((a+b)(c+d)-ac-bd)u
+       β = -5, so ac + β·bd = ac - 5·bd.
+       Karatsuba with 3 Fp muls + inlined multiply-by-5 (3 adds + 1 sub). *)
+    Definition Fp2_mul : string * Syntax.func :=
       ("bls377_Fp2_mul", (["out"; "inx"; "iny"], []:list String.string, bedrock_func_body:(
         stackalloc (AbstractField.felem_size_in_bytes (F:=F)) as v0;
         stackalloc (AbstractField.felem_size_in_bytes (F:=F)) as v1;
@@ -156,15 +150,76 @@ Section bls377_Fp2.
         coq:(cmd.call [] (AbstractField.sub (F:=F)) [expr_2nd_felem (expr.var "out"); expr_2nd_felem (expr.var "out"); expr.var "v0"]);
         (* out.im -= v1 = ad + bc *)
         coq:(cmd.call [] (AbstractField.sub (F:=F)) [expr_2nd_felem (expr.var "out"); expr_2nd_felem (expr.var "out"); expr.var "v1"]);
-        (* Now compute out.re = v0 - 5*v1 = ac + β·bd *)
-        (* v2 = v1 + v1 = 2*bd *)
+        (* Compute 5*v1: v2 = 2*v1; v2 = 4*v1; v2 = 5*v1 *)
         coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "v2"; expr.var "v1"; expr.var "v1"]);
-        (* v2 = v2 + v2 = 4*bd *)
         coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "v2"; expr.var "v2"; expr.var "v2"]);
-        (* v2 = v2 + v1 = 5*bd *)
         coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "v2"; expr.var "v2"; expr.var "v1"]);
-        (* out.re = v0 - v2 = ac - 5*bd *)
+        (* out.re = v0 - 5*v1 = ac + β·bd *)
         coq:(cmd.call [] (AbstractField.sub (F:=F)) [expr.var "out"; expr.var "v0"; expr.var "v2"])
+      ))).
+
+    (* Fp2 squaring: (a+bu)² = (a² + β·b²) + 2ab·u
+       β = -5, so a² + β·b² = a² - 5·b².
+       Uses 2 Fp squarings + 1 Fp mul + inlined multiply-by-5. *)
+    Definition Fp2_sqr : string * Syntax.func :=
+      ("bls377_Fp2_square", (["out"; "inx"], []:list String.string, bedrock_func_body:(
+        stackalloc (AbstractField.felem_size_in_bytes (F:=F)) as v0;
+        stackalloc (AbstractField.felem_size_in_bytes (F:=F)) as v1;
+        (* v0 = a * a *)
+        coq:(cmd.call [] (AbstractField.square (F:=F)) [expr.var "v0"; expr.var "inx"]);
+        (* v1 = b * b *)
+        coq:(cmd.call [] (AbstractField.square (F:=F)) [expr.var "v1"; expr_2nd_felem (expr.var "inx")]);
+        (* out.im = a * b *)
+        coq:(cmd.call [] (AbstractField.mul (F:=F)) [expr_2nd_felem (expr.var "out"); expr.var "inx"; expr_2nd_felem (expr.var "inx")]);
+        (* out.im = 2*a*b *)
+        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr_2nd_felem (expr.var "out"); expr_2nd_felem (expr.var "out"); expr_2nd_felem (expr.var "out")]);
+        (* Compute 5*v1: reuse out.re as temp *)
+        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "out"; expr.var "v1"; expr.var "v1"]);
+        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "out"; expr.var "out"; expr.var "out"]);
+        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "out"; expr.var "out"; expr.var "v1"]);
+        (* out.re = v0 - 5*v1 = a² - 5b² *)
+        coq:(cmd.call [] (AbstractField.sub (F:=F)) [expr.var "out"; expr.var "v0"; expr.var "out"])
+      ))).
+
+    (* Fp2 inversion: (a+bu)^(-1) = (a, -b) / (a² - β·b²)
+       norm = a² - β·b² = a² + 5·b² (since β = -5, -β = 5)
+       Then: re = a / norm, im = -b / norm *)
+    Definition Fp2_inv : string * Syntax.func :=
+      ("bls377_Fp2_inv", (["out"; "inx"], []:list String.string, bedrock_func_body:(
+        stackalloc (AbstractField.felem_size_in_bytes (F:=F)) as asq;
+        stackalloc (AbstractField.felem_size_in_bytes (F:=F)) as bsq;
+        stackalloc (AbstractField.felem_size_in_bytes (F:=F)) as norm;
+        (* asq = a² *)
+        coq:(cmd.call [] (AbstractField.square (F:=F)) [expr.var "asq"; expr.var "inx"]);
+        (* bsq = b² *)
+        coq:(cmd.call [] (AbstractField.square (F:=F)) [expr.var "bsq"; expr_2nd_felem (expr.var "inx")]);
+        (* Compute 5*bsq in norm *)
+        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "norm"; expr.var "bsq"; expr.var "bsq"]);
+        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "norm"; expr.var "norm"; expr.var "norm"]);
+        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "norm"; expr.var "norm"; expr.var "bsq"]);
+        (* norm = a² + 5*b² = a² - β·b² (since β = -5, -β = 5) *)
+        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "norm"; expr.var "asq"; expr.var "norm"]);
+        (* norm = 1/norm *)
+        coq:(cmd.call [] (AbstractField.inv (F:=F)) [expr.var "norm"; expr.var "norm"]);
+        (* out.re = a * norm_inv *)
+        coq:(cmd.call [] (AbstractField.mul (F:=F)) [expr.var "out"; expr.var "inx"; expr.var "norm"]);
+        (* Negate b first using sub: asq = 0 - b (reuse asq as temp) *)
+        coq:(cmd.call [] (AbstractField.sub (F:=F)) [expr.var "asq"; expr.var "bsq"; expr.var "bsq"]);
+        (* asq = 0 now *)
+        coq:(cmd.call [] (AbstractField.sub (F:=F)) [expr.var "asq"; expr.var "asq"; expr_2nd_felem (expr.var "inx")]);
+        (* asq = -b *)
+        (* out.im = (-b) * norm_inv *)
+        coq:(cmd.call [] (AbstractField.mul (F:=F)) [expr_2nd_felem (expr.var "out"); expr.var "asq"; expr.var "norm"])
+      ))).
+
+    (* Fp2 conjugate: conj(a + bu) = a - bu *)
+    Definition Fp2_conjugate : string * Syntax.func :=
+      ("bls377_Fp2_conjugate", (["out"; "inx"], []:list String.string, bedrock_func_body:(
+        coq:(cmd.call [] (AbstractField.felem_copy (F:=F)) [expr.var "out"; expr.var "inx"]);
+        (* out.im = 0 - inx.im *)
+        stackalloc (AbstractField.felem_size_in_bytes (F:=F)) as tmp;
+        coq:(cmd.call [] (AbstractField.sub (F:=F)) [expr.var "tmp"; expr.var "tmp"; expr.var "tmp"]);
+        coq:(cmd.call [] (AbstractField.sub (F:=F)) [expr_2nd_felem (expr.var "out"); expr.var "tmp"; expr_2nd_felem (expr.var "inx")])
       ))).
 
 End bls377_Fp2.
