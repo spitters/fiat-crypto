@@ -73,11 +73,7 @@ Section Fp2.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Context {prime_parameters : PrimeFieldParameters}
-          {prime_parameters_ok : PrimeFieldParameters_ok}
-          (beta : F M_pos)
-          {beta_nz : beta <> @F.zero M_pos}
-          {beta_qnr : ~(exists x, @F.mul M_pos x x = beta)}
-          {M_big : 2 < Z.pos M_pos}.
+          {prime_parameters_ok : PrimeFieldParameters_ok}.
 
   Local Notation F := (F M_pos).
   Local Notation Fp2 := ((F * F)%type).
@@ -89,6 +85,12 @@ Section Fp2.
 
   (* note that this excludes non-saturated representations *)
   Context {bounds_equiv : forall x, bounded_by loose_bounds x -> bounded_by tight_bounds x}.
+
+  (* Quadratic non-residue β — declared after F_representation to match Specs arg order *)
+  Variable beta : F.
+  Hypothesis beta_nz : beta <> @F.zero M_pos.
+  Hypothesis beta_qnr : ~(exists x, @F.mul M_pos x x = beta).
+  Hypothesis M_big : 2 < Z.pos M_pos.
 
   (* Prefix for Fp2 function names — passed explicitly to avoid typeclass issues *)
   Variable fp2_prefix : string.
@@ -155,9 +157,9 @@ Section Fp2.
   Local Instance Fp2_fp_ok_inst : @AbstractField.FieldParameters_ok _ Fp2_fp_inst.
   Proof. exact (Fp2_field_parameters_ok beta beta_nz beta_qnr M_big fp2_prefix). Defined.
   Local Instance Fp2_repr_inst : @AbstractField.FieldRepresentation Fp2 Fp2_fp_inst width BW word mem :=
-    @Fp2_field_representation width BW word mem prime_parameters F_representation fp2_prefix.
+    @Fp2_field_representation width BW word mem prime_parameters F_representation beta fp2_prefix.
   Local Instance Fp2_repr_ok_inst : @AbstractField.FieldRepresentation_ok Fp2 Fp2_fp_inst _ _ _ _ Fp2_repr_inst :=
-    @Fp2_field_representation_ok width BW word mem prime_parameters F_representation F_representation_ok fp2_prefix.
+    @Fp2_field_representation_ok width BW word mem prime_parameters F_representation F_representation_ok beta fp2_prefix.
 
   Lemma Fp2_list_decomp : forall l, fst_felem l ++ snd_felem l = l.
   Proof.
