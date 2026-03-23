@@ -95,28 +95,42 @@ Local Ltac solve_div_mod_case z :=
 Local Lemma le_split_eq_zs2bs_partition (z : Z) (Hz : 0 <= z) :
   le_split 32 z = zs2bs 8 (Partition.partition (uweight 64) 4%nat z).
 Proof.
-  (* Use the bs2zs2bs roundtrip + words_of_coord_eq_partition *)
-  rewrite <- (bs2zs2bs 8 (le_split 32 z) ltac:(lia) ltac:(rewrite length_le_split; reflexivity)) at 1.
-  unfold zs2bs at 1. f_equal.
-  fold (bs2zs 8 (le_split 32 z)).
-  (* bs2zs 8 (le_split 32 z) = partition (uweight 64) 4 z *)
-  (* This is words_of_coord_eq_partition without the word.unsigned layer.
-     bs2zs 8 bs = map le_combine (chunk 8 bs).
-     words_of_coord maps word.unsigned ∘ word.of_Z over this.
-     Since word.unsigned (word.of_Z x) = x for x ∈ [0, 2^64),
-     and le_combine of 8 bytes is in [0, 2^64),
-     we have: map (word.unsigned ∘ word.of_Z) (bs2zs 8 bs) = bs2zs 8 bs. *)
-  transitivity (List.map (fun x => x) (Partition.partition (uweight 64) 4%nat z)).
-  2: rewrite List.map_id; reflexivity.
-  unfold bs2zs.
-  apply map_ext_in. intros a Ha.
-  pose proof (le_combine_bound a).
-  pose proof (Forall_chunk_length_le 8 ltac:(lia) (le_split 32 z)).
-  rewrite Forall_forall in H0. specialize (H0 a Ha).
-  (* le_combine a = corresponding partition element *)
-  (* Both are the same value: the i-th 64-bit limb of z *)
-  admit.
-Admitted.
+  unfold zs2bs.
+  cbv [Partition.partition uweight ModOps.weight].
+  simpl seq. simpl map. simpl flat_map. rewrite app_nil_r.
+  (* Decompose le_split 32 z into 4 × le_split 8 *)
+  change 32%nat with (8 + (8 + (8 + 8)))%nat.
+  rewrite !le_split_app.
+  rewrite ?Z.shiftr_shiftr by lia.
+  (* Now: le_split 8 z ++ le_split 8 (z>>64) ++ ...
+       = le_split 8 (limb0) ++ le_split 8 (limb1) ++ ... *)
+  (* Each pair: le_split 8 (z >> 64i) = le_split 8 (z mod 2^(64(i+1)) / 2^(64i))
+     because le_split 8 only depends on the argument mod 2^64,
+     and (z >> 64i) mod 2^64 = z mod 2^(64(i+1)) / 2^(64i) *)
+  repeat (apply f_equal2; [|try reflexivity]).
+  all: try reflexivity.
+  all: rewrite <- le_split_mod; f_equal.
+  all: rewrite ?Z.shiftr_div_pow2 by lia.
+  all: rewrite ?Z.div_1_r.
+  (* Each goal: (z / 2^k) mod 2^64 = z mod 2^m / 2^k mod 2^64 *)
+  all: try reflexivity.
+  all: (
+    let B := constr:(2^64) in
+    assert (HB : 0 < B) by (apply Z.pow_pos_nonneg; lia);
+    pose proof (Z.mod_pos_bound z B ltac:(lia));
+    pose proof (Z.mod_pos_bound (z / B) B ltac:(lia));
+    pose proof (Z.div_mod z B ltac:(lia));
+    pose proof (Z.div_mod (z / B) B ltac:(lia));
+    pose proof (Z.div_pos z B ltac:(lia) ltac:(lia));
+    pose proof (Z.div_pos (z / B) B ltac:(lia) ltac:(lia));
+    try (pose proof (Z.div_pos (z/B/B) B ltac:(lia) ltac:(lia)));
+    try (pose proof (Z.mod_pos_bound (z/B/B) B ltac:(lia)));
+    try (pose proof (Z.div_mod (z/B/B) B ltac:(lia)));
+    try (pose proof (Z.div_pos (z/B/B/B) B ltac:(lia) ltac:(lia)));
+    try (pose proof (Z.mod_pos_bound (z/B/B/B) B ltac:(lia)));
+    try (pose proof (Z.div_mod (z/B/B/B) B ltac:(lia)));
+    Z.div_mod_to_equations; nia).
+Qed.
 
 Local Lemma words_of_coord_eq_partition (z : Z) (Hz : 0 <= z) :
   List.map (@word.unsigned _ word) (bs2ws 8 (le_split 32 z)) =
