@@ -97,7 +97,7 @@ Local Lemma le_split_eq_zs2bs_partition (z : Z) (Hz : 0 <= z) :
 Proof.
   unfold zs2bs.
   cbv [Partition.partition uweight ModOps.weight].
-  simpl seq. simpl map. simpl flat_map. rewrite app_nil_r.
+  simpl seq. simpl map. simpl flat_map. try rewrite app_nil_r.
   (* Decompose le_split 32 z into 4 × le_split 8 *)
   change 32%nat with (8 + (8 + (8 + 8)))%nat.
   rewrite !le_split_app.
