@@ -60,6 +60,10 @@ Section PairingOps.
   Hypothesis beta_qnr : ~(exists x, @F.mul M_pos x x = beta).
   Hypothesis M_big : 2 < Z.pos M_pos.
 
+  (* ξ = (xi_re, xi_im) in Fp2 — the cubic non-residue for Fp6 = Fp2[v]/(v³ - ξ) *)
+  Variable xi_re : F M_pos.
+  Variable xi_im : F M_pos.
+
   Variable fp12_prefix : string.
   Variable fp6_prefix : string.
   Variable fp2_prefix : string.
@@ -74,14 +78,14 @@ Section PairingOps.
     @Fp2_field_representation width BW word mem prime_parameters F_representation beta fp2_prefix.
 
   Local Instance Fp6_fp_inst : AbstractField.FieldParameters Fp6 :=
-    Fp6_field_parameters (fp6_prefix:=fp6_prefix).
+    Fp6_field_parameters beta xi_re xi_im (fp6_prefix:=fp6_prefix).
   Local Instance Fp6_repr_inst : @AbstractField.FieldRepresentation Fp6 Fp6_fp_inst width BW word mem :=
-    Fp6_field_representation beta (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp6_field_representation beta xi_re xi_im (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
 
   Local Instance Fp12_fp_inst : AbstractField.FieldParameters Fp12 :=
-    Fp12_field_parameters (fp12_prefix:=fp12_prefix).
+    Fp12_field_parameters beta xi_re xi_im (fp12_prefix:=fp12_prefix).
   Local Instance Fp12_repr_inst : @AbstractField.FieldRepresentation Fp12 Fp12_fp_inst width BW word mem :=
-    Fp12_field_representation beta (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp12_field_representation beta xi_re xi_im (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
 
   (* ================================================================ *)
   (* Offset helpers                                                    *)
@@ -663,11 +667,11 @@ Section PairingOps.
     destruct Hr2 as [m_out [m_rr [[Heq2 Hd2] [Hfe_out Hrr]]]].
     subst m_r1 m_r2 mem0.
     (* Split Fp6 FElems into Fp2 components *)
-    pose proof (Fp6_raw_FElem_split beta fp6_prefix fp2_prefix px x _ Hfx)
+    pose proof (Fp6_raw_FElem_split beta xi_re xi_im fp6_prefix fp2_prefix px x _ Hfx)
       as [m_x0 [m_x12 [Hsp_x [Hx0 Hx12]]]].
     destruct Hx12 as [m_x1 [m_x2 [Hsp_x12 [Hx1 Hx2]]]].
     destruct Hsp_x as [? Hdxx]. destruct Hsp_x12 as [? Hdxy]. subst.
-    pose proof (Fp6_raw_FElem_split beta fp6_prefix fp2_prefix pout old_out _ Hfe_out)
+    pose proof (Fp6_raw_FElem_split beta xi_re xi_im fp6_prefix fp2_prefix pout old_out _ Hfe_out)
       as [m_o0 [m_o12 [Hsp_o [Ho0 Ho12]]]].
     destruct Ho12 as [m_o1 [m_o2 [Hsp_o12 [Ho1 Ho2]]]].
     destruct Hsp_o as [? Hdox]. destruct Hsp_o12 as [? Hdoy]. subst.
@@ -932,7 +936,7 @@ Section PairingOps.
         split; [split; [reflexivity | map_disjoint_auto_mul] |]. split; [exact Hoc0 |].
         exists m_oc1, m_oc2. split; [split; [reflexivity | map_disjoint_auto_mul] |].
         split; [exact Hoc1 | exact Hoc2]. }
-      pose proof (Fp6_raw_FElem_join beta fp6_prefix fp2_prefix pout out0' out1' out2'
+      pose proof (Fp6_raw_FElem_join beta xi_re xi_im fp6_prefix fp2_prefix pout out0' out1' out2'
         (map.putmany m_oc0 (map.putmany m_oc1 m_oc2)) Hlen_oc0 Hlen_oc1 Hlen_oc2 Hjoin_out) as Hfp6_out.
       (* Join input Fp2 -> Fp6 *)
       assert (Hjoin_x : (FElem_Fp2 px (c0_felem x) ⋆
@@ -943,7 +947,7 @@ Section PairingOps.
         split; [split; [reflexivity | map_disjoint_auto_mul] |]. split; [exact Hxc0 |].
         exists m_xc1, m_xc2. split; [split; [reflexivity | map_disjoint_auto_mul] |].
         split; [exact Hxc1 | exact Hxc2]. }
-      pose proof (Fp6_raw_FElem_join beta fp6_prefix fp2_prefix px (c0_felem x) (c1_felem x) (c2_felem x)
+      pose proof (Fp6_raw_FElem_join beta xi_re xi_im fp6_prefix fp2_prefix px (c0_felem x) (c1_felem x) (c2_felem x)
         (map.putmany m_xc0 (map.putmany m_xc1 m_xc2)) Hlen_xc0 Hlen_xc1 Hlen_xc2 Hjoin_x) as Hfp6_x.
       rewrite Fp6_list_decomp in Hfp6_x.
       (* Build final sep *)
@@ -1007,7 +1011,7 @@ Section PairingOps.
     destruct Hr1 as [m_s [m_rr [[Heq1 Hd1] [Hfs Hrr]]]].
     subst m_r1 mem0.
     (* Split Fp6 FElem into Fp2 components *)
-    pose proof (Fp6_raw_FElem_split beta fp6_prefix fp2_prefix p x _ Hfp)
+    pose proof (Fp6_raw_FElem_split beta xi_re xi_im fp6_prefix fp2_prefix p x _ Hfp)
       as [m_p0 [m_p12 [Hsp_p [Hp0 Hp12]]]].
     destruct Hp12 as [m_p1 [m_p2 [Hsp_p12 [Hp1 Hp2]]]].
     destruct Hsp_p as [? Hdpx]. destruct Hsp_p12 as [? Hdpy]. subst.
@@ -1253,7 +1257,7 @@ Section PairingOps.
         split; [split; [reflexivity | map_disjoint_auto_mul] |]. split; [exact Hoc0 |].
         exists m_oc1, m_oc2. split; [split; [reflexivity | map_disjoint_auto_mul] |].
         split; [exact Hoc1 | exact Hoc2]. }
-      pose proof (Fp6_raw_FElem_join beta fp6_prefix fp2_prefix p out0' out1' out2'
+      pose proof (Fp6_raw_FElem_join beta xi_re xi_im fp6_prefix fp2_prefix p out0' out1' out2'
         (map.putmany m_oc0 (map.putmany m_oc1 m_oc2)) Hlen_oc0 Hlen_oc1 Hlen_oc2 Hjoin_out) as Hfp6_out.
       (* Build final sep *)
       exists (map.putmany m_oc0 (map.putmany m_oc1 m_oc2)),
@@ -1353,15 +1357,15 @@ Section PairingOps.
     destruct Hr3 as [m_out [m_rr [[Heq3 Hd3] [Hfe_out Hrr]]]].
     subst m_r1 m_r2 m_r3 mem0.
     (* Split Fp6 FElems into Fp2 components *)
-    pose proof (Fp6_raw_FElem_split beta fp6_prefix fp2_prefix px x _ Hfx)
+    pose proof (Fp6_raw_FElem_split beta xi_re xi_im fp6_prefix fp2_prefix px x _ Hfx)
       as [m_x0 [m_x12 [Hsp_x [Hx0 Hx12]]]].
     destruct Hx12 as [m_x1 [m_x2 [Hsp_x12 [Hx1 Hx2]]]].
     destruct Hsp_x as [? Hdxx]. destruct Hsp_x12 as [? Hdxy]. subst.
-    pose proof (Fp6_raw_FElem_split beta fp6_prefix fp2_prefix pout old_out _ Hfe_out)
+    pose proof (Fp6_raw_FElem_split beta xi_re xi_im fp6_prefix fp2_prefix pout old_out _ Hfe_out)
       as [m_o0 [m_o12 [Hsp_o [Ho0 Ho12]]]].
     destruct Ho12 as [m_o1 [m_o2 [Hsp_o12 [Ho1 Ho2]]]].
     destruct Hsp_o as [? Hdox]. destruct Hsp_o12 as [? Hdoy]. subst.
-    pose proof (Fp6_raw_FElem_split beta fp6_prefix fp2_prefix a_tmp tmp_val _ Htmp_felem)
+    pose proof (Fp6_raw_FElem_split beta xi_re xi_im fp6_prefix fp2_prefix a_tmp tmp_val _ Htmp_felem)
       as [m_t0 [m_t12 [Hsp_t [Ht0 Ht12]]]].
     destruct Ht12 as [m_t1 [m_t2 [Hsp_t12 [Ht1 Ht2]]]].
     destruct Hsp_t as [? Hdtx]. destruct Hsp_t12 as [? Hdty]. subst.
@@ -1624,7 +1628,7 @@ Section PairingOps.
     pose proof (Fp2_FElem_length beta fp2_prefix _ _ _ Htc0) as Hlen_tc0.
     pose proof (Fp2_FElem_length beta fp2_prefix _ _ _ Htc1) as Hlen_tc1.
     pose proof (Fp2_FElem_length beta fp2_prefix _ _ _ Htc2) as Hlen_tc2.
-    pose proof (Fp6_raw_FElem_join beta fp6_prefix fp2_prefix a_tmp conj0 conj1 conj2
+    pose proof (Fp6_raw_FElem_join beta xi_re xi_im fp6_prefix fp2_prefix a_tmp conj0 conj1 conj2
       (map.putmany m_tc0 (map.putmany m_tc1 m_tc2))
       Hlen_tc0 Hlen_tc1 Hlen_tc2 Hjoin_tmp) as Hfp6_tmp.
     pose proof (@AbstractField.FElem_to_bytes _ _ _ _ word_ok mem_ok _
@@ -1732,7 +1736,7 @@ Section PairingOps.
         split; [split; [reflexivity | map_disjoint_auto] |]. split; [exact Hoc0 |].
         exists m_oc1, m_oc2. split; [split; [reflexivity | map_disjoint_auto] |].
         split; [exact Hoc1 | exact Hoc2]. }
-      pose proof (Fp6_raw_FElem_join beta fp6_prefix fp2_prefix pout conj0 out1' out2'
+      pose proof (Fp6_raw_FElem_join beta xi_re xi_im fp6_prefix fp2_prefix pout conj0 out1' out2'
         (map.putmany m_oc0 (map.putmany m_oc1 m_oc2)) Hlen_oc0 Hlen_oc1 Hlen_oc2 Hjoin_out) as Hfp6_out.
       (* Join input Fp2 → Fp6 *)
       assert (Hjoin_x : (FElem_Fp2 px (c0_felem x) ⋆
@@ -1743,7 +1747,7 @@ Section PairingOps.
         split; [split; [reflexivity | map_disjoint_auto] |]. split; [exact Hxc0 |].
         exists m_xc1, m_xc2. split; [split; [reflexivity | map_disjoint_auto] |].
         split; [exact Hxc1 | exact Hxc2]. }
-      pose proof (Fp6_raw_FElem_join beta fp6_prefix fp2_prefix px (c0_felem x) (c1_felem x) (c2_felem x)
+      pose proof (Fp6_raw_FElem_join beta xi_re xi_im fp6_prefix fp2_prefix px (c0_felem x) (c1_felem x) (c2_felem x)
         (map.putmany m_xc0 (map.putmany m_xc1 m_xc2)) Hlen_xc0 Hlen_xc1 Hlen_xc2 Hjoin_x) as Hfp6_x.
       rewrite Fp6_list_decomp in Hfp6_x.
       (* Build final sep *)
@@ -1875,9 +1879,9 @@ Section PairingOps.
     destruct Hmem_all as [m_x [m_r1 [[Heq0 Hd0] [Hfx Hr1]]]]. destruct Hr1 as [m_g1 [m_r2 [[Heq1 Hd1] [Hfg1 Hr2]]]].
     destruct Hr2 as [m_g2 [m_r3 [[Heq2 Hd2] [Hfg2 Hr3]]]]. destruct Hr3 as [m_out [m_rr [[Heq3 Hd3] [Hfe_out Hrr]]]].
     subst m_r1 m_r2 m_r3 mem0.
-    pose proof (Fp6_raw_FElem_split beta fp6_prefix fp2_prefix px x _ Hfx) as [m_x0 [m_x12 [Hsp_x [Hx0 Hx12]]]].
+    pose proof (Fp6_raw_FElem_split beta xi_re xi_im fp6_prefix fp2_prefix px x _ Hfx) as [m_x0 [m_x12 [Hsp_x [Hx0 Hx12]]]].
     destruct Hx12 as [m_x1 [m_x2 [Hsp_x12 [Hx1 Hx2]]]]. destruct Hsp_x as [? Hdxx]. destruct Hsp_x12 as [? Hdxy]. subst.
-    pose proof (Fp6_raw_FElem_split beta fp6_prefix fp2_prefix pout old_out _ Hfe_out) as [m_o0 [m_o12 [Hsp_o [Ho0 Ho12]]]].
+    pose proof (Fp6_raw_FElem_split beta xi_re xi_im fp6_prefix fp2_prefix pout old_out _ Hfe_out) as [m_o0 [m_o12 [Hsp_o [Ho0 Ho12]]]].
     destruct Ho12 as [m_o1 [m_o2 [Hsp_o12 [Ho1 Ho2]]]]. destruct Hsp_o as [? Hdox]. destruct Hsp_o12 as [? Hdoy]. subst.
     rename Hd0 into Hd_xg. rename Hd1 into Hd_g1r. rename Hd2 into Hd_g2r. rename Hd3 into Hd_or. split_all_disjointness.
     cbv [bounded_by Fp6_field_representation Fp6_repr_inst] in Hbx. fold (@AbstractField.bounded_by _ _ _ _ _ _ F_representation) in Hbx.
@@ -1948,10 +1952,10 @@ Section PairingOps.
       repeat split; first [apply (@relax_bounds _ _ _ _ _ _ F_representation F_representation_ok); assumption | assumption]. }
     { assert (Hjoin_out : (FElem_Fp2 pout (c0_felem x) ⋆ (FElem_Fp2 (word.add pout (CubicFieldExtensions.fp6_c1_offset beta fp2_prefix)) out1' ⋆ FElem_Fp2 (word.add pout (CubicFieldExtensions.fp6_c2_offset beta fp2_prefix)) out2')) (map.putmany m_C (map.putmany m_B m_A))).
       { exists m_C, (map.putmany m_B m_A). split; [split; [reflexivity | map_disjoint_auto] |]. split; [exact HC |]. exists m_B, m_A. split; [split; [reflexivity | map_disjoint_auto] |]. split; [exact HB | exact HA]. }
-      pose proof (Fp6_raw_FElem_join beta fp6_prefix fp2_prefix pout (c0_felem x) out1' out2' (map.putmany m_C (map.putmany m_B m_A)) Hlen_C Hlen_B Hlen_A Hjoin_out) as Hfp6_out.
+      pose proof (Fp6_raw_FElem_join beta xi_re xi_im fp6_prefix fp2_prefix pout (c0_felem x) out1' out2' (map.putmany m_C (map.putmany m_B m_A)) Hlen_C Hlen_B Hlen_A Hjoin_out) as Hfp6_out.
       assert (Hjoin_x : (FElem_Fp2 px (c0_felem x) ⋆ (FElem_Fp2 (word.add px (CubicFieldExtensions.fp6_c1_offset beta fp2_prefix)) (c1_felem x) ⋆ FElem_Fp2 (word.add px (CubicFieldExtensions.fp6_c2_offset beta fp2_prefix)) (c2_felem x))) (map.putmany m_D (map.putmany m_E m_FF))).
       { exists m_D, (map.putmany m_E m_FF). split; [split; [reflexivity | map_disjoint_auto] |]. split; [exact HD |]. exists m_E, m_FF. split; [split; [reflexivity | map_disjoint_auto] |]. split; [exact HE | exact HFF]. }
-      pose proof (Fp6_raw_FElem_join beta fp6_prefix fp2_prefix px (c0_felem x) (c1_felem x) (c2_felem x) (map.putmany m_D (map.putmany m_E m_FF)) Hlen_D Hlen_E Hlen_FF Hjoin_x) as Hfp6_x.
+      pose proof (Fp6_raw_FElem_join beta xi_re xi_im fp6_prefix fp2_prefix px (c0_felem x) (c1_felem x) (c2_felem x) (map.putmany m_D (map.putmany m_E m_FF)) Hlen_D Hlen_E Hlen_FF Hjoin_x) as Hfp6_x.
       rewrite Fp6_list_decomp in Hfp6_x.
       exists (map.putmany m_C (map.putmany m_B m_A)), (map.putmany (map.putmany m_D (map.putmany m_E m_FF)) (map.putmany m_G m_RR)).
       split; [split |]. { rewrite <- !map.putmany_assoc. map_swap m_A m_B. map_swap m_A m_C. map_swap m_B m_C. reflexivity. } { map_disjoint_auto. }
@@ -1972,11 +1976,11 @@ Section PairingOps.
     destruct Hrest3 as [m_out [m_rr [[Heq_rest3 Hd_out_rr] [Hfe_out Hrr_out]]]].
     subst m_rest1 m_rest2 m_rest3 mem0.
     (* Decompose Fp6 FElems into Fp2 components *)
-    pose proof (Fp6_raw_FElem_split beta fp6_prefix fp2_prefix px x m_x Hfx) as Hx_split.
+    pose proof (Fp6_raw_FElem_split beta xi_re xi_im fp6_prefix fp2_prefix px x m_x Hfx) as Hx_split.
     destruct Hx_split as [m_x0 [m_x12 [[Heq_x Hd_x012] [Hx0 Hx12]]]].
     destruct Hx12 as [m_x1 [m_x2 [[Heq_x12 Hd_x12] [Hx1 Hx2]]]].
     subst m_x m_x12.
-    pose proof (Fp6_raw_FElem_split beta fp6_prefix fp2_prefix pout old_out m_out Hfe_out) as Ho_split.
+    pose proof (Fp6_raw_FElem_split beta xi_re xi_im fp6_prefix fp2_prefix pout old_out m_out Hfe_out) as Ho_split.
     destruct Ho_split as [m_o0 [m_o12 [[Heq_o Hd_o012] [Ho0 Ho12]]]].
     destruct Ho12 as [m_o1 [m_o2 [[Heq_o12 Hd_o12] [Ho1 Ho2]]]].
     subst m_out m_o12.
@@ -2223,9 +2227,9 @@ Section PairingOps.
     destruct Hr3 as [m_w [m_r4 [[Heq_r3 Hd_wr4] [Hfw Hr4]]]].
     destruct Hr4 as [m_out [m_rr [[Heq_r4 Hd_outrr] [Hfe_out Hrr]]]].
     subst m_r1 m_r2 m_r3 m_r4 mem0.
-    pose proof (Fp12_raw_FElem_split beta fp12_prefix fp6_prefix fp2_prefix _ _ _ Hfx) as [m_x0 [m_x1 [[Heq_x Hd_x01] [Hx0 Hx1]]]].
+    pose proof (Fp12_raw_FElem_split beta xi_re xi_im fp12_prefix fp6_prefix fp2_prefix _ _ _ Hfx) as [m_x0 [m_x1 [[Heq_x Hd_x01] [Hx0 Hx1]]]].
     subst m_x.
-    pose proof (Fp12_raw_FElem_split beta fp12_prefix fp6_prefix fp2_prefix _ _ _ Hfe_out) as [m_o0 [m_o1 [[Heq_o Hd_o01] [Ho0 Ho1]]]].
+    pose proof (Fp12_raw_FElem_split beta xi_re xi_im fp12_prefix fp6_prefix fp2_prefix _ _ _ Hfe_out) as [m_o0 [m_o1 [[Heq_o Hd_o01] [Ho0 Ho1]]]].
     subst m_out.
     change (@AbstractField.bounded_by _ Fp12_fp_inst _ _ _ _ Fp12_repr_inst) with
       (fun b fe => @AbstractField.bounded_by _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst b (d0_felem fe)
@@ -2345,7 +2349,7 @@ Section PairingOps.
       assert (Hjoin_out : (FElem_Fp6 pout out0 ⋆
         FElem_Fp6 (word.add pout (word.of_Z fp6_felem_offset)) out1) (map.putmany m_A m_B)).
       { exists m_A, m_B. split; [split; [reflexivity | map_disjoint_auto_mul] |]. split; [exact HA | exact HB]. }
-      pose proof (Fp12_raw_FElem_join beta fp12_prefix fp6_prefix fp2_prefix pout out0 out1
+      pose proof (Fp12_raw_FElem_join beta xi_re xi_im fp12_prefix fp6_prefix fp2_prefix pout out0 out1
         (map.putmany m_A m_B) Hlen_out0 Hlen_out1 Hjoin_out) as Hfp12_out.
       (* FElem_Fp12 px x *)
       assert (Hjoin_x : (FElem_Fp6 px (d0_felem x) ⋆
@@ -2358,7 +2362,7 @@ Section PairingOps.
       assert (Hlen_d1x : Datatypes.length (d1_felem x) = @AbstractField.felem_size_in_words _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst).
       { pose proof HD as HD_copy. unfold AbstractField.FElem, Bignum.Bignum in HD_copy.
         destruct HD_copy as [? [? [? [[? Hlen_d1'] ?]]]]. exact Hlen_d1'. }
-      pose proof (Fp12_raw_FElem_join beta fp12_prefix fp6_prefix fp2_prefix px (d0_felem x) (d1_felem x)
+      pose proof (Fp12_raw_FElem_join beta xi_re xi_im fp12_prefix fp6_prefix fp2_prefix px (d0_felem x) (d1_felem x)
         (map.putmany m_C m_D) Hlen_d0x Hlen_d1x Hjoin_x) as Hfp12_x.
       rewrite Fp12_list_decomp in Hfp12_x.
       (* Step 4: Build final sep *)
@@ -2461,9 +2465,9 @@ Section PairingOps.
     destruct Hr3 as [m_w [m_r4 [[Heq_r3 Hd_wr4] [Hfw Hr4]]]].
     destruct Hr4 as [m_out [m_rr [[Heq_r4 Hd_outrr] [Hfe_out Hrr]]]].
     subst m_r1 m_r2 m_r3 m_r4 mem0.
-    pose proof (Fp12_raw_FElem_split beta fp12_prefix fp6_prefix fp2_prefix _ _ _ Hfx) as [m_x0 [m_x1 [[Heq_x Hd_x01] [Hx0 Hx1]]]].
+    pose proof (Fp12_raw_FElem_split beta xi_re xi_im fp12_prefix fp6_prefix fp2_prefix _ _ _ Hfx) as [m_x0 [m_x1 [[Heq_x Hd_x01] [Hx0 Hx1]]]].
     subst m_x.
-    pose proof (Fp12_raw_FElem_split beta fp12_prefix fp6_prefix fp2_prefix _ _ _ Hfe_out) as [m_o0 [m_o1 [[Heq_o Hd_o01] [Ho0 Ho1]]]].
+    pose proof (Fp12_raw_FElem_split beta xi_re xi_im fp12_prefix fp6_prefix fp2_prefix _ _ _ Hfe_out) as [m_o0 [m_o1 [[Heq_o Hd_o01] [Ho0 Ho1]]]].
     subst m_out.
     change (@AbstractField.bounded_by _ Fp12_fp_inst _ _ _ _ Fp12_repr_inst) with
       (fun b fe => @AbstractField.bounded_by _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst b (d0_felem fe)
@@ -2583,7 +2587,7 @@ Section PairingOps.
       assert (Hjoin_out : (FElem_Fp6 pout out0 ⋆
         FElem_Fp6 (word.add pout (word.of_Z fp6_felem_offset)) out1) (map.putmany m_A m_B)).
       { exists m_A, m_B. split; [split; [reflexivity | map_disjoint_auto_mul] |]. split; [exact HA | exact HB]. }
-      pose proof (Fp12_raw_FElem_join beta fp12_prefix fp6_prefix fp2_prefix pout out0 out1
+      pose proof (Fp12_raw_FElem_join beta xi_re xi_im fp12_prefix fp6_prefix fp2_prefix pout out0 out1
         (map.putmany m_A m_B) Hlen_out0 Hlen_out1 Hjoin_out) as Hfp12_out.
       (* FElem_Fp12 px x *)
       assert (Hjoin_x : (FElem_Fp6 px (d0_felem x) ⋆
@@ -2596,7 +2600,7 @@ Section PairingOps.
       assert (Hlen_d1x : Datatypes.length (d1_felem x) = @AbstractField.felem_size_in_words _ Fp6_fp_inst _ _ _ _ Fp6_repr_inst).
       { pose proof HD as HD_copy. unfold AbstractField.FElem, Bignum.Bignum in HD_copy.
         destruct HD_copy as [? [? [? [[? Hlen_d1'] ?]]]]. exact Hlen_d1'. }
-      pose proof (Fp12_raw_FElem_join beta fp12_prefix fp6_prefix fp2_prefix px (d0_felem x) (d1_felem x)
+      pose proof (Fp12_raw_FElem_join beta xi_re xi_im fp12_prefix fp6_prefix fp2_prefix px (d0_felem x) (d1_felem x)
         (map.putmany m_C m_D) Hlen_d0x Hlen_d1x Hjoin_x) as Hfp12_x.
       rewrite Fp12_list_decomp in Hfp12_x.
       (* Step 4: Build final sep *)

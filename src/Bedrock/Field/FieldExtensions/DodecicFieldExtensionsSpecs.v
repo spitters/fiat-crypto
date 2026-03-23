@@ -49,6 +49,10 @@ Section DodecicExtension.
   Hypothesis beta_qnr : ~(exists x, @F.mul M_pos x x = beta).
   Hypothesis M_big_dodecic : 2 < M_pos.
 
+  (* ξ = (xi_re, xi_im) in Fp2 — the cubic non-residue for Fp6 = Fp2[v]/(v³ - ξ) *)
+  Variable xi_re : F M_pos.
+  Variable xi_im : F M_pos.
+
   Local Notation Fp := (F M_pos).
   Local Notation Fp2 := (Fp * Fp)%type.
   Local Notation Fp6 := (Fp2 * Fp2 * Fp2)%type.
@@ -67,9 +71,9 @@ Section DodecicExtension.
     @Fp2_field_representation width BW word mem prime_parameters field_representation beta fp2_prefix.
 
   Local Instance Fp6_fp_inst : AbstractField.FieldParameters Fp6 :=
-    Fp6_field_parameters (fp6_prefix:=fp6_prefix).
+    Fp6_field_parameters beta xi_re xi_im (fp6_prefix:=fp6_prefix).
   Local Instance Fp6_repr_inst : @AbstractField.FieldRepresentation Fp6 Fp6_fp_inst width BW word mem :=
-    Fp6_field_representation beta (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp6_field_representation beta xi_re xi_im (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
 
   (* ================================================================ *)
   (* Fp12 Gallina operations (from Spec.BLS12Pairing.Fp12)            *)
@@ -80,8 +84,8 @@ Section DodecicExtension.
   Local Definition fp12_add_fn := BLS12Fp12Spec.fp12_add M_pos.
   Local Definition fp12_sub_fn := BLS12Fp12Spec.fp12_sub M_pos.
   Local Definition fp12_neg_fn := BLS12Fp12Spec.fp12_neg M_pos.
-  Local Definition fp12_mul_fn := BLS12Fp12Spec.fp12_mul M_pos.
-  Local Definition fp12_inv_fn := BLS12Fp12Spec.fp12_inv M_pos.
+  Local Definition fp12_mul_fn := BLS12Fp12Spec.fp12_mul M_pos beta xi_re xi_im.
+  Local Definition fp12_inv_fn := BLS12Fp12Spec.fp12_inv M_pos beta xi_re xi_im.
 
   (* Fp12 division defined in terms of mul and inv *)
   Local Definition fp12_div_fn (a b : Fp12) : Fp12 := fp12_mul_fn a (fp12_inv_fn b).

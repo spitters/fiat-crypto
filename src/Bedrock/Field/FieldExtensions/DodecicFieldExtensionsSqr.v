@@ -51,6 +51,10 @@ Section Fp12.
   Hypothesis beta_qnr : ~(exists x, @F.mul M_pos x x = beta).
   Hypothesis M_big : 2 < Z.pos M_pos.
 
+  (* ξ = (xi_re, xi_im) in Fp2 — the cubic non-residue for Fp6 = Fp2[v]/(v³ - ξ) *)
+  Variable xi_re : F M_pos.
+  Variable xi_im : F M_pos.
+
   (* Prefixes for function names *)
   Variable fp12_prefix : string.
   Variable fp6_prefix : string.
@@ -70,18 +74,18 @@ Section Fp12.
     @Fp2_field_representation_ok width BW word mem prime_parameters F_representation F_representation_ok beta fp2_prefix.
 
   Local Instance Fp6_fp_inst : AbstractField.FieldParameters Fp6 :=
-    Fp6_field_parameters (fp6_prefix:=fp6_prefix).
+    Fp6_field_parameters beta xi_re xi_im (fp6_prefix:=fp6_prefix).
   Local Instance Fp6_repr_inst : @AbstractField.FieldRepresentation Fp6 Fp6_fp_inst width BW word mem :=
-    Fp6_field_representation beta (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp6_field_representation beta xi_re xi_im (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
   Local Instance Fp6_repr_ok_inst : @AbstractField.FieldRepresentation_ok Fp6 Fp6_fp_inst _ _ _ _ Fp6_repr_inst :=
-    Fp6_field_representation_ok beta (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp6_field_representation_ok beta xi_re xi_im (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
 
   Local Instance Fp12_fp_inst : AbstractField.FieldParameters Fp12 :=
-    Fp12_field_parameters (fp12_prefix:=fp12_prefix).
+    Fp12_field_parameters beta xi_re xi_im (fp12_prefix:=fp12_prefix).
   Local Instance Fp12_repr_inst : @AbstractField.FieldRepresentation Fp12 Fp12_fp_inst width BW word mem :=
-    Fp12_field_representation beta (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp12_field_representation beta xi_re xi_im (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
   Local Instance Fp12_repr_ok_inst : @AbstractField.FieldRepresentation_ok Fp12 Fp12_fp_inst _ _ _ _ Fp12_repr_inst :=
-    Fp12_field_representation_ok beta (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp12_field_representation_ok beta xi_re xi_im (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
 
   (* ================================================================ *)
   (* Helper function names                                             *)
@@ -303,7 +307,7 @@ Section Fp12.
   (* ================================================================ *)
 
   Local Definition fp6_mul_by_v_model (x : Fp6) : Fp6 :=
-    ((BLS12Fp6Spec.fp2_mul_xi M_pos (snd x), fst (fst x)), snd (fst x)).
+    ((BLS12Fp6Spec.fp2_mul_xi M_pos beta xi_re xi_im (snd x), fst (fst x)), snd (fst x)).
 
   Local Instance un_Fp6_mul_by_v
     : @AbstractField.UnOp _ _ _ _ Fp6 Fp6_fp_inst Fp6_repr_inst fp6_mul_by_v_name :=
@@ -506,15 +510,15 @@ Section Fp12.
   (* Same lemma stated with BLS12Fp6Spec to match the goal after cbv *)
   Local Corollary fp6_double_eq_karatsuba_concrete (a0 a1 : Fp6) :
     BLS12Fp6Spec.fp6_add M_pos
-      (BLS12Fp6Spec.fp6_mul M_pos a0 a1)
-      (BLS12Fp6Spec.fp6_mul M_pos a0 a1) =
+      (BLS12Fp6Spec.fp6_mul M_pos beta xi_re xi_im a0 a1)
+      (BLS12Fp6Spec.fp6_mul M_pos beta xi_re xi_im a0 a1) =
     BLS12Fp6Spec.fp6_sub M_pos
       (BLS12Fp6Spec.fp6_sub M_pos
-        (BLS12Fp6Spec.fp6_mul M_pos
+        (BLS12Fp6Spec.fp6_mul M_pos beta xi_re xi_im
           (BLS12Fp6Spec.fp6_add M_pos a0 a1)
           (BLS12Fp6Spec.fp6_add M_pos a0 a1))
-        (BLS12Fp6Spec.fp6_mul M_pos a0 a0))
-      (BLS12Fp6Spec.fp6_mul M_pos a1 a1).
+        (BLS12Fp6Spec.fp6_mul M_pos beta xi_re xi_im a0 a0))
+      (BLS12Fp6Spec.fp6_mul M_pos beta xi_re xi_im a1 a1).
   Proof. exact (fp6_double_eq_karatsuba a0 a1). Qed.
 
   (* ================================================================ *)

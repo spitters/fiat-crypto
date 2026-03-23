@@ -57,6 +57,10 @@ Section Fp12.
   Hypothesis beta_qnr : ~(exists x, @F.mul M_pos x x = beta).
   Hypothesis M_big : 2 < Z.pos M_pos.
 
+  (* ξ = (xi_re, xi_im) in Fp2 — the cubic non-residue for Fp6 = Fp2[v]/(v³ - ξ) *)
+  Variable xi_re : F M_pos.
+  Variable xi_im : F M_pos.
+
   (* Prefixes for function names *)
   Variable fp12_prefix : string.
   Variable fp6_prefix : string.
@@ -76,18 +80,18 @@ Section Fp12.
     @Fp2_field_representation_ok width BW word mem prime_parameters F_representation F_representation_ok beta fp2_prefix.
 
   Local Instance Fp6_fp_inst : AbstractField.FieldParameters Fp6 :=
-    Fp6_field_parameters (fp6_prefix:=fp6_prefix).
+    Fp6_field_parameters beta xi_re xi_im (fp6_prefix:=fp6_prefix).
   Local Instance Fp6_repr_inst : @AbstractField.FieldRepresentation Fp6 Fp6_fp_inst width BW word mem :=
-    Fp6_field_representation beta (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp6_field_representation beta xi_re xi_im (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
   Local Instance Fp6_repr_ok_inst : @AbstractField.FieldRepresentation_ok Fp6 Fp6_fp_inst _ _ _ _ Fp6_repr_inst :=
-    Fp6_field_representation_ok beta (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp6_field_representation_ok beta xi_re xi_im (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
 
   Local Instance Fp12_fp_inst : AbstractField.FieldParameters Fp12 :=
-    Fp12_field_parameters (fp12_prefix:=fp12_prefix).
+    Fp12_field_parameters beta xi_re xi_im (fp12_prefix:=fp12_prefix).
   Local Instance Fp12_repr_inst : @AbstractField.FieldRepresentation Fp12 Fp12_fp_inst width BW word mem :=
-    Fp12_field_representation beta (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp12_field_representation beta xi_re xi_im (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
   Local Instance Fp12_repr_ok_inst : @AbstractField.FieldRepresentation_ok Fp12 Fp12_fp_inst _ _ _ _ Fp12_repr_inst :=
-    Fp12_field_representation_ok beta (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp12_field_representation_ok beta xi_re xi_im (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
 
   (* ================================================================ *)
   (* Helper function names                                             *)
@@ -126,7 +130,7 @@ Section Fp12.
 
   Local Instance un_Fp2_mul_xi_local
     : @AbstractField.UnOp _ _ _ _ Fp2 Fp2_fp_inst Fp2_repr_inst fp2_mul_xi_name :=
-    @CubicFieldExtensions.un_Fp2_mul_xi _ _ _ _ prime_parameters beta F_representation fp2_prefix.
+    @CubicFieldExtensions.un_Fp2_mul_xi _ _ _ _ prime_parameters beta xi_re xi_im F_representation fp2_prefix.
 
   Instance spec_of_Fp2_mul_xi_local : spec_of fp2_mul_xi_name :=
     AbstractField.unop_spec (field_representation:=Fp2_repr_inst) un_Fp2_mul_xi_local.
@@ -518,7 +522,7 @@ Section Fp12.
 
   (* Gallina model for mul_by_v: shift Fp6 components, mul_xi on c2 *)
   Local Definition fp6_mul_by_v_model (x : Fp6) : Fp6 :=
-    ((BLS12Fp6Spec.fp2_mul_xi M_pos (snd x), fst (fst x)), snd (fst x)).
+    ((BLS12Fp6Spec.fp2_mul_xi M_pos beta xi_re xi_im (snd x), fst (fst x)), snd (fst x)).
 
   Local Instance un_Fp6_mul_by_v
     : @AbstractField.UnOp _ _ _ _ Fp6 Fp6_fp_inst Fp6_repr_inst fp6_mul_by_v_name :=
@@ -609,7 +613,7 @@ Section Fp12.
     subst m_frame m'.
     (* Split Fp6 FElems into 3 Fp2 components *)
     pose proof (@CubicFieldExtensions.Fp6_raw_FElem_split _ _ _ _ word_ok mem_ok
-      prime_parameters beta F_representation fp6_prefix fp2_prefix
+      prime_parameters beta xi_re xi_im F_representation fp6_prefix fp2_prefix
       allocx x m_new Hfelem_allocx) as Hsplit_ax.
     destruct Hsplit_ax as [m_ax0 [m_ax12 [Hsp_ax [Hfe_ax0 Hax12]]]].
     destruct Hsp_ax as [Heq_new_ax Hd_ax0_12].
@@ -617,7 +621,7 @@ Section Fp12.
     destruct Hsp_ax12 as [Heq_ax12 Hd_ax12].
     (* Split output FElem *)
     pose proof (@CubicFieldExtensions.Fp6_raw_FElem_split _ _ _ _ word_ok mem_ok
-      prime_parameters beta F_representation fp6_prefix fp2_prefix
+      prime_parameters beta xi_re xi_im F_representation fp6_prefix fp2_prefix
       pout old_out m_out Hfe_out) as Hsplit_out.
     destruct Hsplit_out as [m_o0 [m_o12 [Hsp_out [Hfe_o0 Ho12]]]].
     destruct Hsp_out as [Heq_out_o Hd_o0_12].
@@ -741,7 +745,7 @@ Section Fp12.
       split; [split; [reflexivity | map_disjoint_auto] |].
       split; [exact HE | exact HF]. }
     pose proof (@CubicFieldExtensions.Fp6_raw_FElem_join _ _ _ _ word_ok mem_ok
-      prime_parameters beta F_representation fp6_prefix fp2_prefix
+      prime_parameters beta xi_re xi_im F_representation fp6_prefix fp2_prefix
       allocx (c0_felem x) (c1_felem x) (c2_felem x)
       (map.putmany m_D (map.putmany m_E m_F))
       Hlen_D Hlen_E Hlen_F Hjoin_x) as Hfp6_x.
@@ -813,7 +817,7 @@ Section Fp12.
         split; [split; [reflexivity | map_disjoint_auto] |].
         split; [exact HB | exact HA]. }
       pose proof (@CubicFieldExtensions.Fp6_raw_FElem_join _ _ _ _ word_ok mem_ok
-        prime_parameters beta F_representation fp6_prefix fp2_prefix
+        prime_parameters beta xi_re xi_im F_representation fp6_prefix fp2_prefix
         pout out0' (c0_felem x) (c1_felem x)
         (map.putmany m_C (map.putmany m_B m_A))
         Hlen_C Hlen_B Hlen_A Hjoin_out) as Hfp6_out.
