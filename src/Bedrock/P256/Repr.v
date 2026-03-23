@@ -102,9 +102,42 @@ Qed.
 (* le_split 32 z = zs2bs 8 (partition (uweight 64) 4 z) *)
 (* ================================================================ *)
 (* Core: bs2zs 8 (le_split 32 z) = partition (uweight 64) 4 z *)
+Local Lemma chunk_4x8 (a b c d : list Byte.byte) :
+  length a = 8%nat -> length b = 8%nat -> length c = 8%nat -> length d = 8%nat ->
+  chunk 8 (a ++ b ++ c ++ d) = (a :: b :: c :: d :: nil)%list.
+Proof.
+  intros Ha Hb Hc Hd.
+  rewrite (chunk_app 8 ltac:(lia) a _ ltac:(rewrite Ha; reflexivity)).
+  rewrite (chunk_app 8 ltac:(lia) b _ ltac:(rewrite Hb; reflexivity)).
+  rewrite (chunk_app 8 ltac:(lia) c _ ltac:(rewrite Hc; reflexivity)).
+  rewrite (chunk_small 8 a) by (rewrite Ha; lia).
+  rewrite (chunk_small 8 b) by (rewrite Hb; lia).
+  rewrite (chunk_small 8 c) by (rewrite Hc; lia).
+  rewrite (chunk_small 8 d) by (rewrite Hd; lia).
+  reflexivity.
+Qed.
+
 Local Lemma bs2zs_le_split_eq_partition (z : Z) (Hz : 0 <= z) :
   bs2zs 8 (le_split 32 z) = Partition.partition (uweight 64) 4%nat z.
-Proof. admit. Admitted.
+Proof.
+  unfold bs2zs.
+  assert (Hle : le_split 32 z =
+    le_split 8 z ++ le_split 8 (Z.shiftr z 64) ++
+    le_split 8 (Z.shiftr z 128) ++ le_split 8 (Z.shiftr z 192)).
+  { change 32%nat with (8 + (8 + (8 + 8)))%nat.
+    rewrite !le_split_app, !Z.shiftr_shiftr by lia. simpl Z.of_nat. reflexivity. }
+  rewrite Hle, chunk_4x8 by (apply length_le_split).
+  cbn [List.map].
+  rewrite !le_combine_split, !Z.shiftr_div_pow2 by lia.
+  change (8 * Z.of_nat 8) with 64.
+  cbv [Partition.partition uweight ModOps.weight].
+  simpl seq. simpl List.map. simpl Z.of_nat. simpl Z.mul.
+  rewrite Z.div_1_r.
+  apply f_equal2; [reflexivity|].
+  apply f_equal2; [|apply f_equal2; [|apply f_equal2; [|reflexivity]]].
+  all: rewrite <- mod_mul_div; [| assumption | apply Z.pow_pos_nonneg; lia | apply Z.pow_pos_nonneg; lia].
+  all: reflexivity.
+Qed.
 
 Local Lemma le_split_eq_zs2bs_partition (z : Z) (Hz : 0 <= z) :
   le_split 32 z = zs2bs 8 (Partition.partition (uweight 64) 4%nat z).
