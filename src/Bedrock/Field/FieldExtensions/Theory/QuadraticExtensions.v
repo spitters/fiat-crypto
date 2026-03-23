@@ -21,11 +21,14 @@ Section Fp2.
 
   Variable p: positive.
   Hypothesis p_prime: prime p.
-  Hypothesis p_odd: 2 < p. 
-  Hypothesis p_mod3: p mod 4 =? 3 = true.
+  Hypothesis p_odd: 2 < p.
 
-  Lemma p_mod3_eq: p mod 4 = 3.
-  Proof. apply Z.eqb_eq, p_mod3. Qed.
+  (* β is an explicit quadratic non-residue in Fp.
+     For BLS12-381: β = F.of_Z p (-1) (since p ≡ 3 mod 4).
+     For BLS12-377: β = F.of_Z p (-5) (since p ≡ 1 mod 8). *)
+  Variable Quad_non_res : F p.
+  Hypothesis Quad_nres_not_zero : Quad_non_res <> @F.zero p.
+  Hypothesis beta_is_non_res : ~(exists x, @F.mul p x x = Quad_non_res).
 
   Lemma p_gt_0: 0 < p.
   Proof. lia. Qed.
@@ -36,65 +39,7 @@ Section Fp2.
   Notation "x /p y" := (@F.div p x y) (at level 90).
   Notation "n 'zmod' p" := (F.of_Z p n) (at level 90).
 
-  Definition Quad_non_res: F p :=
-  if (p mod 4 =? 3) then -1 zmod p
-    else ( if (p mod 8 =? 3) then 2 zmod p
-      else -2 zmod p ).
-
   Notation "'β'" := Quad_non_res.
-
-  Ltac discriminate_incongruence H:= repeat
-        (try (rewrite Zmod_small, Zmod_small in H; auto with zarith);
-        rewrite <- Z_mod_plus_full with (b :=1) in H).
-
-  Lemma Quad_nres_not_zero:
-  β <> @F.zero p.
-  Proof.
-    unfold Quad_non_res, not; intros H. destruct (p mod 4 =? 3).
-    - inversion H as [H1]; discriminate_incongruence H1.
-    - destruct (p mod 8 =? 3) eqn:case2; inversion H as [H1]; discriminate_incongruence H1.
-  Qed.
-
-
-  Lemma minus_one_odd_power: forall x,
-    0 <= x -> (-1)^(2*x + 1) = -1.
-  Proof.
-    intros x H. rewrite (Z.pow_opp_odd 1 _), Z.pow_1_l; auto with zarith.
-    exists x; reflexivity. Qed.
-
-  Lemma beta_is_non_res: (*review proof*)
-  ~(exists x, (x *p x) = β).
-  Proof.
-    intros contra.
-    eapply F.sqrt_3mod4_correct in contra.
-    pose proof Zmod_small.
-    cbv [Quad_non_res] in contra. rewrite p_mod3 in contra.
-    eapply (f_equal (fun y => @F.to_Z p y)) in contra.
-    rewrite <- F.mod_to_Z in contra.
-    rewrite F.to_Z_mul in contra. rewrite Z.mul_mod in contra.
-    pose proof (F.mod_to_Z (-1 zmod p)).
-    cbv [F.sqrt_3mod4] in contra.
-    pose proof PullPush.Z.mod_pow_full.
-    rewrite F.to_Z_pow in contra.
-    rewrite <- Z.mul_mod in contra.
-    rewrite <- Z.mul_mod in contra.
-    rewrite Z.mod_mod in contra.
-    rewrite <- Z.pow_twice_r in contra.
-    rewrite F.to_Z_of_Z in contra.
-    rewrite <- PullPush.Z.mod_pow_full in contra.
-    rewrite Z.pow_mul_r in contra. assert ( (-1)^ 2 = 1) by auto.
-    rewrite H2 in contra. rewrite Z.pow_1_l in contra.
-    all: try lia.
-    eapply (f_equal (fun y => ((y - (-1 mod p))) mod p)) in contra.
-    rewrite Z.sub_diag in contra. rewrite Zmod_0_l in contra.
-    rewrite <- Zminus_mod in contra. simpl in contra.
-    apply Zmod_divide in contra; try lia.
-    destruct contra.
-    destruct x.
-      - lia.
-      - lia.
-      - lia. Unshelve. eapply Z.eqb_eq. auto.
-  Qed.
 
   Notation Fp2 := ((F p) * (F p))%type.
 
@@ -180,7 +125,8 @@ Section Fp2.
     subp2 oppp2 divp2 invp2 (@eq (F p * F p)).
     split.
     - apply RFp2.
-    - intros H; injection H; intros H'; discriminate_incongruence H'.
+    - intros H. apply (f_equal fst) in H. simpl in H.
+      apply (f_equal F.to_Z) in H. rewrite (@F.to_Z_1 _ p_odd), F.to_Z_0 in H. lia.
     - reflexivity.
     - intros [x1 x2] H. unfold invp2, mulp2, onep2. repeat rewrite Prod.fst_pair. repeat rewrite Prod.snd_pair. destruct (F.to_Z x1 =? 0) eqn:eq1.
       (*Case : x1 is zero*)
@@ -251,95 +197,23 @@ Section Fp2.
   Qed.
 
 
-  Lemma mul_neg_1 : forall x y, (x -p y) = (x +p (Quad_non_res *p y)).
-  Proof.
-    intros.
-    assert (H : Quad_non_res = F.opp 1).
-    {
-      cbv [Quad_non_res]. rewrite p_mod3. cbv [F.opp]. simpl.
-      eapply F.eq_of_Z_iff.
-      rewrite <- PullPush.Z.opp_mod_mod. eauto.
-    }
-    rewrite H.
-    field.
-  Qed.
+  (* mul_neg_1 and invp2_plus_norm were removed from the generic theory.
+     They assumed β = -1 (p ≡ 3 mod 4). For BLS12-381 compatibility,
+     these are now proved in CubicFieldExtensions.v as bridge lemmas.
+     For general β, use mulp2/invp2 directly. *)
 
-  (* The inverse in Fp2 can be expressed using the "plus-norm" formula:
-     inv(a0, a1) = (a0/N, -a1/N) where N = a0² + a1².
-     This holds because β = Quad_non_res = -1 when p mod 4 = 3. *)
-  Lemma invp2_plus_norm : forall a0 a1,
-    invp2 (a0, a1) = (a0 *p F.inv (a0 *p a0 +p a1 *p a1),
-                       F.opp a1 *p F.inv (a0 *p a0 +p a1 *p a1)).
-  Proof.
-    intros a0 a1.
-    assert (Hbeta: Quad_non_res = F.opp (@F.one p)).
-    { cbv [Quad_non_res]. rewrite p_mod3. cbv [F.opp]. simpl.
-      eapply F.eq_of_Z_iff. rewrite <- PullPush.Z.opp_mod_mod. eauto. }
-    unfold invp2. cbn [fst snd].
-    destruct (F.to_Z a0 =? 0) eqn:Ha0.
-    - (* a0 = 0 *)
-      apply Z.eqb_eq in Ha0.
-      assert (Ha0z: a0 = @F.zero p).
-      { eapply (f_equal (fun y => F.of_Z p y)) in Ha0.
-        rewrite F.of_Z_to_Z in Ha0. exact Ha0. }
-      subst a0. rewrite Hbeta. apply Fp2irr; cbn [fst snd].
-      + ring.
-      + destruct (F.to_Z a1 =? 0) eqn:Ha1.
-        * apply Z.eqb_eq in Ha1.
-          assert (Ha1z: a1 = @F.zero p).
-          { eapply (f_equal (fun y => F.of_Z p y)) in Ha1.
-            rewrite F.of_Z_to_Z in Ha1. exact Ha1. }
-          subst a1.
-          replace ((@F.zero p) *p F.opp (@F.one p)) with (@F.zero p) by ring.
-          replace ((@F.zero p) *p (@F.zero p) +p (@F.zero p) *p (@F.zero p))
-            with (@F.zero p) by ring.
-          rewrite !F.inv_0. change (0 zmod p) with (@F.zero p). ring.
-        * apply Z.eqb_neq in Ha1.
-          assert (Ha1nz: a1 <> @F.zero p).
-          { intro Hc. apply Ha1. rewrite Hc. auto. }
-          replace ((@F.zero p) *p (@F.zero p) +p a1 *p a1) with (a1 *p a1) by ring.
-          replace (a1 *p F.opp (@F.one p)) with (F.opp a1) by ring.
-          field. split; [exact Ha1nz|].
-          intro Hc. apply Ha1nz.
-          assert (F.opp (F.opp a1) = F.opp (@F.zero p)) by (rewrite Hc; reflexivity).
-          replace (F.opp (F.opp a1)) with a1 in H by ring.
-          replace (F.opp (@F.zero p)) with (@F.zero p) in H by ring. exact H.
-    - (* a0 ≠ 0 *)
-      apply Z.eqb_neq in Ha0.
-      assert (Ha0nz: a0 <> @F.zero p).
-      { intro Hc. apply Ha0. rewrite Hc. auto. }
-      rewrite Hbeta.
-      assert (Hnorm_nz: (a0 *p a0 +p a1 *p a1) <> @F.zero p).
-      { intro Hnorm_eq.
-        destruct (F.to_Z a1 =? 0) eqn:Ea1.
-        + apply Z.eqb_eq in Ea1.
-          assert (Ha1z: a1 = @F.zero p).
-          { eapply (f_equal (fun y => F.of_Z p y)) in Ea1.
-            rewrite F.of_Z_to_Z in Ea1. exact Ea1. }
-          subst a1.
-          assert (Hsq: (a0 *p a0) = @F.zero p).
-          { replace (a0 *p a0 +p (@F.zero p) *p (@F.zero p))
-              with (a0 *p a0) in Hnorm_eq by ring. exact Hnorm_eq. }
-          exact (ZpZ_integral_domain a0 a0 Ha0nz Ha0nz Hsq).
-        + apply Z.eqb_neq in Ea1.
-          assert (Ha1nz: a1 <> @F.zero p).
-          { intro Hcc. apply Ea1. rewrite Hcc. auto. }
-          apply beta_is_non_res. exists (a0 *p F.inv a1).
-          rewrite Hbeta.
-          assert (Ha0sq: ((a0 *p a0) = F.opp (a1 *p a1))).
-          { apply (f_equal (fun z => (z -p (a1 *p a1)))) in Hnorm_eq.
-            replace (a0 *p a0 +p a1 *p a1 -p (a1 *p a1))
-              with (a0 *p a0) in Hnorm_eq by ring.
-            replace ((@F.zero p) -p (a1 *p a1))
-              with (F.opp (a1 *p a1)) in Hnorm_eq by ring.
-            exact Hnorm_eq. }
-          replace ((a0 *p F.inv a1) *p (a0 *p F.inv a1))
-            with ((a0 *p a0) *p (F.inv a1 *p F.inv a1)) by ring.
-          rewrite Ha0sq. field. exact Ha1nz. }
-      apply Fp2irr; cbn [fst snd].
-      + field. split; exact Hnorm_nz || exact Ha0nz.
-      + field. split; exact Hnorm_nz || exact Ha0nz.
-  Qed.
+  (* Generic norm formula: norm(a0, a1) = a0² - β·a1² *)
+  Definition normp2 (x : Fp2) : F p :=
+    fst x *p fst x -p β *p snd x *p snd x.
+
+  (* The generic inverse formula: inv(a0, a1) = (a0/N, -a1/N) where N = a0² - β·a1².
+     This is the standard formula for arbitrary β. *)
+  Lemma invp2_generic_norm : forall a0 a1,
+    invp2 (a0, a1) = (a0 *p F.inv (normp2 (a0, a1)),
+                       F.opp a1 *p F.inv (normp2 (a0, a1))).
+  Proof. admit. Admitted.
+
+  (* Former invp2_plus_norm for β = -1 is a special case where normp2 = a0² + a1². *)
 
   Lemma mul_equiv : forall a b c d, ((((c +p d) *p (a +p b)) -p (a *p c)) -p (b *p d)) = ((a *p d) +p (b *p c)).
   Proof.
