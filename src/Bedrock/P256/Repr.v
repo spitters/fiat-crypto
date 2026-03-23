@@ -73,9 +73,29 @@ Qed.
 (* map word.unsigned (bs2ws 8 (le_split 32 z)) = partition (uweight 64) 4 z *)
 (* ================================================================ *)
 
-(* Sub-helper: le_split 32 z = zs2bs 8 (partition (uweight 64) 4 z)
-   Proved by simpl + f_equal to decompose both 32-byte lists,
-   then each byte matches via Z.shiftr/div/mod arithmetic. *)
+Local Lemma le_split_app n1 n2 z :
+  le_split (n1 + n2) z = le_split n1 z ++ le_split n2 (Z.shiftr z (8 * Z.of_nat n1)).
+Proof.
+  revert z. induction n1; intros z.
+  - simpl. rewrite Z.shiftr_0_r. reflexivity.
+  - replace (S n1 + n2)%nat with (S (n1 + n2))%nat by lia.
+    change (le_split (S ?n) ?x) with (Byte.byte.of_Z x :: le_split n (Z.shiftr x 8)) at 1.
+    change (le_split (S n1) z) with (Byte.byte.of_Z z :: le_split n1 (Z.shiftr z 8)).
+    simpl app. f_equal. rewrite IHn1.
+    replace (Z.shiftr (Z.shiftr z 8) (8 * Z.of_nat n1))
+      with (Z.shiftr z (8 * Z.of_nat (S n1)))
+      by (rewrite Z.shiftr_shiftr by lia; f_equal; rewrite Nat2Z.inj_succ; ring).
+    reflexivity.
+Qed.
+
+Local Lemma le_split_mod n z :
+  le_split n (z mod 2^(8 * Z.of_nat n)) = le_split n z.
+Proof.
+  pose proof (split_le_combine (le_split n z)) as H.
+  rewrite length_le_split, le_combine_split in H.
+  replace (Z.of_nat n * 8) with (8 * Z.of_nat n) in H by ring. exact H.
+Qed.
+
 Local Ltac solve_div_mod_case z :=
   let B := constr:(2^64) in
   pose proof (Z.mod_pos_bound z B ltac:(lia));
