@@ -1,15 +1,12 @@
-(* Fp12 = Fp6[w]/(w^2 - v) arithmetic for BLS12-381 pairing.
+(* Fp12 = Fp6[w]/(w^2 - v) arithmetic, parameterized by β and ξ.
  *
  * Imports Fp2 and Fp6 definitions from Fp6.v to ensure definitional
  * equality between BLS12Fp12Spec.fp6_* and BLS12Fp6Spec.fp6_*.
  *
  * Tower of extensions:
- *   Fp2 = Fp[u]/(u^2 + 1)
- *   Fp6 = Fp2[v]/(v^3 - xi)   where xi = 1 + u
+ *   Fp2 = Fp[u]/(u^2 - β)
+ *   Fp6 = Fp2[v]/(v^3 - ξ)
  *   Fp12 = Fp6[w]/(w^2 - v)
- *
- * Reference: hax BLS12-381 specification and Algorithm 5.16/5.17
- * from "Guide to Pairing-Based Cryptography".
  *)
 
 From Stdlib Require Import ZArith BinPos List.
@@ -20,6 +17,9 @@ Import ListNotations.
 
 Section BLS12_Fp12.
   Variable p : positive.
+  Variable beta : F p.
+  Variable xi_re : F p.
+  Variable xi_im : F p.
 
   (* Re-export Fp2/Fp6 types and operations from Fp6.v *)
   Notation F := (F p).
@@ -32,11 +32,11 @@ Section BLS12_Fp12.
   Let fp2_add  := Fp6.fp2_add p.
   Let fp2_sub  := Fp6.fp2_sub p.
   Let fp2_neg  := Fp6.fp2_neg p.
-  Let fp2_mul  := Fp6.fp2_mul p.
-  Let fp2_sqr  := Fp6.fp2_sqr p.
-  Let fp2_inv  := Fp6.fp2_inv p.
+  Let fp2_mul  := Fp6.fp2_mul p beta.
+  Let fp2_sqr  := Fp6.fp2_sqr p beta.
+  Let fp2_inv  := Fp6.fp2_inv p beta.
   Let fp2_conjugate := Fp6.fp2_conjugate p.
-  Let fp2_mul_xi := Fp6.fp2_mul_xi p.
+  Let fp2_mul_xi := Fp6.fp2_mul_xi p beta xi_re xi_im.
   Let fp2_mul_fp := Fp6.fp2_mul_fp p.
 
   (* Re-export Fp6 operations from Fp6.v *)
@@ -49,11 +49,11 @@ Section BLS12_Fp12.
   Let fp6_add  := Fp6.fp6_add p.
   Let fp6_sub  := Fp6.fp6_sub p.
   Let fp6_neg  := Fp6.fp6_neg p.
-  Let fp6_mul_by_v := Fp6.fp6_mul_by_v p.
-  Let fp6_mul  := Fp6.fp6_mul p.
-  Let fp6_sqr  := Fp6.fp6_sqr p.
-  Let fp6_mul_fp2 := Fp6.fp6_mul_fp2 p.
-  Let fp6_inv  := Fp6.fp6_inv p.
+  Let fp6_mul_by_v := Fp6.fp6_mul_by_v p beta xi_re xi_im.
+  Let fp6_mul  := Fp6.fp6_mul p beta xi_re xi_im.
+  Let fp6_sqr  := Fp6.fp6_sqr p beta xi_re xi_im.
+  Let fp6_mul_fp2 := Fp6.fp6_mul_fp2 p beta.
+  Let fp6_inv  := Fp6.fp6_inv p beta xi_re xi_im.
 
   (* Frobenius constants *)
   Variable frobenius_gamma1 : Fp2.
@@ -61,8 +61,8 @@ Section BLS12_Fp12.
   Variable frobenius_gamma1_p2 : Fp2.
   Variable frobenius_gamma2_p2 : Fp2.
 
-  Let fp6_frobenius := Fp6.fp6_frobenius p frobenius_gamma1 frobenius_gamma2.
-  Let fp6_frobenius_p2 := Fp6.fp6_frobenius_p2 p frobenius_gamma1_p2 frobenius_gamma2_p2.
+  Let fp6_frobenius := Fp6.fp6_frobenius p beta frobenius_gamma1 frobenius_gamma2.
+  Let fp6_frobenius_p2 := Fp6.fp6_frobenius_p2 p beta frobenius_gamma1_p2 frobenius_gamma2_p2.
 
   (* ================================================================== *)
   (* Fp12 = Fp6[w]/(w^2 - v)                                           *)

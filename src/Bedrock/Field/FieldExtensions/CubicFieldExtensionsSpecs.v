@@ -48,6 +48,10 @@ Section CubicExtension.
   Hypothesis beta_qnr : ~(exists x, @F.mul M_pos x x = beta).
   Hypothesis M_big_cubic : 2 < M_pos.
 
+  (* ξ = (xi_re, xi_im) in Fp2 — the cubic non-residue for Fp6 = Fp2[v]/(v³ - ξ) *)
+  Variable xi_re : F M_pos.
+  Variable xi_im : F M_pos.
+
   Local Notation Fp := (F M_pos).
   Local Notation Fp2 := (Fp * Fp)%type.
   Local Notation Fp6 := (Fp2 * Fp2 * Fp2)%type.
@@ -69,9 +73,9 @@ Section CubicExtension.
   Local Definition fp6_add_fn := BLS12Fp6Spec.fp6_add M_pos.
   Local Definition fp6_sub_fn := BLS12Fp6Spec.fp6_sub M_pos.
   Local Definition fp6_neg_fn := BLS12Fp6Spec.fp6_neg M_pos.
-  Local Definition fp6_mul_fn := BLS12Fp6Spec.fp6_mul M_pos.
-  Local Definition fp6_sqr_fn := BLS12Fp6Spec.fp6_sqr M_pos.
-  Local Definition fp6_inv_fn := BLS12Fp6Spec.fp6_inv M_pos.
+  Local Definition fp6_mul_fn := BLS12Fp6Spec.fp6_mul M_pos beta xi_re xi_im.
+  Local Definition fp6_sqr_fn := BLS12Fp6Spec.fp6_sqr M_pos beta xi_re xi_im.
+  Local Definition fp6_inv_fn := BLS12Fp6Spec.fp6_inv M_pos beta xi_re xi_im.
 
   (* Fp6 division defined in terms of mul and inv *)
   Local Definition fp6_div_fn (a b : Fp6) : Fp6 := fp6_mul_fn a (fp6_inv_fn b).

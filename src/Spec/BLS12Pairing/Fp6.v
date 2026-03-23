@@ -1,10 +1,11 @@
-(** * Fp6 = Fp2[v]/(v^3 - xi) arithmetic for BLS12-381.
+(** * Fp6 = Fp2[v]/(v^3 - xi) arithmetic, parameterized by β and ξ.
 
     Elements are triples (c0, c1, c2) representing c0 + c1*v + c2*v^2
-    where v^3 = xi = 1 + u in Fp2.
+    where v^3 = xi in Fp2.
 
-    The base field Fp2 = Fp[u]/(u^2 + 1) uses the fact that u^2 = -1
-    for BLS12-381 (i.e., beta = -1).
+    The base field Fp2 = Fp[u]/(u^2 - β) with quadratic non-residue β.
+    For BLS12-381: β = -1, ξ = 1+u = (1,1).
+    For BLS12-377: β = -5, ξ = u = (0,1).
 *)
 
 From Coq Require Import ZArith.
@@ -12,6 +13,13 @@ Require Import Crypto.Spec.ModularArithmetic.
 
 Section BLS12_Fp6.
   Variable p : positive.
+
+  (** Fp2 extension parameters:
+      β is the quadratic non-residue (u^2 = β in Fp2).
+      ξ = (xi_re, xi_im) is the cubic non-residue in Fp2 (v^3 = ξ in Fp6). *)
+  Variable beta : F p.
+  Variable xi_re : F p.
+  Variable xi_im : F p.
 
   (** Notations for base field Fp arithmetic. *)
   Local Notation F := (F p).
@@ -23,10 +31,10 @@ Section BLS12_Fp6.
   Local Notation "1f" := (@F.one p).
 
   (* ================================================================ *)
-  (** ** Fp2 = Fp[u]/(u^2 + 1)                                       *)
+  (** ** Fp2 = Fp[u]/(u^2 - β)                                       *)
   (* ================================================================ *)
 
-  (** An Fp2 element (a0, a1) represents a0 + a1*u where u^2 = -1. *)
+  (** An Fp2 element (a0, a1) represents a0 + a1*u where u^2 = β. *)
   Local Notation Fp2 := (F * F)%type.
 
   Definition fp2_zero : Fp2 := (0f, 0f).
@@ -41,39 +49,38 @@ Section BLS12_Fp6.
   Definition fp2_neg (a : Fp2) : Fp2 :=
     (-f fst a, -f snd a).
 
-  (** Fp2 multiplication: (a0 + a1*u)(b0 + b1*u) = (a0*b0 - a1*b1) + (a0*b1 + a1*b0)*u
-      using u^2 = -1. *)
+  (** Fp2 multiplication: (a0 + a1*u)(b0 + b1*u) = (a0*b0 + β*a1*b1) + (a0*b1 + a1*b0)*u
+      using u^2 = β. *)
   Definition fp2_mul (a b : Fp2) : Fp2 :=
     let a0 := fst a in let a1 := snd a in
     let b0 := fst b in let b1 := snd b in
-    (a0 *f b0 -f a1 *f b1,
+    (a0 *f b0 +f beta *f a1 *f b1,
      a0 *f b1 +f a1 *f b0).
 
-  (** Fp2 squaring: (a0 + a1*u)^2 = (a0^2 - a1^2) + 2*a0*a1*u.
-      Optimized as ((a0+a1)(a0-a1), 2*a0*a1). *)
+  (** Fp2 squaring: (a0 + a1*u)^2 = (a0^2 + β*a1^2) + 2*a0*a1*u. *)
   Definition fp2_sqr (a : Fp2) : Fp2 :=
     let a0 := fst a in let a1 := snd a in
-    ((a0 +f a1) *f (a0 -f a1),
+    (a0 *f a0 +f beta *f a1 *f a1,
      a0 *f a1 +f a0 *f a1).
 
-  (** Fp2 conjugation (Frobenius on Fp2): (a0, a1) -> (a0, -a1).
-      This is the p-th power map on Fp2 since u^p = -u for BLS12-381. *)
+  (** Fp2 conjugation (Frobenius on Fp2): (a0, a1) -> (a0, -a1). *)
   Definition fp2_conjugate (a : Fp2) : Fp2 :=
     (fst a, -f snd a).
 
-  (** Fp2 inverse: (a0 + a1*u)^{-1} = (a0 - a1*u) / (a0^2 + a1^2).
-      The norm is a0^2 + a1^2 (not a0^2 - a1^2) because u^2 = -1. *)
+  (** Fp2 inverse: (a0 + a1*u)^{-1} = (a0, -a1) / (a0^2 - β*a1^2).
+      The norm is a0^2 - β*a1^2. *)
   Definition fp2_inv (a : Fp2) : Fp2 :=
     let a0 := fst a in let a1 := snd a in
-    let norm := a0 *f a0 +f a1 *f a1 in
+    let norm := a0 *f a0 -f beta *f a1 *f a1 in
     let inv_norm := @F.inv p norm in
     (a0 *f inv_norm, (-f a1) *f inv_norm).
 
-  (** Multiply by xi = 1 + u in Fp2.
-      (a0 + a1*u)(1 + u) = (a0 - a1) + (a0 + a1)*u. *)
+  (** Multiply by ξ = (xi_re, xi_im) in Fp2.
+      (a0 + a1*u)(xi_re + xi_im*u) = (a0*xi_re + β*a1*xi_im) + (a0*xi_im + a1*xi_re)*u. *)
   Definition fp2_mul_xi (a : Fp2) : Fp2 :=
     let a0 := fst a in let a1 := snd a in
-    (a0 -f a1, a0 +f a1).
+    (a0 *f xi_re +f beta *f a1 *f xi_im,
+     a0 *f xi_im +f a1 *f xi_re).
 
   (** Scalar multiplication of Fp2 by an Fp element.
       (a0 + a1*u) * s = (a0*s) + (a1*s)*u. *)
@@ -128,8 +135,8 @@ Section BLS12_Fp6.
               (fp2_neg (fp6_c2 a)).
 
   (** Multiply by v in Fp6.
-      v * (c0 + c1*v + c2*v^2) = xi*c2 + c0*v + c1*v^2
-      since v^3 = xi. *)
+      v * (c0 + c1*v + c2*v^2) = ξ*c2 + c0*v + c1*v^2
+      since v^3 = ξ. *)
   Definition fp6_mul_by_v (a : Fp6) : Fp6 :=
     fp6_build (fp2_mul_xi (fp6_c2 a))
               (fp6_c0 a)
