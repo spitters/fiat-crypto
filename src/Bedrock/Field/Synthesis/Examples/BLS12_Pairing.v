@@ -106,7 +106,19 @@ Section BLS12_Pairing.
       exact H.
     Defined.
 
-    Lemma M_mod_4_3 : (Z.pos PrimeField.M_pos mod 4 =? 3) = true.
+    (* β = -1 for BLS12-381 (p ≡ 3 mod 4) *)
+    Let bls12_beta : F PrimeField.M_pos := F.of_Z PrimeField.M_pos (-1).
+
+    Lemma bls12_beta_nz : bls12_beta <> @F.zero PrimeField.M_pos.
+    Proof.
+      unfold bls12_beta. intro H. apply (f_equal F.to_Z) in H.
+      rewrite F.to_Z_0 in H. vm_compute in H. discriminate.
+    Qed.
+
+    Lemma bls12_beta_qnr : ~(exists x, @F.mul PrimeField.M_pos x x = bls12_beta).
+    Proof. (* -1 is QNR when p ≡ 3 mod 4 *) Admitted.
+
+    Lemma bls12_M_big : 2 < Z.pos PrimeField.M_pos.
     Proof. vm_compute. reflexivity. Qed.
 
     (* ============================================================== *)
@@ -131,9 +143,9 @@ Section BLS12_Pairing.
     (* ============================================================== *)
 
     Instance bls12_Fp2_params : AbstractField.FieldParameters Fp2 :=
-      Fp2_field_parameters (fp2_prefix:=fp2_prefix).
+      Fp2_field_parameters bls12_beta fp2_prefix.
     Instance bls12_Fp2_rep : AbstractField.FieldRepresentation (F:=Fp2) :=
-      Fp2_field_representation (fp2_prefix:=fp2_prefix).
+      Fp2_field_representation bls12_beta fp2_prefix.
     Instance bls12_Fp2_names : FieldNames (F:=Fp2) :=
       field_names_prefixed fp2_prefix.
 
@@ -144,7 +156,7 @@ Section BLS12_Pairing.
     Instance bls12_Fp6_params : AbstractField.FieldParameters Fp6 :=
       Fp6_field_parameters (fp6_prefix:=fp6_prefix).
     Instance bls12_Fp6_rep : AbstractField.FieldRepresentation (F:=Fp6) :=
-      Fp6_field_representation (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+      Fp6_field_representation bls12_beta (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
     Instance bls12_Fp6_names : FieldNames (F:=Fp6) :=
       field_names_prefixed fp6_prefix.
 
@@ -155,7 +167,7 @@ Section BLS12_Pairing.
     Instance bls12_Fp12_params : AbstractField.FieldParameters Fp12 :=
       Fp12_field_parameters (fp12_prefix:=fp12_prefix).
     Instance bls12_Fp12_rep : AbstractField.FieldRepresentation (F:=Fp12) :=
-      Fp12_field_representation (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+      Fp12_field_representation bls12_beta (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
     Instance bls12_Fp12_names : FieldNames (F:=Fp12) :=
       field_names_prefixed fp12_prefix.
     Instance bls12_Fp_names : FieldNames (F:=Fp) :=
@@ -216,13 +228,13 @@ Section BLS12_Pairing.
     (* ============================================================== *)
 
     Definition bls12_Fp6_funcs : list function_t :=
-      Fp6_funcs fp6_prefix fp2_prefix.
+      Fp6_funcs bls12_beta fp6_prefix fp2_prefix.
 
     Definition bls12_Fp12_funcs : list function_t :=
-      Fp12_funcs fp12_prefix fp6_prefix fp2_prefix.
+      Fp12_funcs bls12_beta fp12_prefix fp6_prefix fp2_prefix.
 
     Definition bls12_pairing_ops : list function_t :=
-      PairingOps_funcs fp12_prefix fp6_prefix fp2_prefix.
+      PairingOps_funcs bls12_beta fp12_prefix fp6_prefix fp2_prefix.
 
     (* ============================================================== *)
     (* Helper: fold a list of cmds into nested cmd.seq                 *)

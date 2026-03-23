@@ -34,7 +34,10 @@ Section Fp6.
 
   Context {prime_parameters : PrimeFieldParameters}
           {prime_parameters_ok : PrimeFieldParameters_ok}
-          {M_mod : (Z.pos M_pos) mod 4 =? 3 = true}.
+          (beta : F M_pos)
+          {beta_nz : beta <> @F.zero M_pos}
+          {beta_qnr : ~(exists x, @F.mul M_pos x x = beta)}
+          {M_big : 2 < Z.pos M_pos}.
 
   Local Notation Fp := (F M_pos).
   Local Notation Fp2 := ((Fp * Fp)%type).
@@ -57,13 +60,13 @@ Section Fp6.
   (* ================================================================ *)
 
   Local Instance Fp2_fp_inst : AbstractField.FieldParameters Fp2 :=
-    Fp2_field_parameters (fp2_prefix:=fp2_prefix).
+    Fp2_field_parameters beta fp2_prefix.
   Local Instance Fp2_fp_ok_inst : @AbstractField.FieldParameters_ok _ Fp2_fp_inst :=
-    @Fp2_field_parameters_ok prime_parameters prime_parameters_ok M_mod fp2_prefix.
+    Fp2_field_parameters_ok beta beta_nz beta_qnr M_big fp2_prefix.
   Local Instance Fp2_repr_inst : @AbstractField.FieldRepresentation Fp2 Fp2_fp_inst width BW word mem :=
-    @Fp2_field_representation width BW word mem prime_parameters F_representation fp2_prefix.
+    @Fp2_field_representation width BW word mem prime_parameters F_representation beta fp2_prefix.
   Local Instance Fp2_repr_ok_inst : @AbstractField.FieldRepresentation_ok Fp2 Fp2_fp_inst _ _ _ _ Fp2_repr_inst :=
-    @Fp2_field_representation_ok width BW word mem prime_parameters F_representation F_representation_ok fp2_prefix.
+    @Fp2_field_representation_ok width BW word mem prime_parameters F_representation F_representation_ok beta fp2_prefix.
 
   (* ================================================================ *)
   (* Fp6 instances from the cubic layer                                *)
@@ -73,10 +76,10 @@ Section Fp6.
     Fp6_field_parameters (fp6_prefix:=fp6_prefix).
 
   Local Instance Fp6_repr_inst : @AbstractField.FieldRepresentation Fp6 Fp6_fp_inst width BW word mem :=
-    Fp6_field_representation (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp6_field_representation beta (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
 
   Local Instance Fp6_repr_ok_inst : @AbstractField.FieldRepresentation_ok Fp6 Fp6_fp_inst _ _ _ _ Fp6_repr_inst :=
-    Fp6_field_representation_ok (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp6_field_representation_ok beta (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
 
   (* ================================================================ *)
   (* FElem with optional bounds (reused from QuadraticFieldExtensions) *)
@@ -588,31 +591,15 @@ Section Fp6.
         destruct (proj1 (map.disjoint_putmany_l a b c) H) as [H1 H2]; clear H
     end.
 
-  (* Bridge between QuadraticExtensions.mulp2 (generic β) and
-     BLS12Fp6Spec.fp2_mul (hardcoded u²=-1).
-     Only mul differs; add/sub/opp are definitionally equal. *)
-  Lemma mulp2_eq_fp2_mul : forall a b,
-    QuadraticExtensions.mulp2 M_pos a b = BLS12Fp6Spec.fp2_mul M_pos a b.
-  Proof.
-    intros [a0 a1] [b0 b1].
-    unfold QuadraticExtensions.mulp2, BLS12Fp6Spec.fp2_mul. cbn [fst snd].
-    f_equal. symmetry.
-    rewrite (QuadraticExtensions.F_mul_assoc M_pos M_prime).
-    rewrite (QuadraticExtensions.mul_neg_1 M_pos M_prime M_mod).
-    reflexivity.
-  Qed.
-
-  (* Bridge between QuadraticExtensions.invp2 (generic β, case-split) and
-     BLS12Fp6Spec.fp2_inv (direct formula for u²=-1).
-     Needed for Fp6_inv feval closure. *)
-  Lemma invp2_eq_fp2_inv : forall x,
-    QuadraticExtensions.invp2 M_pos x = BLS12Fp6Spec.fp2_inv M_pos x.
-  Proof.
-    intros [a0 a1].
-    rewrite (QuadraticExtensions.invp2_plus_norm M_pos M_prime ltac:(lia) M_mod).
-    unfold BLS12Fp6Spec.fp2_inv. cbn [fst snd].
-    reflexivity.
-  Qed.
+  (* Bridge between generic theory (parameterized by β) and
+     BLS12-specific Fp6 spec (hardcoded u²=-1).
+     Each curve instantiation provides these proofs.
+     For β=-1: use mul_neg_1 / invp2_plus_norm.
+     For other β: generalize the Fp6 spec accordingly. *)
+  Hypothesis mulp2_eq_fp2_mul : forall a b,
+    QuadraticExtensions.mulp2 M_pos beta a b = BLS12Fp6Spec.fp2_mul M_pos a b.
+  Hypothesis invp2_eq_fp2_inv : forall x,
+    QuadraticExtensions.invp2 M_pos beta x = BLS12Fp6Spec.fp2_inv M_pos x.
 
   Lemma Fp2_mul_xi_ok : program_logic_goal_for_function! Fp2_mul_xi.
   Proof.
@@ -639,8 +626,8 @@ Section Fp6.
     destruct Hmemx as [m_x [m_rx [Hmemx_sp [Hfx Hrx]]]].
     destruct Hmemx_sp as [Heq_memx Hd_x_rx]. subst mem0.
     (* Split all Fp2 FElems into Fp halves *)
-    pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_split _ _ _ _ word_ok mem_ok prime_parameters F_representation fp2_prefix px x m_x Hfx) as [m_x1 [m_x2 [Hsep_x [Hx1 Hx2]]]].
-    pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_split _ _ _ _ word_ok mem_ok prime_parameters F_representation fp2_prefix tmp tmp_val mStack Htmp) as [m_t1 [m_t2 [Hsep_t [Ht1 Ht2]]]].
+    pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_split _ _ _ _ word_ok mem_ok prime_parameters F_representation beta fp2_prefix px x m_x Hfx) as [m_x1 [m_x2 [Hsep_x [Hx1 Hx2]]]].
+    pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_split _ _ _ _ word_ok mem_ok prime_parameters F_representation beta fp2_prefix tmp tmp_val mStack Htmp) as [m_t1 [m_t2 [Hsep_t [Ht1 Ht2]]]].
     destruct Hsep_x as [Heq_x Hd_x12]. destruct Hsep_t as [Heq_t Hd_t12].
     subst m_x mStack.
     (* Decompose bounded_by at Fp level *)
@@ -765,7 +752,7 @@ Section Fp6.
     (* After copies: m'' = putmany m_n2 (putmany m_n1 (putmany m_x1 (putmany m_x2 m_rx)))
        and putmany (putmany m_x1 m_x2) m_rx = putmany m_out m_rr  [by Heq_m0_out]
        Split the output Fp2 FElem *)
-    pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_split _ _ _ _ word_ok mem_ok prime_parameters F_representation fp2_prefix pout out m_out Hfe_out) as [m_o1 [m_o2 [Hsep_o [Ho1 Ho2]]]].
+    pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_split _ _ _ _ word_ok mem_ok prime_parameters F_representation beta fp2_prefix pout out m_out Hfe_out) as [m_o1 [m_o2 [Hsep_o [Ho1 Ho2]]]].
     destruct Hsep_o as [Heq_o Hd_o12]. subst m_out.
     (* Derive disjointness between n1/n2 and o1/o2/rr *)
     assert (Hd_n1_xrx : map.disjoint m_n1 (map.putmany (map.putmany m_x1 m_x2) m_rx)).
@@ -896,7 +883,7 @@ Section Fp6.
     { exists m_B, m_C.
       split; [split; [reflexivity | map_disjoint_auto] |].
       split; [exact HB | exact HC]. }
-    pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_join _ _ _ _ word_ok mem_ok prime_parameters F_representation fp2_prefix
+    pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_join _ _ _ _ word_ok mem_ok prime_parameters F_representation beta fp2_prefix
       tmp (fst_felem x) (snd_felem x) (map.putmany m_B m_C) Hlen_B Hlen_C Hjoin_tmp) as Hfp2_tmp.
     rewrite (@QuadraticFieldExtensions.Fp2_list_decomp _ _ _ _ prime_parameters F_representation x) in Hfp2_tmp.
     pose proof (@AbstractField.FElem_to_bytes _ _ _ _ word_ok mem_ok _
@@ -946,7 +933,7 @@ Section Fp6.
       { exists m_D, m_A.
         split; [split; [reflexivity | map_disjoint_auto] |].
         split; [exact HD | exact HA]. }
-      pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_join _ _ _ _ word_ok mem_ok prime_parameters F_representation fp2_prefix
+      pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_join _ _ _ _ word_ok mem_ok prime_parameters F_representation beta fp2_prefix
         pout out1 out2 (map.putmany m_D m_A) Hlen_D Hlen_A Hjoin_out) as Hfp2_out.
       exists (map.putmany m_D m_A), m_E.
       split; [split |].

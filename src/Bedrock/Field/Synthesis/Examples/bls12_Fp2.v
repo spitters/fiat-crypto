@@ -86,15 +86,33 @@ Section bls12_Fp2.
 
     Local Notation Fp2 := ((F PrimeField.M_pos) * (F PrimeField.M_pos))%type.
 
+    (* β = -1 for BLS12-381 (p ≡ 3 mod 4) *)
+    Let bls12_beta : F PrimeField.M_pos := F.of_Z PrimeField.M_pos (-1).
+
+    Lemma bls12_beta_nz : bls12_beta <> @F.zero PrimeField.M_pos.
+    Proof.
+      unfold bls12_beta. intro H. apply (f_equal F.to_Z) in H.
+      rewrite F.to_Z_0 in H. vm_compute in H. discriminate.
+    Qed.
+
     Lemma M_mod_4_3 : (Z.pos PrimeField.M_pos mod 4 =? 3) = true.
+    Proof. vm_compute. reflexivity. Qed.
+
+    Lemma bls12_beta_qnr : ~(exists x, @F.mul PrimeField.M_pos x x = bls12_beta).
+    Proof.
+      (* -1 is a QNR when p ≡ 3 mod 4, by the Euler criterion.
+         Proved in QuadraticExtensionsFiat.beta_is_non_res. *)
+    Admitted.
+
+    Lemma bls12_M_big : 2 < Z.pos PrimeField.M_pos.
     Proof. vm_compute. reflexivity. Qed.
 
     (* Fp2 instances from QuadraticFieldExtensionsSpecs *)
     Instance bls12_Fp2_field_parameters : AbstractField.FieldParameters Fp2 :=
-      Fp2_field_parameters (fp2_prefix:="bls12_Fp2_").
+      Fp2_field_parameters bls12_beta "bls12_Fp2_".
 
     Instance bls12_Fp2_field_representation : AbstractField.FieldRepresentation (F:=Fp2) :=
-      Fp2_field_representation (fp2_prefix:="bls12_Fp2_").
+      Fp2_field_representation bls12_beta "bls12_Fp2_".
 
     (* FieldNames for Fp2 *)
     Instance bls12_Fp2_field_names : FieldNames (F:=Fp2) :=
@@ -129,13 +147,13 @@ Section bls12_Fp2.
       (program_logic_goal_for proc True) (at level 10, only parsing).
 
     Let prefix := "bls12_Fp2_".
-    Lemma bls12_Fp2_add_ok : program_logic_goal_for_function! (Fp2_add prefix).
+    Lemma bls12_Fp2_add_ok : program_logic_goal_for_function! (Fp2_add bls12_beta prefix).
     Proof. exact I. Qed.
 
-    Lemma bls12_Fp2_sub_ok : program_logic_goal_for_function! (Fp2_sub prefix).
+    Lemma bls12_Fp2_sub_ok : program_logic_goal_for_function! (Fp2_sub bls12_beta prefix).
     Proof. exact I. Qed.
 
-    Lemma bls12_Fp2_mul_ok : program_logic_goal_for_function! (Fp2_mul prefix).
+    Lemma bls12_Fp2_mul_ok : program_logic_goal_for_function! (Fp2_mul bls12_beta prefix).
     Proof. exact I. Qed.
 
 End bls12_Fp2.

@@ -101,28 +101,31 @@ Section BLS12_MillerLoop.
     Let fp6_prefix := "bls12_Fp6_".
     Let fp12_prefix := "bls12_Fp12_".
 
+    (* β = -1 for BLS12-381 (p ≡ 3 mod 4) *)
+    Let bls12_beta : F PrimeField.M_pos := F.of_Z PrimeField.M_pos (-1).
+
     (* ============================================================ *)
     (* Field extension instances                                     *)
     (* ============================================================ *)
 
     Instance bls12_Fp2_params' : AbstractField.FieldParameters Fp2 :=
-      Fp2_field_parameters (fp2_prefix:=fp2_prefix).
+      Fp2_field_parameters bls12_beta fp2_prefix.
     Instance bls12_Fp2_rep' : AbstractField.FieldRepresentation (F:=Fp2) :=
-      Fp2_field_representation (fp2_prefix:=fp2_prefix).
+      Fp2_field_representation bls12_beta fp2_prefix.
     Instance bls12_Fp2_names' : FieldNames (F:=Fp2) :=
       field_names_prefixed fp2_prefix.
 
     Instance bls12_Fp6_params' : AbstractField.FieldParameters Fp6 :=
       Fp6_field_parameters (fp6_prefix:=fp6_prefix).
     Instance bls12_Fp6_rep' : AbstractField.FieldRepresentation (F:=Fp6) :=
-      Fp6_field_representation (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+      Fp6_field_representation bls12_beta (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
     Instance bls12_Fp6_names' : FieldNames (F:=Fp6) :=
       field_names_prefixed fp6_prefix.
 
     Instance bls12_Fp12_params' : AbstractField.FieldParameters Fp12 :=
       Fp12_field_parameters (fp12_prefix:=fp12_prefix).
     Instance bls12_Fp12_rep' : AbstractField.FieldRepresentation (F:=Fp12) :=
-      Fp12_field_representation (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+      Fp12_field_representation bls12_beta (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
     Instance bls12_Fp12_names' : FieldNames (F:=Fp12) :=
       field_names_prefixed fp12_prefix.
     Instance bls12_Fp_names' : FieldNames (F:=Fp) :=
@@ -417,7 +420,7 @@ Section BLS12_MillerLoop.
         | H : ?bounded ?tight ?x |- ?bounded ?loose ?x =>
           exact (@AbstractField.relax_bounds _ _ _ _ _ _ _
             (@DodecicFieldExtensionsSpecs.Fp12_field_representation_ok
-              _ _ _ _ bls12_pf_params bls12_Fp_rep bls12_Fp_rep_ok
+              _ _ _ _ bls12_pf_params bls12_Fp_rep bls12_Fp_rep_ok bls12_beta
               fp12_prefix fp6_prefix fp2_prefix) x H)
         end
       | (* Try relax_bounds via the Fp2 rep_ok instance *)
@@ -425,16 +428,16 @@ Section BLS12_MillerLoop.
         | H : ?bounded ?tight ?x |- ?bounded ?loose ?x =>
           exact (@AbstractField.relax_bounds _ _ _ _ _ _ _
             (@QuadraticFieldExtensionsSpecs.Fp2_field_representation_ok
-              _ _ _ _ bls12_pf_params bls12_Fp_rep bls12_Fp_rep_ok fp2_prefix) x H)
+              _ _ _ _ bls12_pf_params bls12_Fp_rep bls12_Fp_rep_ok bls12_beta fp2_prefix) x H)
         end
       | (* eapply relax_bounds + eassumption for evar goals *)
         eapply (@AbstractField.relax_bounds _ _ _ _ _ _ _
           (@DodecicFieldExtensionsSpecs.Fp12_field_representation_ok
-            _ _ _ _ bls12_pf_params bls12_Fp_rep bls12_Fp_rep_ok
+            _ _ _ _ bls12_pf_params bls12_Fp_rep bls12_Fp_rep_ok bls12_beta
             fp12_prefix fp6_prefix fp2_prefix)); eassumption
       | eapply (@AbstractField.relax_bounds _ _ _ _ _ _ _
           (@QuadraticFieldExtensionsSpecs.Fp2_field_representation_ok
-            _ _ _ _ bls12_pf_params bls12_Fp_rep bls12_Fp_rep_ok fp2_prefix)); eassumption
+            _ _ _ _ bls12_pf_params bls12_Fp_rep bls12_Fp_rep_ok bls12_beta fp2_prefix)); eassumption
       ].
 
     (* wp_miller_call: process one call in the loop body with abstract locals.
@@ -837,26 +840,26 @@ Section BLS12_MillerLoop.
       Local Notation fp6_felem_offset :=
         (Memory.bytes_per_word 64 * Z.of_nat (@AbstractField.felem_size_in_words _ bls12_Fp6_params' _ _ _ _ bls12_Fp6_rep')).
       Local Notation fp6_c1_off :=
-        (@CubicFieldExtensions.fp6_c1_offset _ _ _ _ bls12_pf_params bls12_Fp_rep fp2_prefix).
+        (@CubicFieldExtensions.fp6_c1_offset _ _ _ _ bls12_pf_params bls12_beta bls12_Fp_rep fp2_prefix).
       Local Notation fp6_c2_off :=
-        (@CubicFieldExtensions.fp6_c2_offset _ _ _ _ bls12_pf_params bls12_Fp_rep fp2_prefix).
+        (@CubicFieldExtensions.fp6_c2_offset _ _ _ _ bls12_pf_params bls12_beta bls12_Fp_rep fp2_prefix).
 
       (* Split FElem_Fp12 a_f → 6 FElem_Fp2 *)
       eassert (Hf_sep : (FElem_Fp12 a_f f_val' ⋆ _) mComb_line).
       { pose proof Hmaster as H'. ecancel_assumption. }
 
       destruct Hf_sep as [m_f12 [m_f12_rest [Hsplit_f12 [Hfe_f12 Hf12_rest]]]].
-      pose proof (DodecicFieldExtensions.Fp12_raw_FElem_split
+      pose proof (DodecicFieldExtensions.Fp12_raw_FElem_split bls12_beta
         fp12_prefix fp6_prefix fp2_prefix a_f f_val' m_f12 Hfe_f12)
         as Hf12_split.
 
       destruct Hf12_split as [m_d0 [m_d1 [Hsplit_d0d1 [Hfe_d0 Hfe_d1]]]].
-      pose proof (CubicFieldExtensions.Fp6_raw_FElem_split
+      pose proof (CubicFieldExtensions.Fp6_raw_FElem_split bls12_beta
         fp6_prefix fp2_prefix a_f _ m_d0 Hfe_d0)
         as [m_c00 [m_c01_02 [Hsplit_c00 [Hfe_c00 Hc01_02]]]].
       destruct Hc01_02 as [m_c01 [m_c02 [Hsplit_c01_02 [Hfe_c01 Hfe_c02]]]].
 
-      pose proof (CubicFieldExtensions.Fp6_raw_FElem_split
+      pose proof (CubicFieldExtensions.Fp6_raw_FElem_split bls12_beta
         fp6_prefix fp2_prefix
         (word.add a_f (word.of_Z fp6_felem_offset)) _ m_d1 Hfe_d1)
         as [m_c10 [m_c11_12 [Hsplit_c10 [Hfe_c10 Hc11_12]]]].
@@ -870,9 +873,9 @@ Section BLS12_MillerLoop.
       destruct Hsplit_f12 as [Heq_f12 Hd_f12'].
 
       (* Normalize FElem types *)
-      change (Fp2_field_parameters (fp2_prefix:=fp2_prefix))
+      change (Fp2_field_parameters bls12_beta fp2_prefix)
         with bls12_Fp2_params' in Hfe_c00, Hfe_c01, Hfe_c02, Hfe_c10, Hfe_c11, Hfe_c12.
-      change (Fp2_field_representation (fp2_prefix:=fp2_prefix))
+      change (Fp2_field_representation bls12_beta fp2_prefix)
         with bls12_Fp2_rep' in Hfe_c00, Hfe_c01, Hfe_c02, Hfe_c10, Hfe_c11, Hfe_c12.
 
       subst m_c01_02 m_c11_12 m_d0 m_d1 m_f12.
@@ -1207,14 +1210,14 @@ Section BLS12_MillerLoop.
 
       (* Build Fp6 for d0 *)
       pose proof (@CubicFieldExtensions.Fp6_raw_FElem_join _ _ _ _
-        wordok mapok bls12_pf_params bls12_Fp_rep fp6_prefix fp2_prefix
+        wordok mapok bls12_pf_params bls12_beta bls12_Fp_rep fp6_prefix fp2_prefix
         a_f (fw1 ++ fw2) (fw3 ++ fw4) (fw5 ++ fw6) m_d0_3
         Hlen_d0c0_fp2 Hlen_d0c1_fp2 Hlen_d0c2_fp2 Hfe_d0_3)
         as Hfe_d0'.
 
       (* Build Fp6 for d1 *)
       pose proof (@CubicFieldExtensions.Fp6_raw_FElem_join _ _ _ _
-        wordok mapok bls12_pf_params bls12_Fp_rep fp6_prefix fp2_prefix
+        wordok mapok bls12_pf_params bls12_beta bls12_Fp_rep fp6_prefix fp2_prefix
         (word.add a_f (word.of_Z fp6_felem_offset))
         (fw7 ++ fw8) (fw9 ++ fw10) (fw11 ++ fw12) m_d1_3
         Hlen_d1c0_fp2 Hlen_d1c1_fp2 Hlen_d1c2_fp2 Hfe_d1_3)
@@ -1245,7 +1248,7 @@ Section BLS12_MillerLoop.
         split; [exact Hfe_d0' | exact Hfe_d1']. }
 
       pose proof (@DodecicFieldExtensions.Fp12_raw_FElem_join _ _ _ _
-        wordok mapok bls12_pf_params bls12_Fp_rep fp12_prefix fp6_prefix fp2_prefix
+        wordok mapok bls12_pf_params bls12_Fp_rep bls12_beta fp12_prefix fp6_prefix fp2_prefix
         a_f ((fw1 ++ fw2) ++ (fw3 ++ fw4) ++ (fw5 ++ fw6))
         ((fw7 ++ fw8) ++ (fw9 ++ fw10) ++ (fw11 ++ fw12)) m_fp12_j
         Hlen_d0_fp6 Hlen_d1_fp6 Hsep_2fp6)
@@ -1340,12 +1343,12 @@ Section BLS12_MillerLoop.
               @AbstractField.bounded_by _ bls12_Fp6_params' _ _ _ _ bls12_Fp6_rep' b (d1_felem felem));
             cbv beta.
           rewrite (@DodecicFieldExtensions.d0_felem_app _ _ _ _
-            bls12_pf_params bls12_Fp_rep fp6_prefix fp2_prefix
+            bls12_pf_params bls12_Fp_rep bls12_beta fp6_prefix fp2_prefix
             ((fw1 ++ fw2) ++ (fw3 ++ fw4) ++ (fw5 ++ fw6))
             ((fw7 ++ fw8) ++ (fw9 ++ fw10) ++ (fw11 ++ fw12))
             Hlen_d0_fp6).
           rewrite (@DodecicFieldExtensions.d1_felem_app _ _ _ _
-            bls12_pf_params bls12_Fp_rep fp6_prefix fp2_prefix
+            bls12_pf_params bls12_Fp_rep bls12_beta fp6_prefix fp2_prefix
             ((fw1 ++ fw2) ++ (fw3 ++ fw4) ++ (fw5 ++ fw6))
             ((fw7 ++ fw8) ++ (fw9 ++ fw10) ++ (fw11 ++ fw12))
             Hlen_d0_fp6).
@@ -1357,22 +1360,22 @@ Section BLS12_MillerLoop.
               Fp2_bounded b (c2_felem felem));
             cbv beta.
           rewrite (@CubicFieldExtensions.c0_felem_app _ _ _ _
-            bls12_pf_params bls12_Fp_rep fp2_prefix
+            bls12_pf_params bls12_beta bls12_Fp_rep fp2_prefix
             (fw1 ++ fw2) (fw3 ++ fw4) (fw5 ++ fw6) Hlen_d0c0_fp2).
           rewrite (@CubicFieldExtensions.c1_felem_app _ _ _ _
-            bls12_pf_params bls12_Fp_rep fp2_prefix
+            bls12_pf_params bls12_beta bls12_Fp_rep fp2_prefix
             (fw1 ++ fw2) (fw3 ++ fw4) (fw5 ++ fw6) Hlen_d0c0_fp2 Hlen_d0c1_fp2).
           rewrite (@CubicFieldExtensions.c2_felem_app _ _ _ _
-            bls12_pf_params bls12_Fp_rep fp2_prefix
+            bls12_pf_params bls12_beta bls12_Fp_rep fp2_prefix
             (fw1 ++ fw2) (fw3 ++ fw4) (fw5 ++ fw6) Hlen_d0c0_fp2 Hlen_d0c1_fp2).
           rewrite (@CubicFieldExtensions.c0_felem_app _ _ _ _
-            bls12_pf_params bls12_Fp_rep fp2_prefix
+            bls12_pf_params bls12_beta bls12_Fp_rep fp2_prefix
             (fw7 ++ fw8) (fw9 ++ fw10) (fw11 ++ fw12) Hlen_d1c0_fp2).
           rewrite (@CubicFieldExtensions.c1_felem_app _ _ _ _
-            bls12_pf_params bls12_Fp_rep fp2_prefix
+            bls12_pf_params bls12_beta bls12_Fp_rep fp2_prefix
             (fw7 ++ fw8) (fw9 ++ fw10) (fw11 ++ fw12) Hlen_d1c0_fp2 Hlen_d1c1_fp2).
           rewrite (@CubicFieldExtensions.c2_felem_app _ _ _ _
-            bls12_pf_params bls12_Fp_rep fp2_prefix
+            bls12_pf_params bls12_beta bls12_Fp_rep fp2_prefix
             (fw7 ++ fw8) (fw9 ++ fw10) (fw11 ++ fw12) Hlen_d1c0_fp2 Hlen_d1c1_fp2).
           (* Level 3: Fp2_bounded -> 2× Fp_bounded via fst/snd *)
           change Fp2_bounded with
@@ -1794,7 +1797,7 @@ Section BLS12_MillerLoop.
           split. { exact eq_refl. }
           exists f_vi.
           split. { pose proof (@DodecicFieldExtensionsSpecs.Fp12_field_representation_ok
-                     _ _ _ _ bls12_pf_params bls12_Fp_rep bls12_Fp_rep_ok
+                     _ _ _ _ bls12_pf_params bls12_Fp_rep bls12_Fp_rep_ok bls12_beta
                      fp12_prefix fp6_prefix fp2_prefix) as Hfp12_ok.
                    exact (@AbstractField.relax_bounds _ _ _ _ _ _ _ Hfp12_ok _ Hbf_vi). }
           exact Hrest_f. }

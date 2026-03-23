@@ -30,8 +30,7 @@ Section Fp12.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Context {prime_parameters : PrimeFieldParameters}
-          {prime_parameters_ok : PrimeFieldParameters_ok}
-          {M_mod : (Z.pos M_pos) mod 4 =? 3 = true}.
+          {prime_parameters_ok : PrimeFieldParameters_ok}.
 
   Local Notation Fp := (F M_pos).
   Local Notation Fp2 := ((Fp * Fp)%type).
@@ -46,6 +45,12 @@ Section Fp12.
   (* note that this excludes non-saturated representations *)
   Context {bounds_equiv : forall x, bounded_by loose_bounds x -> bounded_by tight_bounds x}.
 
+  (* Quadratic non-residue β for Fp2 = Fp[u]/(u² - β) *)
+  Variable beta : F M_pos.
+  Hypothesis beta_nz : beta <> @F.zero M_pos.
+  Hypothesis beta_qnr : ~(exists x, @F.mul M_pos x x = beta).
+  Hypothesis M_big : 2 < Z.pos M_pos.
+
   (* Prefixes for function names *)
   Variable fp12_prefix : string.
   Variable fp6_prefix : string.
@@ -56,27 +61,27 @@ Section Fp12.
   (* ================================================================ *)
 
   Local Instance Fp2_fp_inst : AbstractField.FieldParameters Fp2 :=
-    Fp2_field_parameters (fp2_prefix:=fp2_prefix).
+    Fp2_field_parameters beta fp2_prefix.
   Local Instance Fp2_fp_ok_inst : @AbstractField.FieldParameters_ok _ Fp2_fp_inst :=
-    @Fp2_field_parameters_ok prime_parameters prime_parameters_ok M_mod fp2_prefix.
+    Fp2_field_parameters_ok beta beta_nz beta_qnr M_big fp2_prefix.
   Local Instance Fp2_repr_inst : @AbstractField.FieldRepresentation Fp2 Fp2_fp_inst width BW word mem :=
-    @Fp2_field_representation width BW word mem prime_parameters F_representation fp2_prefix.
+    @Fp2_field_representation width BW word mem prime_parameters F_representation beta fp2_prefix.
   Local Instance Fp2_repr_ok_inst : @AbstractField.FieldRepresentation_ok Fp2 Fp2_fp_inst _ _ _ _ Fp2_repr_inst :=
-    @Fp2_field_representation_ok width BW word mem prime_parameters F_representation F_representation_ok fp2_prefix.
+    @Fp2_field_representation_ok width BW word mem prime_parameters F_representation F_representation_ok beta fp2_prefix.
 
   Local Instance Fp6_fp_inst : AbstractField.FieldParameters Fp6 :=
     Fp6_field_parameters (fp6_prefix:=fp6_prefix).
   Local Instance Fp6_repr_inst : @AbstractField.FieldRepresentation Fp6 Fp6_fp_inst width BW word mem :=
-    Fp6_field_representation (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp6_field_representation beta (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
   Local Instance Fp6_repr_ok_inst : @AbstractField.FieldRepresentation_ok Fp6 Fp6_fp_inst _ _ _ _ Fp6_repr_inst :=
-    Fp6_field_representation_ok (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp6_field_representation_ok beta (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
 
   Local Instance Fp12_fp_inst : AbstractField.FieldParameters Fp12 :=
     Fp12_field_parameters (fp12_prefix:=fp12_prefix).
   Local Instance Fp12_repr_inst : @AbstractField.FieldRepresentation Fp12 Fp12_fp_inst width BW word mem :=
-    Fp12_field_representation (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp12_field_representation beta (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
   Local Instance Fp12_repr_ok_inst : @AbstractField.FieldRepresentation_ok Fp12 Fp12_fp_inst _ _ _ _ Fp12_repr_inst :=
-    Fp12_field_representation_ok (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp12_field_representation_ok beta (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
 
   (* ================================================================ *)
   (* Helper function names                                             *)

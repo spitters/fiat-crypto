@@ -97,10 +97,13 @@ Section bls12_G2.
 
     Let fp2_prefix := "bls12_Fp2_".
 
+    (* β = -1 for BLS12-381 (p ≡ 3 mod 4) *)
+    Let bls12_beta : F PrimeField.M_pos := F.of_Z PrimeField.M_pos (-1).
+
     Instance bls12_Fp2_params : AbstractField.FieldParameters Fp2 :=
-      Fp2_field_parameters (fp2_prefix:=fp2_prefix).
+      Fp2_field_parameters bls12_beta fp2_prefix.
     Instance bls12_Fp2_rep : AbstractField.FieldRepresentation (F:=Fp2) :=
-      Fp2_field_representation (fp2_prefix:=fp2_prefix).
+      Fp2_field_representation bls12_beta fp2_prefix.
 
     (* ============================================================== *)
     (* Fp2 operation names                                             *)

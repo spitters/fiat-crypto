@@ -39,11 +39,15 @@ Section DodecicExtension.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Context {prime_parameters : PrimeFieldParameters}
-          {prime_parameters_ok : PrimeFieldParameters_ok}
-          {M_mod : M_pos mod 4 =? 3 = true}.
+          {prime_parameters_ok : PrimeFieldParameters_ok}.
   Existing Instance prime_field_parameters.
   Context {field_representation : AbstractField.FieldRepresentation}
           {field_representation_ok : AbstractField.FieldRepresentation_ok}.
+
+  Variable beta : F M_pos.
+  Hypothesis beta_nz : beta <> @F.zero M_pos.
+  Hypothesis beta_qnr : ~(exists x, @F.mul M_pos x x = beta).
+  Hypothesis M_big_dodecic : 2 < M_pos.
 
   Local Notation Fp := (F M_pos).
   Local Notation Fp2 := (Fp * Fp)%type.
@@ -58,14 +62,14 @@ Section DodecicExtension.
 
   (* We need Fp2 and Fp6 field parameters and representations from lower layers *)
   Local Instance Fp2_fp_inst : AbstractField.FieldParameters Fp2 :=
-    Fp2_field_parameters (fp2_prefix:=fp2_prefix).
+    Fp2_field_parameters beta fp2_prefix.
   Local Instance Fp2_repr_inst : @AbstractField.FieldRepresentation Fp2 Fp2_fp_inst width BW word mem :=
-    @Fp2_field_representation width BW word mem prime_parameters field_representation fp2_prefix.
+    @Fp2_field_representation width BW word mem prime_parameters field_representation beta fp2_prefix.
 
   Local Instance Fp6_fp_inst : AbstractField.FieldParameters Fp6 :=
     Fp6_field_parameters (fp6_prefix:=fp6_prefix).
   Local Instance Fp6_repr_inst : @AbstractField.FieldRepresentation Fp6 Fp6_fp_inst width BW word mem :=
-    Fp6_field_representation (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+    Fp6_field_representation beta (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
 
   (* ================================================================ *)
   (* Fp12 Gallina operations (from Spec.BLS12Pairing.Fp12)            *)

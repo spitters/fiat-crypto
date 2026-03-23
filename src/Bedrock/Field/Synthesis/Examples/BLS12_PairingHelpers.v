@@ -104,28 +104,31 @@ Section BLS12_PairingHelpers.
     Let fp6_prefix := "bls12_Fp6_".
     Let fp12_prefix := "bls12_Fp12_".
 
+    (* β = -1 for BLS12-381 (p ≡ 3 mod 4) *)
+    Let bls12_beta : F PrimeField.M_pos := F.of_Z PrimeField.M_pos (-1).
+
     (* ============================================================ *)
     (* Field extension instances                                     *)
     (* ============================================================ *)
 
     Instance bls12_Fp2_params' : AbstractField.FieldParameters Fp2 :=
-      Fp2_field_parameters (fp2_prefix:=fp2_prefix).
+      Fp2_field_parameters bls12_beta fp2_prefix.
     Instance bls12_Fp2_rep' : AbstractField.FieldRepresentation (F:=Fp2) :=
-      Fp2_field_representation (fp2_prefix:=fp2_prefix).
+      Fp2_field_representation bls12_beta fp2_prefix.
     Instance bls12_Fp2_names' : FieldNames (F:=Fp2) :=
       field_names_prefixed fp2_prefix.
 
     Instance bls12_Fp6_params' : AbstractField.FieldParameters Fp6 :=
       Fp6_field_parameters (fp6_prefix:=fp6_prefix).
     Instance bls12_Fp6_rep' : AbstractField.FieldRepresentation (F:=Fp6) :=
-      Fp6_field_representation (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+      Fp6_field_representation bls12_beta (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
     Instance bls12_Fp6_names' : FieldNames (F:=Fp6) :=
       field_names_prefixed fp6_prefix.
 
     Instance bls12_Fp12_params' : AbstractField.FieldParameters Fp12 :=
       Fp12_field_parameters (fp12_prefix:=fp12_prefix).
     Instance bls12_Fp12_rep' : AbstractField.FieldRepresentation (F:=Fp12) :=
-      Fp12_field_representation (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+      Fp12_field_representation bls12_beta (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
     Instance bls12_Fp12_names' : FieldNames (F:=Fp12) :=
       field_names_prefixed fp12_prefix.
     Instance bls12_Fp_names' : FieldNames (F:=Fp) :=
@@ -211,7 +214,7 @@ Section BLS12_PairingHelpers.
        (FElem_Fp (word.add p (word.of_Z fp_felem_offset)) (snd_felem x) ⋆ R)) m.
     Proof.
       intros [m1 [m2 [[Heq Hd] [Hfp2 HR]]]].
-      pose proof (QuadraticFieldExtensions.Fp2_raw_FElem_split
+      pose proof (QuadraticFieldExtensions.Fp2_raw_FElem_split bls12_beta
         fp2_prefix p x m1 Hfp2) as [ma [mb [[Heq2 Hd2] [Ha Hb]]]].
       subst m1.
       pose proof (proj1 (map.disjoint_putmany_l _ _ _) Hd) as [Hd_a Hd_b].
@@ -241,7 +244,7 @@ Section BLS12_PairingHelpers.
         FElem_Fp (word.add p (word.of_Z fp_felem_offset)) b) (map.putmany ma mb)).
       { exists ma, mb. split; [split; [reflexivity | exact Hd_ab] |].
         split; [exact Ha | exact Hb]. }
-      pose proof (QuadraticFieldExtensions.Fp2_raw_FElem_join
+      pose proof (QuadraticFieldExtensions.Fp2_raw_FElem_join bls12_beta
         fp2_prefix p a b (map.putmany ma mb) Hla Hlb Hjoin) as Hfp2.
       exists (map.putmany ma mb), mr2.
       split; [split |].
@@ -301,11 +304,11 @@ Section BLS12_PairingHelpers.
 
       (* Split Fp2 FElems into Fp halves *)
       pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_split _ _ _ _
-        wordok mapok bls12_pf_params bls12_Fp_rep fp2_prefix
+        wordok mapok bls12_pf_params bls12_Fp_rep bls12_beta fp2_prefix
         px x m_x Hfx)
         as [m_x1 [m_x2 [Hsep_x [Hx1 Hx2]]]].
       pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_split _ _ _ _
-        wordok mapok bls12_pf_params bls12_Fp_rep fp2_prefix
+        wordok mapok bls12_pf_params bls12_Fp_rep bls12_beta fp2_prefix
         pout old_out m_out Hfe_out)
         as [m_o1 [m_o2 [Hsep_o [Ho1 Ho2]]]].
 
@@ -462,7 +465,7 @@ Section BLS12_PairingHelpers.
           split; [split; [reflexivity | map_disjoint_auto] |].
           split; [exact HB | exact HA]. }
         pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_join _ _ _ _
-          wordok mapok bls12_pf_params bls12_Fp_rep fp2_prefix
+          wordok mapok bls12_pf_params bls12_Fp_rep bls12_beta fp2_prefix
           pout out1 out2
           (map.putmany m_B m_A) Hlen_out1 Hlen_out2 Hjoin_out) as Hfp2_out.
         (* Join input Fp halves into Fp2 *)
@@ -474,7 +477,7 @@ Section BLS12_PairingHelpers.
           split; [split; [reflexivity | map_disjoint_auto] |].
           split; [exact HC | exact HD]. }
         pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_join _ _ _ _
-          wordok mapok bls12_pf_params bls12_Fp_rep fp2_prefix
+          wordok mapok bls12_pf_params bls12_Fp_rep bls12_beta fp2_prefix
           px (fst_felem x) (snd_felem x)
           (map.putmany m_C m_D) Hlen_x1 Hlen_x2 Hjoin_x) as Hfp2_x.
         rewrite (@QuadraticFieldExtensions.Fp2_list_decomp _ _ _ _
@@ -696,9 +699,9 @@ Section BLS12_PairingHelpers.
     Local Notation d1_felem := (@DodecicFieldExtensionsSpecs.d1_felem _ _ _ _ bls12_pf_params bls12_Fp_rep).
     (* Fp6_c1/c2 offsets computed with the correct (Fp-level) representation *)
     Local Notation fp6_c1_off :=
-      (@CubicFieldExtensions.fp6_c1_offset _ _ _ _ bls12_pf_params bls12_Fp_rep fp2_prefix).
+      (@CubicFieldExtensions.fp6_c1_offset _ _ _ _ bls12_pf_params bls12_beta bls12_Fp_rep fp2_prefix).
     Local Notation fp6_c2_off :=
-      (@CubicFieldExtensions.fp6_c2_offset _ _ _ _ bls12_pf_params bls12_Fp_rep fp2_prefix).
+      (@CubicFieldExtensions.fp6_c2_offset _ _ _ _ bls12_pf_params bls12_beta bls12_Fp_rep fp2_prefix).
 
     Lemma bls12_make_line_ok :
       forall functions
@@ -769,21 +772,21 @@ Section BLS12_PairingHelpers.
       subst m_r1 m_r2 m_r3 m_r4 m_r5 mem0.
 
       (* Split Fp12 output into Fp6 halves *)
-      pose proof (DodecicFieldExtensions.Fp12_raw_FElem_split
+      pose proof (DodecicFieldExtensions.Fp12_raw_FElem_split bls12_beta
         fp12_prefix fp6_prefix fp2_prefix pout old_out m_out Hfe_out)
         as [m_fp6_0 [m_fp6_1 [Hsep_fp12 [Hfe_fp6_0 Hfe_fp6_1]]]].
       destruct Hsep_fp12 as [Heq_fp12 Hd_fp12].
       subst m_out.
 
       (* Split each Fp6 into 3 Fp2 components *)
-      pose proof (CubicFieldExtensions.Fp6_raw_FElem_split
+      pose proof (CubicFieldExtensions.Fp6_raw_FElem_split bls12_beta
         fp6_prefix fp2_prefix
         pout _ m_fp6_0 Hfe_fp6_0)
         as [m_o00 [m_o01_02 [Hsep_c0 [Ho00 Ho01_02]]]].
       destruct Ho01_02 as [m_o01 [m_o02 [Hsep_o01_02 [Ho01 Ho02]]]].
       destruct Hsep_c0 as [? Hd_c0]. destruct Hsep_o01_02 as [? Hd_o01_02]. subst.
 
-      pose proof (CubicFieldExtensions.Fp6_raw_FElem_split
+      pose proof (CubicFieldExtensions.Fp6_raw_FElem_split bls12_beta
         fp6_prefix fp2_prefix
         (word.add pout (word.of_Z fp6_felem_offset)) _ m_fp6_1 Hfe_fp6_1)
         as [m_o10 [m_o11_12 [Hsep_c1 [Ho10 Ho11_12]]]].
@@ -800,8 +803,8 @@ Section BLS12_PairingHelpers.
          Fp2_field_parameters/Fp2_field_representation applied to fp2_prefix.
          We define a local alias to match what the split hypotheses produce. *)
       set (FE2 := @AbstractField.FElem _
-        (Fp2_field_parameters (fp2_prefix:=fp2_prefix)) _ _ _ _
-        (Fp2_field_representation (fp2_prefix:=fp2_prefix))).
+        (Fp2_field_parameters bls12_beta fp2_prefix) _ _ _ _
+        (Fp2_field_representation bls12_beta fp2_prefix)).
 
       (* Build combined sep on mCombined with all sub-FElems *)
       assert (Hsep :
@@ -869,14 +872,14 @@ Section BLS12_PairingHelpers.
       subst FE2.
       (* Fold opaque instance names in Hsep so ecancel_assumption can
          unify Hsep's FElem terms with the specs' FElem_Fp2 terms. *)
-      change (Fp2_field_parameters (fp2_prefix:=fp2_prefix))
+      change (Fp2_field_parameters bls12_beta fp2_prefix)
         with bls12_Fp2_params' in Hsep.
-      change (Fp2_field_representation (fp2_prefix:=fp2_prefix))
+      change (Fp2_field_representation bls12_beta fp2_prefix)
         with bls12_Fp2_rep' in Hsep.
 
       (* Fp2-level relax_bounds helper *)
       pose proof (@Fp2_field_representation_ok _ _ _ _ bls12_pf_params
-        bls12_Fp_rep bls12_Fp_rep_ok fp2_prefix) as Fp2_rep_ok.
+        bls12_Fp_rep bls12_Fp_rep_ok bls12_beta fp2_prefix) as Fp2_rep_ok.
 
       (* === 13 call steps: 4 Fp2-level + 9 Fp-level === *)
       (* Unfold cmd_seq_list so straightline can process cmd.seq *)
@@ -1343,7 +1346,7 @@ Section BLS12_PairingHelpers.
       assert (Hlen_d0c2_fp2 : length (fw5 ++ fw6) = Fp2_felem_size).
       { rewrite length_app, Hlen_fw5, Hlen_fw6. reflexivity. }
       pose proof (@CubicFieldExtensions.Fp6_raw_FElem_join _ _ _ _
-        wordok mapok bls12_pf_params bls12_Fp_rep fp6_prefix fp2_prefix
+        wordok mapok bls12_pf_params bls12_beta bls12_Fp_rep fp6_prefix fp2_prefix
         pout out2 out4 (fw5 ++ fw6) _ Hlen_out2_fp2 Hlen_out4_fp2 Hlen_d0c2_fp2 Hsep_d0_fp6)
         as Hfe_d0.
 
@@ -1373,7 +1376,7 @@ Section BLS12_PairingHelpers.
         split; [split; [reflexivity | exact Hd_45] |].
         split; [exact Hd1c1m | exact Hd1c2m]. }
       pose proof (@CubicFieldExtensions.Fp6_raw_FElem_join _ _ _ _
-        wordok mapok bls12_pf_params bls12_Fp_rep fp6_prefix fp2_prefix
+        wordok mapok bls12_pf_params bls12_beta bls12_Fp_rep fp6_prefix fp2_prefix
         _ (fw7 ++ fw8) (yp ++ fw10) (fw11 ++ fw12) _ Hlen_d1c0_fp2 Hlen_d1c1_fp2 Hlen_d1c2_fp2 Hsep_d1_fp6)
         as Hfe_d1.
 
@@ -1400,7 +1403,7 @@ Section BLS12_PairingHelpers.
             { apply map.disjoint_putmany_r. split; [exact Hd_23 | apply map.disjoint_putmany_r; split; [exact Hd_24 | exact Hd_25]]. } } }
         split; [exact Hfe_d0 | exact Hfe_d1]. }
       pose proof (@DodecicFieldExtensions.Fp12_raw_FElem_join _ _ _ _
-        wordok mapok bls12_pf_params bls12_Fp_rep fp12_prefix fp6_prefix fp2_prefix
+        wordok mapok bls12_pf_params bls12_Fp_rep bls12_beta fp12_prefix fp6_prefix fp2_prefix
         pout (out2 ++ out4 ++ (fw5 ++ fw6))
         ((fw7 ++ fw8) ++ (yp ++ fw10) ++ (fw11 ++ fw12)) m_fp12
         Hlen_d0_fp6 Hlen_d1_fp6 Hsep_fp12)
@@ -1508,7 +1511,7 @@ Section BLS12_PairingHelpers.
            Split the conjunction and handle each Fp6 half. *)
         split.
         (* d0 bound *)
-        { change (DodecicFieldExtensionsSpecs.Fp6_repr_inst) with bls12_Fp6_rep'.
+        { change (DodecicFieldExtensionsSpecs.Fp6_repr_inst bls12_beta) with bls12_Fp6_rep'.
           unfold AbstractField.bounded_by, AbstractField.loose_bounds,
                  bls12_Fp6_rep', bls12_Fp6_params',
                  CubicFieldExtensionsSpecs.Fp6_field_representation,
@@ -1518,7 +1521,7 @@ Section BLS12_PairingHelpers.
                  CubicFieldExtensionsSpecs.c2_felem.
           cbv beta.
           (* Solve each Fp6 bounded goal by unfolding to Fp2 *)
-          cbv [DodecicFieldExtensionsSpecs.Fp6_repr_inst
+          cbv [DodecicFieldExtensionsSpecs.Fp6_repr_inst bls12_beta
                CubicFieldExtensionsSpecs.Fp6_field_representation
                CubicFieldExtensionsSpecs.Fp6_field_parameters
                CubicFieldExtensionsSpecs.c0_felem
@@ -1541,7 +1544,7 @@ Section BLS12_PairingHelpers.
           rewrite (QuadraticFieldExtensions.skipn_app _ _ _ Hlen_out2_out4).
           exact (conj Hb_out2_l (conj Hb_out4_l Hb_d0c2)). }
         (* d1 bound *)
-        { cbv [DodecicFieldExtensionsSpecs.Fp6_repr_inst
+        { cbv [DodecicFieldExtensionsSpecs.Fp6_repr_inst bls12_beta
                CubicFieldExtensionsSpecs.Fp6_field_representation
                CubicFieldExtensionsSpecs.Fp6_field_parameters
                CubicFieldExtensionsSpecs.c0_felem
