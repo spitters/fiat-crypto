@@ -90,14 +90,15 @@ Proof.
   apply map_ext_in. intros a Ha. apply in_seq in Ha.
   rewrite (@word.unsigned_of_Z _ _ wordok). unfold word.wrap.
   cbv [uweight ModOps.weight]. rewrite !Z.div_1_r, !Z.opp_involutive.
-  rewrite Z.mod_mod by (apply Z.pow_pos_nonneg; lia).
+  assert (Hpow : forall k, 0 <= k -> 0 < 2 ^ k) by (intros; apply Z.pow_pos_nonneg; lia).
+  rewrite Z.mod_mod by (pose proof (Hpow (64 * Z.of_nat a) ltac:(lia)); lia).
   rewrite Z.mod_small; [reflexivity|].
   split.
-  - apply Z.div_pos; [apply Z.mod_pos_bound|]; apply Z.pow_pos_nonneg; lia.
-  - apply Z.div_lt_upper_bound; [apply Z.pow_pos_nonneg; lia|].
+  - apply Z.div_pos; [apply Z.mod_pos_bound|]; auto with zarith.
+  - apply Z.div_lt_upper_bound; [auto with zarith|].
     rewrite <- Z.pow_add_r by lia.
     replace (64 * Z.of_nat a + 64) with (64 * Z.of_nat (S a)) by lia.
-    apply Z.mod_pos_bound. apply Z.pow_pos_nonneg; lia.
+    apply Z.mod_pos_bound. auto with zarith.
 Qed.
 
 (* ================================================================ *)
