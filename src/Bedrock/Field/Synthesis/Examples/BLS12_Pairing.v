@@ -30,6 +30,7 @@ Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_prime.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_prime_certif.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_felem_copy.
 Require Import Crypto.Bedrock.Field.FieldExtensions.QuadraticFieldExtensionsSpecs.
+Require Import Crypto.Bedrock.Field.FieldExtensions.Theory.QuadraticExtensionsFiat.
 Require Import Crypto.Bedrock.Field.FieldExtensions.QuadraticFieldExtensions.
 Require Import Crypto.Bedrock.Field.FieldExtensions.CubicFieldExtensionsSpecs.
 Require Import Crypto.Bedrock.Field.FieldExtensions.CubicFieldExtensions.
@@ -115,11 +116,18 @@ Section BLS12_Pairing.
       rewrite F.to_Z_0 in H. vm_compute in H. discriminate.
     Qed.
 
-    Lemma bls12_beta_qnr : ~(exists x, @F.mul PrimeField.M_pos x x = bls12_beta).
-    Proof. (* -1 is QNR when p ≡ 3 mod 4 *) Admitted.
-
     Lemma bls12_M_big : 2 < Z.pos PrimeField.M_pos.
     Proof. vm_compute. reflexivity. Qed.
+
+    Lemma M_mod_4_3 : (Z.pos PrimeField.M_pos mod 4 =? 3) = true.
+    Proof. vm_compute. reflexivity. Qed.
+
+    Lemma bls12_beta_qnr : ~(exists x, @F.mul PrimeField.M_pos x x = bls12_beta).
+    Proof.
+      change bls12_beta with (QuadraticExtensionsFiat.Quad_non_res PrimeField.M_pos).
+      exact (QuadraticExtensionsFiat.beta_is_non_res PrimeField.M_pos
+               prime_bls12_381 bls12_M_big M_mod_4_3).
+    Qed.
 
     (* ============================================================== *)
     (* Field name prefixes                                             *)
