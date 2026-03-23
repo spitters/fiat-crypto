@@ -23,16 +23,16 @@ Section QuadraticExtension.
   Context {ext_spec_ok : Semantics.ext_spec.ok ext_spec}.
 
   Context {prime_parameters : PrimeFieldParameters}
-          {prime_parameters_ok : PrimeFieldParameters_ok}
-          {M_mod : M_pos mod 4 =? 3 = true}.
+          {prime_parameters_ok : PrimeFieldParameters_ok}.
+  (* Quadratic non-residue β for Fp2 = Fp[u]/(u² - β) *)
+  Variable beta : F M_pos.
+  Context {beta_nz : beta <> @F.zero M_pos}
+          {beta_qnr : ~(exists x, @F.mul M_pos x x = beta)}.
   Existing Instance prime_field_parameters.
   Context {field_representation : AbstractField.FieldRepresentation}
           {field_representation_ok : AbstractField.FieldRepresentation_ok}.
 
-  Lemma M_big : 2 < M_pos.
-  Proof.
-    lia.
-  Qed.
+  Context {M_big : 2 < M_pos}.
 
   Local Notation Fp2 := ((F M_pos) * (F M_pos))%type.
 
@@ -45,11 +45,11 @@ Section QuadraticExtension.
         - exact (zerop2 M_pos).
         - exact (onep2 M_pos).
         - exact (oppp2 M_pos).
-        - exact (invp2 M_pos).
+        - exact (invp2 M_pos beta).
         - exact (addp2 M_pos).
         - exact (subp2 M_pos).
-        - exact (mulp2 M_pos).
-        - exact (divp2 M_pos).
+        - exact (mulp2 M_pos beta).
+        - exact (divp2 M_pos beta).
         - eapply eq_dec_Fp2.
         - exact (F.zero, F.zero). (* a24 — dummy for Weierstrass curves *)
         - exact (fp2_prefix ++ "mul")%string.
@@ -70,7 +70,7 @@ Section QuadraticExtension.
   Instance Fp2_field_parameters_ok : @AbstractField.FieldParameters_ok _ Fp2_field_parameters.
   Proof.
     econstructor;
-    exact (@std_to_fiatCrypto_field _ _ _ _ _ _ _ _ _ (FFp2 M_pos M_prime M_big M_mod)).
+    exact (@std_to_fiatCrypto_field _ _ _ _ _ _ _ _ _ (FFp2 M_pos M_prime M_big beta beta_nz beta_qnr)).
   Defined.
 
   Definition fst_felem (Fp2_list : list word) : list word := firstn felem_size_in_words Fp2_list.

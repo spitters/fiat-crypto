@@ -146,15 +146,17 @@ Section Characteristic.
         Section Fp2.
         
             Hypothesis p_odd: 2 < p.
-            Hypothesis p_mod: (p mod 4 =? 3) = true.
-            Add Field Fp2 : (FFp2 p p_prime p_odd p_mod).
+            Variable beta : F p.
+            Hypothesis beta_nz : beta <> @F.zero p.
+            Hypothesis beta_qnr : ~(exists x, @F.mul p x x = beta).
+            Add Field Fp2 : (FFp2 p p_prime p_odd beta beta_nz beta_qnr).
             Add Field Fp : (FZpZ p p_prime).
 
             Notation char_Fp2_p_ge := (@char_ge (znz p * znz p)%type (@eq (znz p * znz p)) (zerop2 p) (onep2 p) (oppp2 p) (addp2 p) (subp2 p) (mulp2 p)).
             
             (* Instance Fp2fc : @field (znz p * znz p) (@eq (znz p * znz p)) (zerop2 p)
                 (onep2 p) (oppp2 p) (addp2 p) (subp2 p) (mulp2 p) (invp2 p) (divp2 p).
-            Proof. apply @std_to_fiatCrypto_field, (FFp2 p p_prime p_odd p_mod). Qed.
+            Proof. apply @std_to_fiatCrypto_field, (FFp2 p p_prime p_odd beta beta_nz beta_qnr). Qed.
 
             Notation Fp2_of_nat := (@of_nat (znz p * znz p) (zerop2 p) (onep2 p) (addp2 p)).
 
