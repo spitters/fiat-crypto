@@ -74,7 +74,10 @@ Section Fp2.
 
   Context {prime_parameters : PrimeFieldParameters}
           {prime_parameters_ok : PrimeFieldParameters_ok}
-          {M_mod : (Z.pos M_pos) mod 4 =? 3 = true}.
+          (beta : F M_pos)
+          {beta_nz : beta <> @F.zero M_pos}
+          {beta_qnr : ~(exists x, @F.mul M_pos x x = beta)}
+          {M_big : 2 < Z.pos M_pos}.
 
   Local Notation F := (F M_pos).
   Local Notation Fp2 := ((F * F)%type).
@@ -148,9 +151,9 @@ Section Fp2.
   Local Notation felem_offset_word := (word.of_Z felem_offset).
 
   Local Instance Fp2_fp_inst : AbstractField.FieldParameters Fp2 :=
-    Fp2_field_parameters (fp2_prefix:=fp2_prefix).
-  Local Instance Fp2_fp_ok_inst : @AbstractField.FieldParameters_ok _ Fp2_fp_inst :=
-    @Fp2_field_parameters_ok prime_parameters prime_parameters_ok M_mod fp2_prefix.
+    Fp2_field_parameters beta fp2_prefix.
+  Local Instance Fp2_fp_ok_inst : @AbstractField.FieldParameters_ok _ Fp2_fp_inst.
+  Proof. exact (Fp2_field_parameters_ok beta beta_nz beta_qnr M_big fp2_prefix). Defined.
   Local Instance Fp2_repr_inst : @AbstractField.FieldRepresentation Fp2 Fp2_fp_inst width BW word mem :=
     @Fp2_field_representation width BW word mem prime_parameters F_representation fp2_prefix.
   Local Instance Fp2_repr_ok_inst : @AbstractField.FieldRepresentation_ok Fp2 Fp2_fp_inst _ _ _ _ Fp2_repr_inst :=

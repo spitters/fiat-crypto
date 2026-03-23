@@ -26,18 +26,18 @@ Section QuadraticExtension.
           {prime_parameters_ok : PrimeFieldParameters_ok}.
   (* Quadratic non-residue β for Fp2 = Fp[u]/(u² - β) *)
   Variable beta : F M_pos.
-  Context {beta_nz : beta <> @F.zero M_pos}
-          {beta_qnr : ~(exists x, @F.mul M_pos x x = beta)}.
+  Hypothesis beta_nz : beta <> @F.zero M_pos.
+  Hypothesis beta_qnr : ~(exists x, @F.mul M_pos x x = beta).
   Existing Instance prime_field_parameters.
   Context {field_representation : AbstractField.FieldRepresentation}
           {field_representation_ok : AbstractField.FieldRepresentation_ok}.
 
-  Context {M_big : 2 < M_pos}.
+  Hypothesis M_big : 2 < M_pos.
 
   Local Notation Fp2 := ((F M_pos) * (F M_pos))%type.
 
   (* Fp2 function name prefix, provided by downstream code *)
-  Context {fp2_prefix : string}.
+  Variable fp2_prefix : string.
 
   Instance Fp2_field_parameters : AbstractField.FieldParameters Fp2.
   Proof.
