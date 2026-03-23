@@ -91,6 +91,12 @@ Section bls377_Fp2.
     Local Notation F := (F PrimeField.M_pos).
     Local Notation Fp2 := (F * F)%type.
 
+    (* Pointer to the second Fp element in an Fp2 pair *)
+    Local Definition felem_offset : Z :=
+      AbstractField.felem_size_in_bytes (F:=F).
+    Local Definition expr_2nd_felem (x : Syntax.expr) :=
+      expr.op bopname.add x (expr.literal felem_offset).
+
     (* β = -5 is a QNR for BLS12-377 *)
     Definition beta_val : Z := -5.
 
