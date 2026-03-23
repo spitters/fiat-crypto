@@ -97,6 +97,10 @@ Section BLS12_PairingTop.
     (* β = -1 for BLS12-381 (p ≡ 3 mod 4) *)
     Let bls12_beta : F PrimeField.M_pos := F.of_Z PrimeField.M_pos (-1).
 
+    (* ξ = 1+u for BLS12-381 (cubic non-residue in Fp2 for Fp6 tower) *)
+    Let bls12_xi_re : F PrimeField.M_pos := @F.one PrimeField.M_pos.
+    Let bls12_xi_im : F PrimeField.M_pos := @F.one PrimeField.M_pos.
+
     Instance bls12_Fp2_params' : AbstractField.FieldParameters Fp2 :=
       Fp2_field_parameters bls12_beta fp2_prefix.
     Instance bls12_Fp2_rep' : AbstractField.FieldRepresentation (F:=Fp2) :=
@@ -105,16 +109,16 @@ Section BLS12_PairingTop.
       field_names_prefixed fp2_prefix.
 
     Instance bls12_Fp6_params' : AbstractField.FieldParameters Fp6 :=
-      Fp6_field_parameters (fp6_prefix:=fp6_prefix).
+      Fp6_field_parameters bls12_beta bls12_xi_re bls12_xi_im (fp6_prefix:=fp6_prefix).
     Instance bls12_Fp6_rep' : AbstractField.FieldRepresentation (F:=Fp6) :=
-      Fp6_field_representation bls12_beta (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+      Fp6_field_representation bls12_beta bls12_xi_re bls12_xi_im (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
     Instance bls12_Fp6_names' : FieldNames (F:=Fp6) :=
       field_names_prefixed fp6_prefix.
 
     Instance bls12_Fp12_params' : AbstractField.FieldParameters Fp12 :=
-      Fp12_field_parameters (fp12_prefix:=fp12_prefix).
+      Fp12_field_parameters bls12_beta bls12_xi_re bls12_xi_im (fp12_prefix:=fp12_prefix).
     Instance bls12_Fp12_rep' : AbstractField.FieldRepresentation (F:=Fp12) :=
-      Fp12_field_representation bls12_beta (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+      Fp12_field_representation bls12_beta bls12_xi_re bls12_xi_im (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
     Instance bls12_Fp12_names' : FieldNames (F:=Fp12) :=
       field_names_prefixed fp12_prefix.
     Instance bls12_Fp_names' : FieldNames (F:=Fp) :=

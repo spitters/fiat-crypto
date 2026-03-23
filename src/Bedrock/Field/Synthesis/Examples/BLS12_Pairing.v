@@ -110,6 +110,10 @@ Section BLS12_Pairing.
     (* β = -1 for BLS12-381 (p ≡ 3 mod 4) *)
     Let bls12_beta : F PrimeField.M_pos := F.of_Z PrimeField.M_pos (-1).
 
+    (* ξ = 1+u for BLS12-381 (cubic non-residue in Fp2 for Fp6 tower) *)
+    Let bls12_xi_re : F PrimeField.M_pos := @F.one PrimeField.M_pos.
+    Let bls12_xi_im : F PrimeField.M_pos := @F.one PrimeField.M_pos.
+
     Lemma bls12_beta_nz : bls12_beta <> @F.zero PrimeField.M_pos.
     Proof.
       unfold bls12_beta. intro H. apply (f_equal F.to_Z) in H.
@@ -162,9 +166,9 @@ Section BLS12_Pairing.
     (* ============================================================== *)
 
     Instance bls12_Fp6_params : AbstractField.FieldParameters Fp6 :=
-      Fp6_field_parameters (fp6_prefix:=fp6_prefix).
+      Fp6_field_parameters bls12_beta bls12_xi_re bls12_xi_im (fp6_prefix:=fp6_prefix).
     Instance bls12_Fp6_rep : AbstractField.FieldRepresentation (F:=Fp6) :=
-      Fp6_field_representation bls12_beta (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+      Fp6_field_representation bls12_beta bls12_xi_re bls12_xi_im (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
     Instance bls12_Fp6_names : FieldNames (F:=Fp6) :=
       field_names_prefixed fp6_prefix.
 
@@ -173,9 +177,9 @@ Section BLS12_Pairing.
     (* ============================================================== *)
 
     Instance bls12_Fp12_params : AbstractField.FieldParameters Fp12 :=
-      Fp12_field_parameters (fp12_prefix:=fp12_prefix).
+      Fp12_field_parameters bls12_beta bls12_xi_re bls12_xi_im (fp12_prefix:=fp12_prefix).
     Instance bls12_Fp12_rep : AbstractField.FieldRepresentation (F:=Fp12) :=
-      Fp12_field_representation bls12_beta (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+      Fp12_field_representation bls12_beta bls12_xi_re bls12_xi_im (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
     Instance bls12_Fp12_names : FieldNames (F:=Fp12) :=
       field_names_prefixed fp12_prefix.
     Instance bls12_Fp_names : FieldNames (F:=Fp) :=
@@ -211,6 +215,8 @@ Section BLS12_Pairing.
     (* Function name helpers                                           *)
     (* ============================================================== *)
 
+    Let fp_add_name : string := PrimeField.add.
+    Let fp_sub_name : string := PrimeField.sub.
     Let fp_mul_name : string := PrimeField.mul.
     Let fp_copy_name : string := PrimeField.felem_copy.
     Let from_word_name : string := PrimeField.from_word.
@@ -230,19 +236,46 @@ Section BLS12_Pairing.
     Let fp12_frobenius_p2_name : string := (fp12_prefix ++ "frobenius_p2")%string.
     Let fp2_mul_fp_name : string := "bls12_Fp2_mul_fp".
     Let make_line_name : string := "bls12_make_line".
+    Let fp2_mul_xi_name : string := (fp2_prefix ++ "mul_xi")%string.
+
+    (* ============================================================== *)
+    (* Fp2_mul_xi: multiply Fp2 element by ξ = 1+u                    *)
+    (*   (a0 + a1*u)(1 + u) = (a0 - a1) + (a0 + a1)*u  [since β=-1] *)
+    (* ============================================================== *)
+
+    Definition bls12_Fp2_mul_xi : function_t :=
+      (fp2_mul_xi_name,
+       (["out"; "x"], []:list String.string, bedrock_func_body:(
+         stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as tmp;
+         coq:(cmd.call [] fp2_copy_name
+           [expr.var "tmp"; expr.var "x"]);
+         coq:(cmd.call [] fp_sub_name
+           [expr.var "out"; expr.var "tmp"; expr_fp_snd (expr.var "tmp")]);
+         coq:(cmd.call [] fp_add_name
+           [expr_fp_snd (expr.var "out"); expr.var "tmp"; expr_fp_snd (expr.var "tmp")])
+       ))).
+
+    Lemma bls12_Fp2_mul_xi_name_eq : fst bls12_Fp2_mul_xi = fp2_mul_xi_name.
+    Proof. reflexivity. Qed.
+
+    Lemma bls12_Fp2_mul_xi_ok :
+      forall functions,
+        map.get functions fp2_mul_xi_name = Some (snd bls12_Fp2_mul_xi) ->
+        CubicFieldExtensions.spec_of_Fp2_mul_xi bls12_beta bls12_xi_re bls12_xi_im fp2_prefix functions.
+    Proof. Admitted.
 
     (* ============================================================== *)
     (* Fp6/Fp12/PairingOps function bodies from lower layers           *)
     (* ============================================================== *)
 
     Definition bls12_Fp6_funcs : list function_t :=
-      Fp6_funcs bls12_beta fp6_prefix fp2_prefix.
+      Fp6_funcs bls12_beta bls12_xi_re bls12_xi_im fp6_prefix fp2_prefix bls12_Fp2_mul_xi.
 
     Definition bls12_Fp12_funcs : list function_t :=
-      Fp12_funcs bls12_beta fp12_prefix fp6_prefix fp2_prefix.
+      Fp12_funcs bls12_beta bls12_xi_re bls12_xi_im fp12_prefix fp6_prefix fp2_prefix.
 
     Definition bls12_pairing_ops : list function_t :=
-      PairingOps_funcs bls12_beta fp12_prefix fp6_prefix fp2_prefix.
+      PairingOps_funcs bls12_beta bls12_xi_re bls12_xi_im fp12_prefix fp6_prefix fp2_prefix.
 
     (* ============================================================== *)
     (* Helper: fold a list of cmds into nested cmd.seq                 *)
