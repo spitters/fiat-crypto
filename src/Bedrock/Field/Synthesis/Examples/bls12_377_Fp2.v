@@ -212,6 +212,26 @@ Section bls377_Fp2.
         coq:(cmd.call [] (AbstractField.mul (F:=F)) [expr_2nd_felem (expr.var "out"); expr.var "asq"; expr.var "norm"])
       ))).
 
+    (* ================================================================ *)
+    (* fp2_mul_xi: multiply by ξ = u = (0,1) in Fp2                    *)
+    (* (a0 + a1·u) · u = a1·u² + a0·u = β·a1 + a0·u = -5·a1 + a0·u  *)
+    (* Result: (-5·a1, a0)                                              *)
+    (* ================================================================ *)
+
+    Definition Fp2_mul_xi : string * Syntax.func :=
+      ("bls377_Fp2_mul_xi", (["out"; "x"], []:list String.string, bedrock_func_body:(
+        (* Compute 5*x.im in out.re: v = x.im+x.im; v = v+v; v = v+x.im *)
+        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "out"; expr_2nd_felem (expr.var "x"); expr_2nd_felem (expr.var "x")]);
+        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "out"; expr.var "out"; expr.var "out"]);
+        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "out"; expr.var "out"; expr_2nd_felem (expr.var "x")]);
+        (* out.im = x.re (copy before overwriting out.re) *)
+        coq:(cmd.call [] (AbstractField.felem_copy (F:=F)) [expr_2nd_felem (expr.var "out"); expr.var "x"]);
+        (* out.re = 0 - 5*x.im = -5*x.im *)
+        stackalloc (AbstractField.felem_size_in_bytes (F:=F)) as tmp;
+        coq:(cmd.call [] (AbstractField.sub (F:=F)) [expr.var "tmp"; expr.var "tmp"; expr.var "tmp"]);
+        coq:(cmd.call [] (AbstractField.sub (F:=F)) [expr.var "out"; expr.var "tmp"; expr.var "out"])
+      ))).
+
     (* Fp2 conjugate: conj(a + bu) = a - bu *)
     Definition Fp2_conjugate : string * Syntax.func :=
       ("bls377_Fp2_conjugate", (["out"; "inx"], []:list String.string, bedrock_func_body:(
