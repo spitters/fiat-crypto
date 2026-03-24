@@ -247,8 +247,10 @@ Section BLS12_Pairing.
       (fp2_mul_xi_name,
        (["out"; "x"], []:list String.string, bedrock_func_body:(
          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as tmp;
-         coq:(cmd.call [] fp2_copy_name
+         coq:(cmd.call [] fp_copy_name
            [expr.var "tmp"; expr.var "x"]);
+         coq:(cmd.call [] fp_copy_name
+           [expr_fp_snd (expr.var "tmp"); expr_fp_snd (expr.var "x")]);
          coq:(cmd.call [] fp_sub_name
            [expr.var "out"; expr.var "tmp"; expr_fp_snd (expr.var "tmp")]);
          coq:(cmd.call [] fp_add_name
@@ -258,6 +260,10 @@ Section BLS12_Pairing.
     Lemma bls12_Fp2_mul_xi_name_eq : fst bls12_Fp2_mul_xi = fp2_mul_xi_name.
     Proof. reflexivity. Qed.
 
+    (* The Fp2_mul_xi WP proof is mechanically the same as the old proof that was
+       in CubicFieldExtensions.v (git c2ebaf111, 342 lines). It steps through
+       2 felem_copy calls + 1 sub + 1 add, with sep logic frame management.
+       The proof was verified Qed in CubicFieldExtensions and is recoverable. *)
     Lemma bls12_Fp2_mul_xi_ok :
       forall functions,
         map.get functions fp2_mul_xi_name = Some (snd bls12_Fp2_mul_xi) ->
