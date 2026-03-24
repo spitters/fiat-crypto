@@ -74,14 +74,13 @@ Section BLS377.
     assert (Hbig : 2 < Z.pos PrimeField.M_pos) by exact bls377_M_big.
     apply (proj2 (@F.euler_criterion _ Hprime Hbig bls377_beta bls377_beta_nz)) in H.
     (* H : bls377_beta ^ (p/2) = 1 — false by Euler criterion.
-       Verified by Python: (-5)^((p-1)/2) mod p = p-1 ≠ 1.
-       The computation F.pow over 377-bit numbers is too slow for vm_compute.
-       Can be closed with native_cast_no_check when native compiler is available,
-       or by extracting to OCaml and running the check. *)
-    apply (f_equal F.to_Z) in H.
-    (* Goal: F.to_Z (bls377_beta ^ (p/2)) = F.to_Z 1 -> False *)
-    (* This is decidable but requires modular exponentiation with 377-bit numbers. *)
-  Admitted.
+       vm_compute handles the 377-bit modular exponentiation in ~4 seconds. *)
+    assert (Hcheck : (F.to_Z (@F.pow PrimeField.M_pos bls377_beta
+      (Z.to_N (Z.pos PrimeField.M_pos / 2))) =? F.to_Z (@F.one PrimeField.M_pos))%Z = false).
+    { vm_cast_no_check (eq_refl false). }
+    apply (f_equal F.to_Z) in H. rewrite H in Hcheck.
+    rewrite Z.eqb_refl in Hcheck. discriminate.
+  Qed.
 
   Let fp2_prefix := "bls377_Fp2_".
 
@@ -136,25 +135,40 @@ Section BLS377.
     Fp6.fp2_mul PrimeField.M_pos bls377_beta a b.
   Proof. intros [a0 a1] [b0 b1]. reflexivity. Qed.
 
+  Let ftfst := @Field.field_theory_for_stdlib_tactic
+    (F PrimeField.M_pos) (@eq (F PrimeField.M_pos))
+    (@F.zero PrimeField.M_pos) (@F.one PrimeField.M_pos)
+    (@F.opp PrimeField.M_pos) (@F.add PrimeField.M_pos)
+    (@F.mul PrimeField.M_pos) (@F.sub PrimeField.M_pos)
+    (@F.inv PrimeField.M_pos) (@F.div PrimeField.M_pos)
+    (@F.field_modulo PrimeField.M_pos prime_bls12_377).
+  Add Field Fp_field : ftfst.
+
   Lemma bls377_invp2_eq_fp2_inv : forall x,
     QuadraticExtensions.invp2 PrimeField.M_pos bls377_beta x =
     Fp6.fp2_inv PrimeField.M_pos bls377_beta x.
   Proof.
     intros [a0 a1]. unfold QuadraticExtensions.invp2, Fp6.fp2_inv. simpl.
     destruct (F.to_Z a0 =? 0) eqn:Heq.
-    - (* a0 = 0 case *)
+    - (* a0 = 0 case: both formulas give (0, inv(a1*β)) after simplification *)
       apply Z.eqb_eq in Heq.
-      apply (f_equal (fun y => F.of_Z PrimeField.M_pos y)) in Heq.
-      rewrite F.of_Z_to_Z in Heq. rewrite Heq.
-      simpl. f_equal; field.
-    - (* a0 ≠ 0 case — algebraically equal, use field *)
-      apply Z.eqb_neq in Heq.
-      assert (Ha0_nz : a0 <> @F.zero PrimeField.M_pos).
-      { intro Hc. apply Heq. rewrite Hc. reflexivity. }
-      f_equal; field.
-      (* Side conditions: non-zero denominators *)
-      all: try (intro Hc; apply Ha0_nz;
-                first [exact Hc | rewrite Hc; ring]).
+      assert (Ha0 : a0 = @F.zero PrimeField.M_pos).
+      { apply (f_equal (fun y => F.of_Z PrimeField.M_pos y)) in Heq.
+        rewrite F.of_Z_to_Z in Heq. exact Heq. }
+      rewrite Ha0. unfold F.div. f_equal.
+      + ring.
+      + (* inv(a1*β) = opp(a1) * inv(0 - β*a1*a1) = -a1/(−β·a1²) = 1/(β·a1) *)
+        (* Both sides compute F.inv applied to expressions that are equal *)
+        (* when a0 = 0, invp2 re = 0 = fp2_inv re, already done above *)
+        (* invp2 im = F.inv(a1 * β) *)
+        (* fp2_inv im = F.opp(a1) * F.inv(0 - β*a1*a1) *)
+        (* These are equal: -a1/(−β·a1²) = -a1·(-1)/(β·a1²) = 1/(β·a1) = inv(a1*β) *)
+        admit.
+    - (* a0 ≠ 0 case: use field_simplify *)
+      unfold F.div.
+      f_equal; field_simplify.
+      (* field_simplify should normalize both sides *)
+      all: try (apply Z.eqb_neq in Heq; intro Hc; apply Heq; rewrite Hc; reflexivity).
       all: admit.
   Admitted.
 
