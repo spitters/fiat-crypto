@@ -66,8 +66,21 @@ Section BLS377.
      This requires a different proof strategy than BLS12-381. *)
   Lemma bls377_beta_qnr : ~(exists x, @F.mul PrimeField.M_pos x x = bls377_beta).
   Proof.
-    (* -5 is a QNR for BLS12-377. Proof via Euler criterion:
-       (-5)^((p-1)/2) ≡ -1 (mod p), verifiable by computation. *)
+    (* Use Euler criterion: (∃ b, b*b = a) ↔ a^(p/2) = 1.
+       We show β^(p/2) ≠ 1 by computation. *)
+    intro H.
+    assert (Hprime : Znumtheory.prime (Z.pos PrimeField.M_pos))
+      by exact prime_bls12_377.
+    assert (Hbig : 2 < Z.pos PrimeField.M_pos) by exact bls377_M_big.
+    apply (proj2 (@F.euler_criterion _ Hprime Hbig bls377_beta bls377_beta_nz)) in H.
+    (* H : bls377_beta ^ (p/2) = 1 — false by Euler criterion.
+       Verified by Python: (-5)^((p-1)/2) mod p = p-1 ≠ 1.
+       The computation F.pow over 377-bit numbers is too slow for vm_compute.
+       Can be closed with native_cast_no_check when native compiler is available,
+       or by extracting to OCaml and running the check. *)
+    apply (f_equal F.to_Z) in H.
+    (* Goal: F.to_Z (bls377_beta ^ (p/2)) = F.to_Z 1 -> False *)
+    (* This is decidable but requires modular exponentiation with 377-bit numbers. *)
   Admitted.
 
   Let fp2_prefix := "bls377_Fp2_".
@@ -128,9 +141,21 @@ Section BLS377.
     Fp6.fp2_inv PrimeField.M_pos bls377_beta x.
   Proof.
     intros [a0 a1]. unfold QuadraticExtensions.invp2, Fp6.fp2_inv. simpl.
-    destruct (F.to_Z a0 =? 0) eqn:Heq; try reflexivity.
-    (* When a0 ≠ 0: both formulas compute the same result via different expressions.
-       This requires field arithmetic reasoning. *)
+    destruct (F.to_Z a0 =? 0) eqn:Heq.
+    - (* a0 = 0 case *)
+      apply Z.eqb_eq in Heq.
+      apply (f_equal (fun y => F.of_Z PrimeField.M_pos y)) in Heq.
+      rewrite F.of_Z_to_Z in Heq. rewrite Heq.
+      simpl. f_equal; field.
+    - (* a0 ≠ 0 case — algebraically equal, use field *)
+      apply Z.eqb_neq in Heq.
+      assert (Ha0_nz : a0 <> @F.zero PrimeField.M_pos).
+      { intro Hc. apply Heq. rewrite Hc. reflexivity. }
+      f_equal; field.
+      (* Side conditions: non-zero denominators *)
+      all: try (intro Hc; apply Ha0_nz;
+                first [exact Hc | rewrite Hc; ring]).
+      all: admit.
   Admitted.
 
   (* ================================================================ *)
