@@ -1,11 +1,14 @@
 (** * BLS12-377 Fp2 WP proofs for β-dependent operations.
-   All proofs use repeat straightline for call handling. *)
+   All proofs are Admitted stubs — to be completed with interactive debugging.
+   The generic proofs (add, sub, copy, zero, one, select_znz) are reused
+   from QuadraticFieldExtensions.v. *)
 
 Require Import Rupicola.Lib.Api.
 Require Import Crypto.Bedrock.Specs.AbstractField.
 Require Import Crypto.Bedrock.Specs.PrimeField.
 Require Import Crypto.Bedrock.Field.FieldExtensions.QuadraticFieldExtensionsSpecs.
 Require Import Crypto.Bedrock.Field.FieldExtensions.QuadraticFieldExtensions.
+Require Import Crypto.Bedrock.Field.FieldExtensions.CubicFieldExtensions.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_377_Fp2.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_377_instances.
 Require Import Crypto.Arithmetic.PrimeFieldTheorems.
@@ -31,7 +34,6 @@ Section Proofs.
   Local Notation F := (F PrimeField.M_pos).
   Local Notation Fp2 := (F * F)%type.
 
-  (* spec_of instances for AbstractField.* names *)
   Local Instance spec_of_F_felem_copy : spec_of (AbstractField.felem_copy (F:=F)) :=
     AbstractField.spec_of_felem_copy (F:=F).
   Local Instance spec_of_F_add : spec_of (AbstractField.add (F:=F)) :=
@@ -45,14 +47,8 @@ Section Proofs.
   Local Instance spec_of_F_inv : spec_of (AbstractField.inv (F:=F)) :=
     AbstractField.unop_spec AbstractField.un_inv (F:=F).
 
-  (* Fp2 spec_of for mul *)
   Local Instance spec_of_Fp2_mul : spec_of (AbstractField.mul (F:=Fp2)) :=
     AbstractField.binop_spec AbstractField.bin_mul (F:=Fp2).
-
-  (* Each proof follows the same pattern:
-     1. intros + start_func + cbv
-     2. repeat straightline (handles all cmd.call via spec_of instances)
-     3. Manual postcondition assembly *)
 
   (* Fp2 mul: Karatsuba with inline 5x *)
   Lemma bls377_Fp2_mul_ok :
@@ -82,14 +78,15 @@ Section Proofs.
     CubicFieldExtensions.spec_of_Fp2_mul_xi bls377_beta bls377_xi_re bls377_xi_im "bls377_Fp2_" functions.
   Proof. admit. Admitted.
 
-  (* Fp2 conjugate: (a,b) → (a,-b). This is a pairing-specific operation,
-     not a standard AbstractField unop. The WP proof follows the same pattern
-     as the other proofs but with a custom postcondition. *)
+  (* Fp2 conjugate: (a,b) → (a,-b) *)
   Lemma bls377_Fp2_conjugate_ok :
-    forall functions tr mem (pout px : word.rep),
+    forall functions,
     map.get functions (fst Fp2_conjugate) = Some (snd Fp2_conjugate) ->
-    WeakestPrecondition.call functions (fst Fp2_conjugate) tr mem [pout; px]
-      (fun tr' mem' rets => rets = [] /\ tr = tr').
+    forall pout px out x Rr tr mem0,
+    (FElem px x ⋆ (FElem pout out ⋆ Rr)) mem0 ->
+    WeakestPrecondition.call functions (fst Fp2_conjugate) tr mem0 [pout; px]
+      (fun tr' mem' rets => rets = [] /\ tr = tr' /\
+        exists out', (FElem pout out' ⋆ Rr) mem').
   Proof. admit. Admitted.
 
 End Proofs.
