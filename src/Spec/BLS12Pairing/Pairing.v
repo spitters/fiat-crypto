@@ -578,4 +578,64 @@ Section BLS12_Pairing.
     let result := final_exponentiation f in
     fp12_is_one result.
 
+  (* ================================================================ *)
+  (** ** Power by BLS parameter x                                     *)
+  (* ================================================================ *)
+
+  (** Compute f^{|x|} using binary exponentiation.
+      |x| = 0xd201000000010000 (64 bits). *)
+  Definition fp12_pow_bls_x (f : Fp12) : Fp12 :=
+    fp12_pow_Z f bls_x 64.
+
+  (** Compute f^x where x = -|x| (negative).
+      f^x = f^{-|x|} = conjugate(f^{|x|}) in the cyclotomic subgroup. *)
+  Definition fp12_pow_bls_x_signed (f : Fp12) : Fp12 :=
+    fp12_conjugate (fp12_pow_bls_x f).
+
+  (* ================================================================ *)
+  (** ** Optimized final exponentiation (DSD decomposition)           *)
+  (* ================================================================ *)
+
+  (** Hard part of final exponentiation using Hayashida-Hayasaka-Teruya
+      decomposition (eprint 2020/875).  Expresses h3 = (p⁴-p²+1)/r as
+      a polynomial in x and Frobenius maps, requiring only 4 pow_x
+      calls + 3 Frobenius + ~8 Fp12_mul instead of 1268-bit binary
+      exponentiation.
+
+      The exponent identity is:
+        h3 = p + p² + p³ - x⁴ + x³ - 3x² - 2x - 2
+      where x = -|x| is the BLS12-381 curve parameter (negative).
+  *)
+  Definition final_exp_hard_dsd (f : Fp12) : Fp12 :=
+    let t0 := fp12_pow_bls_x_signed f in          (* f^x  (x < 0) *)
+    let t1 := fp12_conjugate (fp12_sqr t0) in      (* f^{-2x} *)
+    let t2 := fp12_pow_bls_x t0 in                 (* (f^x)^{|x|} = f^{-x²} *)
+    let t3 := fp12_sqr t2 in                       (* f^{-2x²} *)
+    let t1 := fp12_mul t1 t2 in                    (* f^{-2x - x²} *)
+    let t2 := fp12_pow_bls_x t2 in                 (* (f^{-x²})^{|x|} = f^{x³} *)
+    let t1 := fp12_mul t1 t2 in                    (* f^{x³ - x² - 2x} *)
+    let t1 := fp12_conjugate t1 in                 (* f^{-x³ + x² + 2x} *)
+    let t1 := fp12_mul t1 f in                     (* f^{-x³ + x² + 2x + 1} *)
+    let t1 := fp12_conjugate t1 in                 (* f^{x³ - x² - 2x - 1} *)
+    let t1 := fp12_mul t1 (fp12_conjugate f) in    (* f^{x³ - x² - 2x - 2} *)
+    let t2 := fp12_pow_bls_x t2 in                 (* (f^{x³})^{|x|} = f^{-x⁴} *)
+    let result := fp12_mul t2 t3 in                (* f^{-x⁴ - 2x²} *)
+    let result := fp12_mul result t1 in            (* f^{-x⁴ + x³ - 3x² - 2x - 2} *)
+    let frob1 := fp12_frobenius f in               (* f^p *)
+    let frob2 := fp12_frobenius frob1 in           (* f^{p²} *)
+    let frob3 := fp12_frobenius frob2 in           (* f^{p³} *)
+    fp12_mul (fp12_mul (fp12_mul result frob1) frob2) frob3.
+
+  (** Optimized final exponentiation using DSD for the hard part. *)
+  Definition final_exponentiation_dsd (f : Fp12) : Fp12 :=
+    (* Easy part 1: f^{p^6-1} *)
+    let f_conj := fp12_conjugate f in
+    let f_inv := fp12_inv f in
+    let result := fp12_mul f_conj f_inv in
+    (* Easy part 2: result^{p^2+1} *)
+    let result_p2 := fp12_frobenius_p2 result in
+    let result' := fp12_mul result_p2 result in
+    (* Hard part: DSD decomposition *)
+    final_exp_hard_dsd result'.
+
 End BLS12_Pairing.

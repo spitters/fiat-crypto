@@ -129,10 +129,21 @@ Section BLS12_377_Pairing.
     Lemma bls377_M_big : 2 < Z.pos PrimeField.M_pos.
     Proof. vm_compute. reflexivity. Qed.
 
-    (* BLS12-377: p mod 4 <> 3 (p ≡ 1 mod 8), so we cannot use the same
-       QNR proof as BLS12-381. We axiomatize this for now. *)
+    (* BLS12-377: p mod 4 <> 3 (p ≡ 1 mod 8), so we use the Euler criterion:
+       β^((p-1)/2) ≠ 1 implies β is a QNR.  Proof ported from bls12_377_instances.v. *)
     Lemma bls377_beta_qnr : ~(exists x, @F.mul PrimeField.M_pos x x = bls377_beta).
-    Proof. admit. Admitted.
+    Proof.
+      intro H.
+      assert (Hprime : Znumtheory.prime (Z.pos PrimeField.M_pos))
+        by exact prime_bls12_377.
+      assert (Hbig : 2 < Z.pos PrimeField.M_pos) by exact bls377_M_big.
+      apply (proj2 (@F.euler_criterion _ Hprime Hbig bls377_beta bls377_beta_nz)) in H.
+      assert (Hcheck : (F.to_Z (@F.pow PrimeField.M_pos bls377_beta
+        (Z.to_N (Z.pos PrimeField.M_pos / 2))) =? F.to_Z (@F.one PrimeField.M_pos))%Z = false).
+      { vm_cast_no_check (eq_refl false). }
+      apply (f_equal F.to_Z) in H. rewrite H in Hcheck.
+      rewrite Z.eqb_refl in Hcheck. discriminate.
+    Qed.
 
     (* ============================================================== *)
     (* Field name prefixes                                             *)
@@ -235,6 +246,7 @@ Section BLS12_377_Pairing.
     Let fp12_copy_name : string := AbstractField.felem_copy (F:=Fp12).
     Let fp12_conjugate_name : string := (fp12_prefix ++ "conjugate")%string.
     Let fp12_frobenius_p2_name : string := (fp12_prefix ++ "frobenius_p2")%string.
+    Let fp12_frobenius_name : string := (fp12_prefix ++ "frobenius")%string.
     Let fp2_mul_fp_name : string := "bls377_Fp2_mul_fp".
     Let make_line_name : string := "bls377_make_line".
     Let fp2_mul_xi_name : string := (fp2_prefix ++ "mul_xi")%string.
@@ -416,34 +428,66 @@ Section BLS12_377_Pairing.
           (expr.op bopname.add (expr.var v) (expr.literal 88)) (expr.literal 0)
       ].
 
-    (* TODO: gamma1_p2 = xi^{(p^2-1)/3} for BLS12-377 — placeholder zeros *)
+    (* Helper: store a full Fp2 constant (real + imaginary, 12 limbs) *)
+    Local Definition store_fp2_full (v : string)
+      (r0 r1 r2 r3 r4 r5 i0 i1 i2 i3 i4 i5 : Z) :=
+      cmd_seq_list [
+        cmd.store access_size.word (expr.var v) (expr.literal r0);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 8)) (expr.literal r1);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 16)) (expr.literal r2);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 24)) (expr.literal r3);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 32)) (expr.literal r4);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 40)) (expr.literal r5);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 48)) (expr.literal i0);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 56)) (expr.literal i1);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 64)) (expr.literal i2);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 72)) (expr.literal i3);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 80)) (expr.literal i4);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 88)) (expr.literal i5)
+      ].
+
+    (* gamma1_p2 = xi^{(p^2-1)/3} for BLS12-377 in Montgomery form *)
     Definition bls377_load_gamma1_p2 : function_t :=
       ("bls377_load_gamma1_p2",
        (["out"], []:list String.string,
         store_fp2_real_only "out"
-          0 0 0 0 0 0)).
+          0xdacd106da5847973 0xd8fe2454bac2a79a 0x1ada4fd6fd832edc
+          0xfb9868449d150908 0xd63eb8aeea32285e 0x167d6a36f873fd0)).
 
     Lemma bls377_load_gamma1_p2_ok :
       program_logic_goal_for_function! bls377_load_gamma1_p2.
     Proof. exact I. Qed.
 
-    (* TODO: gamma2_p2 = xi^{2(p^2-1)/3} for BLS12-377 — placeholder zeros *)
+    (* gamma2_p2 = xi^{2(p^2-1)/3} for BLS12-377 in Montgomery form *)
     Definition bls377_load_gamma2_p2 : function_t :=
       ("bls377_load_gamma2_p2",
        (["out"], []:list String.string,
         store_fp2_real_only "out"
-          0 0 0 0 0 0)).
+          0x2c766f925a7b8727 0x3d7f6b0253d58b5 0x838ec0deec122131
+          0xbd5eb3e9f658bb10 0x6942bd126ed3e52e 0x1673786dd04ed6a)).
 
     Lemma bls377_load_gamma2_p2_ok :
       program_logic_goal_for_function! bls377_load_gamma2_p2.
     Proof. exact I. Qed.
 
-    (* TODO: w_frob_p2_c1 = xi^{(p^2-1)/6} for BLS12-377 — placeholder zeros *)
+    (* w_frob_p2_c1 = xi^{(p^2-1)/6} for BLS12-377 in Montgomery form *)
     Definition bls377_load_w_frob_p2_c1 : function_t :=
       ("bls377_load_w_frob_p2_c1",
        (["out"], []:list String.string,
         store_fp2_real_only "out"
-          0 0 0 0 0 0)).
+          0x5892506da58478da 0x133366940ac2a74b 0x9b64a150cdf726cf
+          0x5cc426090a9c587e 0x5cf848adfdcd640c 0x4702bf3ac02380)).
 
     Lemma bls377_load_w_frob_p2_c1_ok :
       program_logic_goal_for_function! bls377_load_w_frob_p2_c1.
@@ -741,7 +785,290 @@ Section BLS12_377_Pairing.
           cmd.skip
       ].
 
-    (* Full final exponentiation:
+    (* ============================================================== *)
+    (* Fp12_pow_u: raise Fp12 element to the BLS parameter u           *)
+    (*   Uses left-to-right binary square-and-multiply on              *)
+    (*   u = 0x8508c00000000001 (64-bit, top bit always set)           *)
+    (*   u is POSITIVE for BLS12-377, so NO conjugation after.         *)
+    (* ============================================================== *)
+
+    Local Definition pow_u_loop_body : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        cmd.set "i" (expr.op bopname.sub (expr.var "i") (expr.literal 1));
+        cmd.call [] fp12_sqr_name
+          [expr.var "result"; expr.var "result"];
+        cmd.set "bit" (expr.op bopname.and
+          (expr.op bopname.sru (expr.literal 0x8508c00000000001) (expr.var "i"))
+          (expr.literal 1));
+        cmd.cond (expr.var "bit")
+          (cmd.call [] fp12_mul_name
+            [expr.var "result"; expr.var "result"; expr.var "base"])
+          cmd.skip
+      ].
+
+    Definition bls377_Fp12_pow_u : function_t :=
+      ("bls377_Fp12_pow_u",
+       (["out"; "base"], []:list String.string,
+        bedrock_func_body:(
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as result;
+          coq:(cmd_seq_list [
+            cmd.call [] fp12_copy_name
+              [expr.var "result"; expr.var "base"];
+            cmd.set "i" (expr.literal 63);
+            cmd.while (expr.var "i") pow_u_loop_body;
+            cmd.call [] fp12_copy_name
+              [expr.var "out"; expr.var "result"]
+          ])
+        ))).
+
+    Lemma bls377_Fp12_pow_u_ok :
+      program_logic_goal_for_function! bls377_Fp12_pow_u.
+    Proof. exact I. Qed.
+
+    (* ============================================================== *)
+    (* Frobenius p constant loaders (for DSD final exponentiation)    *)
+    (* Constants: gamma1 = xi^{(p-1)/3}, gamma2 = xi^{2(p-1)/3},     *)
+    (*   w_frob_c1 = xi^{(p-1)/6} for BLS12-377 in Montgomery form   *)
+    (* All imaginary parts are zero.                                   *)
+    (* ============================================================== *)
+
+    (* gamma1 = xi^{(p-1)/3} for BLS12-377 in Montgomery form *)
+    Definition bls377_load_gamma1 : function_t :=
+      ("bls377_load_gamma1",
+       (["out"], []:list String.string,
+        store_fp2_full "out"
+          0x5892506da58478da 0x133366940ac2a74b 0x9b64a150cdf726cf
+          0x5cc426090a9c587e 0x5cf848adfdcd640c 0x4702bf3ac02380
+          0 0 0 0 0 0)).
+
+    Lemma bls377_load_gamma1_ok :
+      program_logic_goal_for_function! bls377_load_gamma1.
+    Proof. exact I. Qed.
+
+    (* gamma2 = xi^{2(p-1)/3} for BLS12-377 in Montgomery form *)
+    Definition bls377_load_gamma2 : function_t :=
+      ("bls377_load_gamma2",
+       (["out"], []:list String.string,
+        store_fp2_full "out"
+          0xdacd106da5847973 0xd8fe2454bac2a79a 0x1ada4fd6fd832edc
+          0xfb9868449d150908 0xd63eb8aeea32285e 0x167d6a36f873fd0
+          0 0 0 0 0 0)).
+
+    Lemma bls377_load_gamma2_ok :
+      program_logic_goal_for_function! bls377_load_gamma2.
+    Proof. exact I. Qed.
+
+    (* w_frob_c1 = xi^{(p-1)/6} for BLS12-377 in Montgomery form *)
+    Definition bls377_load_w_frob_c1 : function_t :=
+      ("bls377_load_w_frob_c1",
+       (["out"], []:list String.string,
+        store_fp2_full "out"
+          0x6ec47a04a3f7ca9e 0xa42e0cb968c1fa44 0x578d5187fbd2bd23
+          0x930eeb0ac79dd4bd 0xa24883de1e09a9ee 0xdaa7058067d46f
+          0 0 0 0 0 0)).
+
+    Lemma bls377_load_w_frob_c1_ok :
+      program_logic_goal_for_function! bls377_load_w_frob_c1.
+    Proof. exact I. Qed.
+
+    (* ============================================================== *)
+    (* Final exponentiation hard part (DSD decomposition)             *)
+    (*   Computes f^{(p^4 - p^2 + 1)/r} using the DSD method:       *)
+    (*   BLS12-377 has POSITIVE u, so NO conjugations after pow_u.    *)
+    (*   t0 = f^u (no conjugation — u is positive)                    *)
+    (*   t1 = t0^2 (no conjugation — was conjugated for negative x)   *)
+    (*   t2 = pow_u(t0) = f^{u^2} (no conjugation)                   *)
+    (*   t3 = t2^2 = f^{2u^2} (no conjugation)                       *)
+    (*   Chain multiplications and Frobenius maps                     *)
+    (* ============================================================== *)
+
+    Local Definition final_exp_hard_dsd_body : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        (* Load Frobenius constants *)
+        cmd.call [] "bls377_load_gamma1" [expr.var "gamma1"];
+        cmd.call [] "bls377_load_gamma2" [expr.var "gamma2"];
+        cmd.call [] "bls377_load_w_frob_c1" [expr.var "w_frob_c1"];
+
+        (* t0 = f^u (NO conjugation — u is positive for BLS12-377) *)
+        cmd.call [] "bls377_Fp12_pow_u"
+          [expr.var "t0"; expr.var "f"];
+
+        (* t1 = t0^2 (NO conjugation — u positive means t0^2 = f^{2u}) *)
+        cmd.call [] fp12_sqr_name
+          [expr.var "t1"; expr.var "t0"];
+
+        (* t2 = pow_u(t0) = f^{u^2} (NO conjugation) *)
+        cmd.call [] "bls377_Fp12_pow_u"
+          [expr.var "t2"; expr.var "t0"];
+
+        (* t3 = t2^2 = f^{2u^2} (NO conjugation) *)
+        cmd.call [] fp12_sqr_name
+          [expr.var "t3"; expr.var "t2"];
+
+        (* t1 = t1 * t2 => f^{2u + u^2} *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t1"; expr.var "t1"; expr.var "t2"];
+
+        (* t2 = pow_u(t2) => f^{u^3} *)
+        cmd.call [] "bls377_Fp12_pow_u"
+          [expr.var "t2"; expr.var "t2"];
+
+        (* t1 = t1 * t2 => f^{u^3 + u^2 + 2u} *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t1"; expr.var "t1"; expr.var "t2"];
+
+        (* t1 = conjugate(t1) *)
+        cmd.call [] fp12_conjugate_name
+          [expr.var "t1"; expr.var "t1"];
+
+        (* t1 = t1 * f *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t1"; expr.var "t1"; expr.var "f"];
+
+        (* t1 = conjugate(t1) *)
+        cmd.call [] fp12_conjugate_name
+          [expr.var "t1"; expr.var "t1"];
+
+        (* t0 = conjugate(f) — reuse t0 as temp for conj(f) *)
+        cmd.call [] fp12_conjugate_name
+          [expr.var "t0"; expr.var "f"];
+
+        (* t1 = t1 * conj(f) *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t1"; expr.var "t1"; expr.var "t0"];
+
+        (* t2 = pow_u(t2) => f^{u^4} *)
+        cmd.call [] "bls377_Fp12_pow_u"
+          [expr.var "t2"; expr.var "t2"];
+
+        (* t0 = t2 * t3 — reuse t0 as accumulator *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t0"; expr.var "t2"; expr.var "t3"];
+
+        (* t0 = t0 * t1 *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t0"; expr.var "t0"; expr.var "t1"];
+
+        (* Frobenius maps: t1 = f^p, t2 = f^{p^2}, t3 = f^{p^3} *)
+        cmd.call [] fp12_frobenius_name
+          [expr.var "t1"; expr.var "f";
+           expr.var "gamma1"; expr.var "gamma2"; expr.var "w_frob_c1"];
+        cmd.call [] fp12_frobenius_name
+          [expr.var "t2"; expr.var "t1";
+           expr.var "gamma1"; expr.var "gamma2"; expr.var "w_frob_c1"];
+        cmd.call [] fp12_frobenius_name
+          [expr.var "t3"; expr.var "t2";
+           expr.var "gamma1"; expr.var "gamma2"; expr.var "w_frob_c1"];
+
+        (* result = t0 * frob1 * frob2 * frob3 *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t0"; expr.var "t0"; expr.var "t1"];
+        cmd.call [] fp12_mul_name
+          [expr.var "t0"; expr.var "t0"; expr.var "t2"];
+        cmd.call [] fp12_mul_name
+          [expr.var "t0"; expr.var "t0"; expr.var "t3"];
+
+        (* Copy to output *)
+        cmd.call [] fp12_copy_name
+          [expr.var "out"; expr.var "t0"]
+      ].
+
+    Definition bls377_final_exp_hard_dsd : function_t :=
+      ("bls377_final_exp_hard_dsd",
+       (["out"; "f"], []:list String.string,
+        bedrock_func_body:(
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as t0;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as t1;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as t2;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as t3;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as gamma1;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as gamma2;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as w_frob_c1;
+          coq:(final_exp_hard_dsd_body)
+        ))).
+
+    Lemma bls377_final_exp_hard_dsd_ok :
+      program_logic_goal_for_function! bls377_final_exp_hard_dsd.
+    Proof. exact I. Qed.
+
+    (* ============================================================== *)
+    (* DSD final exponentiation (easy part + DSD hard part)           *)
+    (*   Easy part: same as naive (conjugate/inv/frobenius_p2)         *)
+    (*   Hard part: DSD decomposition instead of h3 exponentiation    *)
+    (* ============================================================== *)
+
+    Local Definition final_exp_dsd_body : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        (* Easy part 1: f^{p^6-1} *)
+        cmd.call [] fp12_conjugate_name
+          [expr.var "result"; expr.var "f"];
+        cmd.call [] fp12_inv_name
+          [expr.var "tmp"; expr.var "f"];
+        cmd.call [] fp12_mul_name
+          [expr.var "result"; expr.var "result"; expr.var "tmp"];
+        (* Easy part 2: result^{p^2+1} *)
+        cmd.call [] fp12_frobenius_p2_name
+          [expr.var "tmp"; expr.var "result";
+           expr.var "gamma1_p2"; expr.var "gamma2_p2";
+           expr.var "w_frob_p2_c1"];
+        cmd.call [] fp12_mul_name
+          [expr.var "result"; expr.var "tmp"; expr.var "result"];
+        (* Hard part: DSD decomposition *)
+        cmd.call [] "bls377_final_exp_hard_dsd"
+          [expr.var "out"; expr.var "result"]
+      ].
+
+    Definition bls377_final_exp_dsd : function_t :=
+      ("bls377_final_exp_dsd",
+       (["out"; "f"; "gamma1_p2"; "gamma2_p2"; "w_frob_p2_c1"],
+        []:list String.string,
+        bedrock_func_body:(
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as result;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as tmp;
+          coq:(final_exp_dsd_body)
+        ))).
+
+    Lemma bls377_final_exp_dsd_ok :
+      program_logic_goal_for_function! bls377_final_exp_dsd.
+    Proof. exact I. Qed.
+
+    (* ============================================================== *)
+    (* Top-level pairing using DSD final exponentiation                *)
+    (* ============================================================== *)
+
+    Local Definition pairing_dsd_body : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        (* Load Frobenius p^2 constants *)
+        cmd.call [] "bls377_load_gamma1_p2" [expr.var "gamma1_p2"];
+        cmd.call [] "bls377_load_gamma2_p2" [expr.var "gamma2_p2"];
+        cmd.call [] "bls377_load_w_frob_p2_c1" [expr.var "w_frob_p2_c1"];
+        (* Miller loop *)
+        cmd.call [] "bls377_miller_loop"
+          [expr.var "tmp"; expr.var "p_x"; expr.var "p_y";
+           expr.var "q_x"; expr.var "q_y"];
+        (* Final exponentiation (DSD) *)
+        cmd.call [] "bls377_final_exp_dsd"
+          [expr.var "out"; expr.var "tmp";
+           expr.var "gamma1_p2"; expr.var "gamma2_p2";
+           expr.var "w_frob_p2_c1"]
+      ].
+
+    Definition bls377_pairing_dsd : function_t :=
+      ("bls377_pairing_dsd",
+       (["out"; "p_x"; "p_y"; "q_x"; "q_y"], []:list String.string,
+        bedrock_func_body:(
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as tmp;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as gamma1_p2;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as gamma2_p2;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as w_frob_p2_c1;
+          coq:(pairing_dsd_body)
+        ))).
+
+    Lemma bls377_pairing_dsd_ok :
+      program_logic_goal_for_function! bls377_pairing_dsd.
+    Proof. exact I. Qed.
+
+    (* Full final exponentiation (naive h3 square-and-multiply):
        Easy part 1: result = conj(f) * inv(f) = f^{p^6-1}
        Easy part 2: result = frob_p2(result) * result = result^{p^2+1}
        Hard part:   result = result^{h3}
@@ -838,9 +1165,16 @@ Section BLS12_377_Pairing.
         bls377_load_gamma1_p2;
         bls377_load_gamma2_p2;
         bls377_load_w_frob_p2_c1;
+        bls377_load_gamma1;
+        bls377_load_gamma2;
+        bls377_load_w_frob_c1;
+        bls377_Fp12_pow_u;
+        bls377_final_exp_hard_dsd;
+        bls377_final_exp_dsd;
         bls377_miller_loop;
         bls377_final_exp;
-        bls377_pairing ].
+        bls377_pairing;
+        bls377_pairing_dsd ].
 
     (* ============================================================== *)
     (* Top-level pairing correctness theorem                            *)

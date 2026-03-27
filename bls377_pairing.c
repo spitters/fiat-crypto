@@ -137,6 +137,13 @@ static void bls377_make_line(br_word_t out, br_word_t lam, br_word_t x_t, br_wor
 static void bls377_load_gamma1_p2(br_word_t out);
 static void bls377_load_gamma2_p2(br_word_t out);
 static void bls377_load_w_frob_p2_c1(br_word_t out);
+static void bls377_load_gamma1(br_word_t out);
+static void bls377_load_gamma2(br_word_t out);
+static void bls377_load_w_frob_c1(br_word_t out);
+static void bls377_Fp12_pow_u(br_word_t out, br_word_t base);
+static void bls377_final_exp_hard_dsd(br_word_t out, br_word_t f);
+static void bls377_final_exp_dsd(br_word_t out, br_word_t f, br_word_t gamma1_p2, br_word_t gamma2_p2, br_word_t w_frob_p2_c1);
+static void bls377_pairing_dsd(br_word_t out, br_word_t p_x, br_word_t p_y, br_word_t q_x, br_word_t q_y);
 static void bls377_miller_loop(br_word_t out, br_word_t p_x, br_word_t p_y, br_word_t q_x, br_word_t q_y);
 static void bls377_final_exp(br_word_t out, br_word_t f, br_word_t gamma1_p2, br_word_t gamma2_p2, br_word_t w_frob_p2_c1);
 static void bls377_pairing(br_word_t out, br_word_t p_x, br_word_t p_y, br_word_t q_x, br_word_t q_y);
@@ -2377,12 +2384,12 @@ static void bls377_make_line(br_word_t out, br_word_t lam, br_word_t x_t, br_wor
 }
 
 static void bls377_load_gamma1_p2(br_word_t out) {
-  _br_store(out, (br_word_t)0);
-  _br_store(out+8, (br_word_t)0);
-  _br_store(out+16, (br_word_t)0);
-  _br_store(out+24, (br_word_t)0);
-  _br_store(out+32, (br_word_t)0);
-  _br_store(out+40, (br_word_t)0);
+  _br_store(out, (br_word_t)0xdacd106da5847973);
+  _br_store(out+8, (br_word_t)0xd8fe2454bac2a79a);
+  _br_store(out+16, (br_word_t)0x1ada4fd6fd832edc);
+  _br_store(out+24, (br_word_t)0xfb9868449d150908);
+  _br_store(out+32, (br_word_t)0xd63eb8aeea32285e);
+  _br_store(out+40, (br_word_t)0x167d6a36f873fd0);
   _br_store(out+48, (br_word_t)0);
   _br_store(out+56, (br_word_t)0);
   _br_store(out+64, (br_word_t)0);
@@ -2392,12 +2399,12 @@ static void bls377_load_gamma1_p2(br_word_t out) {
 }
 
 static void bls377_load_gamma2_p2(br_word_t out) {
-  _br_store(out, (br_word_t)0);
-  _br_store(out+8, (br_word_t)0);
-  _br_store(out+16, (br_word_t)0);
-  _br_store(out+24, (br_word_t)0);
-  _br_store(out+32, (br_word_t)0);
-  _br_store(out+40, (br_word_t)0);
+  _br_store(out, (br_word_t)0x2c766f925a7b8727);
+  _br_store(out+8, (br_word_t)0x3d7f6b0253d58b5);
+  _br_store(out+16, (br_word_t)0x838ec0deec122131);
+  _br_store(out+24, (br_word_t)0xbd5eb3e9f658bb10);
+  _br_store(out+32, (br_word_t)0x6942bd126ed3e52e);
+  _br_store(out+40, (br_word_t)0x1673786dd04ed6a);
   _br_store(out+48, (br_word_t)0);
   _br_store(out+56, (br_word_t)0);
   _br_store(out+64, (br_word_t)0);
@@ -2407,18 +2414,220 @@ static void bls377_load_gamma2_p2(br_word_t out) {
 }
 
 static void bls377_load_w_frob_p2_c1(br_word_t out) {
-  _br_store(out, (br_word_t)0);
-  _br_store(out+8, (br_word_t)0);
-  _br_store(out+16, (br_word_t)0);
-  _br_store(out+24, (br_word_t)0);
-  _br_store(out+32, (br_word_t)0);
-  _br_store(out+40, (br_word_t)0);
+  _br_store(out, (br_word_t)0x5892506da58478da);
+  _br_store(out+8, (br_word_t)0x133366940ac2a74b);
+  _br_store(out+16, (br_word_t)0x9b64a150cdf726cf);
+  _br_store(out+24, (br_word_t)0x5cc426090a9c587e);
+  _br_store(out+32, (br_word_t)0x5cf848adfdcd640c);
+  _br_store(out+40, (br_word_t)0x4702bf3ac02380);
   _br_store(out+48, (br_word_t)0);
   _br_store(out+56, (br_word_t)0);
   _br_store(out+64, (br_word_t)0);
   _br_store(out+72, (br_word_t)0);
   _br_store(out+80, (br_word_t)0);
   _br_store(out+88, (br_word_t)0);
+}
+
+/* Frobenius p constant loaders (for DSD final exponentiation) */
+
+static void bls377_load_gamma1(br_word_t out) {
+  /* gamma1 = xi^{(p-1)/3} in Montgomery form, real part only (im = 0) */
+  _br_store(out, (br_word_t)0x5892506da58478da);
+  _br_store(out+8, (br_word_t)0x133366940ac2a74b);
+  _br_store(out+16, (br_word_t)0x9b64a150cdf726cf);
+  _br_store(out+24, (br_word_t)0x5cc426090a9c587e);
+  _br_store(out+32, (br_word_t)0x5cf848adfdcd640c);
+  _br_store(out+40, (br_word_t)0x4702bf3ac02380);
+  _br_store(out+48, (br_word_t)0);
+  _br_store(out+56, (br_word_t)0);
+  _br_store(out+64, (br_word_t)0);
+  _br_store(out+72, (br_word_t)0);
+  _br_store(out+80, (br_word_t)0);
+  _br_store(out+88, (br_word_t)0);
+}
+
+static void bls377_load_gamma2(br_word_t out) {
+  /* gamma2 = xi^{2(p-1)/3} in Montgomery form, real part only (im = 0) */
+  _br_store(out, (br_word_t)0xdacd106da5847973);
+  _br_store(out+8, (br_word_t)0xd8fe2454bac2a79a);
+  _br_store(out+16, (br_word_t)0x1ada4fd6fd832edc);
+  _br_store(out+24, (br_word_t)0xfb9868449d150908);
+  _br_store(out+32, (br_word_t)0xd63eb8aeea32285e);
+  _br_store(out+40, (br_word_t)0x167d6a36f873fd0);
+  _br_store(out+48, (br_word_t)0);
+  _br_store(out+56, (br_word_t)0);
+  _br_store(out+64, (br_word_t)0);
+  _br_store(out+72, (br_word_t)0);
+  _br_store(out+80, (br_word_t)0);
+  _br_store(out+88, (br_word_t)0);
+}
+
+static void bls377_load_w_frob_c1(br_word_t out) {
+  /* w_frob_c1 = xi^{(p-1)/6} in Montgomery form, real part only (im = 0) */
+  _br_store(out, (br_word_t)0x6ec47a04a3f7ca9e);
+  _br_store(out+8, (br_word_t)0xa42e0cb968c1fa44);
+  _br_store(out+16, (br_word_t)0x578d5187fbd2bd23);
+  _br_store(out+24, (br_word_t)0x930eeb0ac79dd4bd);
+  _br_store(out+32, (br_word_t)0xa24883de1e09a9ee);
+  _br_store(out+40, (br_word_t)0xdaa7058067d46f);
+  _br_store(out+48, (br_word_t)0);
+  _br_store(out+56, (br_word_t)0);
+  _br_store(out+64, (br_word_t)0);
+  _br_store(out+72, (br_word_t)0);
+  _br_store(out+80, (br_word_t)0);
+  _br_store(out+88, (br_word_t)0);
+}
+
+/* Fp12_pow_u: raise Fp12 element to BLS12-377 parameter u.
+   u = 0x8508c00000000001 (64-bit, positive).
+   Uses left-to-right binary square-and-multiply, starting from bit 62
+   (bit 63 is MSB, always set, so we initialize result = base). */
+static void bls377_Fp12_pow_u(br_word_t out, br_word_t base) {
+  br_word_t i, bit, result;
+  uint8_t _br_stackalloc_result[0x240] = {0}; result = (br_word_t)&_br_stackalloc_result;
+  bls377_Fp12_felem_copy(result, base);
+  i = (br_word_t)63;
+  while (i) {
+    i = i-1;
+    bls377_Fp12_square(result, result);
+    bit = ((br_word_t)0x8508c00000000001>>(i&(sizeof(br_word_t)*8-1)))&1;
+    if (bit) {
+      bls377_Fp12_mul(result, result, base);
+    } else {
+      /*skip*/
+    }
+  }
+  bls377_Fp12_felem_copy(out, result);
+}
+
+/* DSD hard part of final exponentiation.
+   Computes f^{(p^4 - p^2 + 1)/r} using the DSD decomposition.
+   BLS12-377 has POSITIVE u, so NO conjugations after pow_u.
+   The algorithm computes:
+     t0 = f^u
+     t1 = t0^2 = f^{2u}
+     t2 = f^{u^2}
+     t3 = t2^2 = f^{2u^2}
+     t1 = t1 * t2 => f^{u^2 + 2u}
+     t2 = f^{u^3}
+     t1 = t1 * t2 => f^{u^3 + u^2 + 2u}
+     t1 = conj(t1) => f^{-(u^3 + u^2 + 2u)}
+     t1 = t1 * f => f^{1 - u^3 - u^2 - 2u}
+     t1 = conj(t1) => f^{u^3 + u^2 + 2u - 1}
+     t0 = conj(f)
+     t1 = t1 * conj(f) => f^{u^3 + u^2 + 2u - 2}
+     t2 = f^{u^4}
+     t0 = t2 * t3 => f^{u^4 + 2u^2}
+     t0 = t0 * t1 => f^{u^4 + u^3 + 3u^2 + 2u - 2}
+     Multiply by frob(f), frob^2(f), frob^3(f)
+     result = t0 * f^p * f^{p^2} * f^{p^3} */
+static void bls377_final_exp_hard_dsd(br_word_t out, br_word_t f) {
+  br_word_t t0, t1, t2, t3, gamma1, gamma2, w_frob_c1;
+  uint8_t _br_stackalloc_t0[0x240] = {0}; t0 = (br_word_t)&_br_stackalloc_t0;
+  uint8_t _br_stackalloc_t1[0x240] = {0}; t1 = (br_word_t)&_br_stackalloc_t1;
+  uint8_t _br_stackalloc_t2[0x240] = {0}; t2 = (br_word_t)&_br_stackalloc_t2;
+  uint8_t _br_stackalloc_t3[0x240] = {0}; t3 = (br_word_t)&_br_stackalloc_t3;
+  uint8_t _br_stackalloc_gamma1[96] = {0}; gamma1 = (br_word_t)&_br_stackalloc_gamma1;
+  uint8_t _br_stackalloc_gamma2[96] = {0}; gamma2 = (br_word_t)&_br_stackalloc_gamma2;
+  uint8_t _br_stackalloc_w_frob_c1[96] = {0}; w_frob_c1 = (br_word_t)&_br_stackalloc_w_frob_c1;
+
+  /* Load Frobenius constants */
+  bls377_load_gamma1(gamma1);
+  bls377_load_gamma2(gamma2);
+  bls377_load_w_frob_c1(w_frob_c1);
+
+  /* t0 = f^u (NO conjugation -- u is positive for BLS12-377) */
+  bls377_Fp12_pow_u(t0, f);
+
+  /* t1 = t0^2 = f^{2u} */
+  bls377_Fp12_square(t1, t0);
+
+  /* t2 = pow_u(t0) = f^{u^2} (NO conjugation) */
+  bls377_Fp12_pow_u(t2, t0);
+
+  /* t3 = t2^2 = f^{2u^2} */
+  bls377_Fp12_square(t3, t2);
+
+  /* t1 = t1 * t2 => f^{2u + u^2} */
+  bls377_Fp12_mul(t1, t1, t2);
+
+  /* t2 = pow_u(t2) => f^{u^3} */
+  bls377_Fp12_pow_u(t2, t2);
+
+  /* t1 = t1 * t2 => f^{u^3 + u^2 + 2u} */
+  bls377_Fp12_mul(t1, t1, t2);
+
+  /* t1 = conjugate(t1) */
+  bls377_Fp12_conjugate(t1, t1);
+
+  /* t1 = t1 * f */
+  bls377_Fp12_mul(t1, t1, f);
+
+  /* t1 = conjugate(t1) */
+  bls377_Fp12_conjugate(t1, t1);
+
+  /* t0 = conjugate(f) -- reuse t0 as temp for conj(f) */
+  bls377_Fp12_conjugate(t0, f);
+
+  /* t1 = t1 * conj(f) */
+  bls377_Fp12_mul(t1, t1, t0);
+
+  /* t2 = pow_u(t2) => f^{u^4} */
+  bls377_Fp12_pow_u(t2, t2);
+
+  /* t0 = t2 * t3 */
+  bls377_Fp12_mul(t0, t2, t3);
+
+  /* t0 = t0 * t1 */
+  bls377_Fp12_mul(t0, t0, t1);
+
+  /* Frobenius maps: t1 = f^p, t2 = f^{p^2}, t3 = f^{p^3} */
+  bls377_Fp12_frobenius(t1, f, gamma1, gamma2, w_frob_c1);
+  bls377_Fp12_frobenius(t2, t1, gamma1, gamma2, w_frob_c1);
+  bls377_Fp12_frobenius(t3, t2, gamma1, gamma2, w_frob_c1);
+
+  /* result = t0 * frob1 * frob2 * frob3 */
+  bls377_Fp12_mul(t0, t0, t1);
+  bls377_Fp12_mul(t0, t0, t2);
+  bls377_Fp12_mul(t0, t0, t3);
+
+  /* Copy to output */
+  bls377_Fp12_felem_copy(out, t0);
+}
+
+/* DSD final exponentiation: easy part + DSD hard part.
+   Easy part: same as naive (conjugate/inv/frobenius_p2).
+   Hard part: DSD decomposition instead of h3 exponentiation. */
+static void bls377_final_exp_dsd(br_word_t out, br_word_t f, br_word_t gamma1_p2, br_word_t gamma2_p2, br_word_t w_frob_p2_c1) {
+  br_word_t result, tmp;
+  uint8_t _br_stackalloc_result[0x240] = {0}; result = (br_word_t)&_br_stackalloc_result;
+  uint8_t _br_stackalloc_tmp[0x240] = {0}; tmp = (br_word_t)&_br_stackalloc_tmp;
+
+  /* Easy part 1: f^{p^6-1} */
+  bls377_Fp12_conjugate(result, f);
+  bls377_Fp12_inv(tmp, f);
+  bls377_Fp12_mul(result, result, tmp);
+
+  /* Easy part 2: result^{p^2+1} */
+  bls377_Fp12_frobenius_p2(tmp, result, gamma1_p2, gamma2_p2, w_frob_p2_c1);
+  bls377_Fp12_mul(result, tmp, result);
+
+  /* Hard part: DSD decomposition */
+  bls377_final_exp_hard_dsd(out, result);
+}
+
+/* Top-level pairing using DSD final exponentiation */
+static void bls377_pairing_dsd(br_word_t out, br_word_t p_x, br_word_t p_y, br_word_t q_x, br_word_t q_y) {
+  br_word_t tmp, gamma1_p2, gamma2_p2, w_frob_p2_c1;
+  uint8_t _br_stackalloc_tmp[0x240] = {0}; tmp = (br_word_t)&_br_stackalloc_tmp;
+  uint8_t _br_stackalloc_gamma1_p2[96] = {0}; gamma1_p2 = (br_word_t)&_br_stackalloc_gamma1_p2;
+  uint8_t _br_stackalloc_gamma2_p2[96] = {0}; gamma2_p2 = (br_word_t)&_br_stackalloc_gamma2_p2;
+  uint8_t _br_stackalloc_w_frob_p2_c1[96] = {0}; w_frob_p2_c1 = (br_word_t)&_br_stackalloc_w_frob_p2_c1;
+  bls377_load_gamma1_p2(gamma1_p2);
+  bls377_load_gamma2_p2(gamma2_p2);
+  bls377_load_w_frob_p2_c1(w_frob_p2_c1);
+  bls377_miller_loop(tmp, p_x, p_y, q_x, q_y);
+  bls377_final_exp_dsd(out, tmp, gamma1_p2, gamma2_p2, w_frob_p2_c1);
 }
 
 static void bls377_miller_loop(br_word_t out, br_word_t p_x, br_word_t p_y, br_word_t q_x, br_word_t q_y) {

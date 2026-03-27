@@ -37,6 +37,8 @@ Require Import Crypto.Bedrock.Field.FieldExtensions.CubicFieldExtensions.
 Require Import Crypto.Bedrock.Field.FieldExtensions.DodecicFieldExtensionsSpecs.
 Require Import Crypto.Bedrock.Field.FieldExtensions.DodecicFieldExtensions.
 Require Import Crypto.Bedrock.Field.FieldExtensions.PairingFieldOps.
+Require Import Crypto.Bedrock.Field.FieldExtensions.WPTactics.
+Require Import Crypto.Algebra.Ring.
 
 Import BinInt String List.ListNotations.
 Import Syntax.
@@ -132,6 +134,11 @@ Section BLS12_Pairing.
       exact (QuadraticExtensionsFiat.beta_is_non_res PrimeField.M_pos
                prime_bls12_381 bls12_M_big M_mod_4_3).
     Qed.
+
+    (* Ring structure for Fp, needed by feval proofs *)
+    Local Lemma Fp_ring_theory : ring_theory (@F.zero PrimeField.M_pos) (@F.one PrimeField.M_pos) (@F.add PrimeField.M_pos) (@F.mul PrimeField.M_pos) (@F.sub PrimeField.M_pos) (@F.opp PrimeField.M_pos) eq.
+    Proof. exact (Algebra.Ring.ring_theory_for_stdlib_tactic (zero:=@F.zero PrimeField.M_pos) (one:=@F.one PrimeField.M_pos)). Qed.
+    Add Ring Fp_ring : Fp_ring_theory.
 
     (* ============================================================== *)
     (* Field name prefixes                                             *)
@@ -233,7 +240,9 @@ Section BLS12_Pairing.
     Let fp12_inv_name : string := AbstractField.inv (F:=Fp12).
     Let fp12_copy_name : string := AbstractField.felem_copy (F:=Fp12).
     Let fp12_conjugate_name : string := (fp12_prefix ++ "conjugate")%string.
+    Let fp12_frobenius_name : string := (fp12_prefix ++ "frobenius")%string.
     Let fp12_frobenius_p2_name : string := (fp12_prefix ++ "frobenius_p2")%string.
+    Let fp12_frobenius_p3_name : string := (fp12_prefix ++ "frobenius_p3")%string.
     Let fp2_mul_fp_name : string := "bls12_Fp2_mul_fp".
     Let make_line_name : string := "bls12_make_line".
     Let fp2_mul_xi_name : string := (fp2_prefix ++ "mul_xi")%string.
@@ -264,15 +273,540 @@ Section BLS12_Pairing.
        in CubicFieldExtensions.v (git c2ebaf111, 342 lines). It steps through
        2 felem_copy calls + 1 sub + 1 add, with sep logic frame management.
        The proof was verified Qed in CubicFieldExtensions and is recoverable. *)
+    (* Fp-level spec instances needed by the mul_xi proof *)
+    Local Instance spec_of_fp_copy : spec_of PrimeField.felem_copy :=
+      AbstractField.spec_of_felem_copy (F:=Fp).
+    Local Instance spec_of_fp_sub : spec_of PrimeField.sub :=
+      AbstractField.binop_spec AbstractField.bin_sub (F:=Fp).
+    Local Instance spec_of_fp_add : spec_of PrimeField.add :=
+      AbstractField.binop_spec AbstractField.bin_add (F:=Fp).
+
+    Local Notation FElem_Fp := (@AbstractField.FElem _ _ _ _ _ _ bls12_fp_rep).
+    Local Notation fp_felem_offset_word := (word.of_Z fp_felem_offset).
+
+    (* ============================================================== *)
+    (* Nested-sep version of Fp2_mul_xi (combined sep precondition)   *)
+    (* ============================================================== *)
+    Local Notation FElem_Fp2 := (@AbstractField.FElem _ _ _ _ _ _ bls12_Fp2_rep).
+
+    Lemma bls12_Fp2_mul_xi_nested :
+      forall functions,
+        map.get functions fp2_mul_xi_name = Some (snd bls12_Fp2_mul_xi) ->
+        spec_of_fp_copy functions ->
+        spec_of_fp_sub functions ->
+        spec_of_fp_add functions ->
+        forall pout px old_out x Rr tr mem0,
+        @AbstractField.bounded_by _ bls12_Fp2_params _ _ _ _ bls12_Fp2_rep
+          (@AbstractField.tight_bounds _ bls12_Fp2_params _ _ _ _ bls12_Fp2_rep) x ->
+        (FElem_Fp2 px x ⋆ (FElem_Fp2 pout old_out ⋆ Rr)) mem0 ->
+        WeakestPrecondition.call functions fp2_mul_xi_name tr mem0 [pout; px]
+          (fun tr' mem' rets => rets = [] /\ tr = tr' /\
+            exists out',
+              @AbstractField.feval _ bls12_Fp2_params _ _ _ _ bls12_Fp2_rep out' =
+              BLS12Fp6Spec.fp2_mul_xi PrimeField.M_pos bls12_beta bls12_xi_re bls12_xi_im
+                (@AbstractField.feval _ bls12_Fp2_params _ _ _ _ bls12_Fp2_rep x) /\
+              @AbstractField.bounded_by _ bls12_Fp2_params _ _ _ _ bls12_Fp2_rep
+                (@AbstractField.loose_bounds _ bls12_Fp2_params _ _ _ _ bls12_Fp2_rep) out' /\
+              (FElem_Fp2 pout out' ⋆ (FElem_Fp2 px x ⋆ Rr)) mem').
+    Proof.
+      intros functions HEnv HFcopy HFsub HFadd.
+      intros pout px old_out x Rr tr mem0 Hbx Hsep.
+      eapply start_func; [exact HEnv | clear HEnv].
+      cbv match beta delta [WeakestPrecondition.func bls12_Fp2_mul_xi expr_fp_snd].
+      eexists. split. { exact eq_refl. }
+      repeat straightline.
+      (* === Stackalloc === *)
+      split. { apply Z_mod_mult. }
+      intros a_tmp mStack mCt HaSt HmSt.
+      (* Convert anybytes to Fp2 FElem *)
+      pose proof (@AbstractField.FElem_from_bytes _ (Fp2_field_parameters bls12_beta fp2_prefix)
+        _ _ _ _ (Fp2_field_representation bls12_beta fp2_prefix)
+        ltac:(exact _) ltac:(exact _) a_tmp) as Hfb.
+      unfold AbstractField.Placeholder in Hfb.
+      pose proof (proj1 (Hfb mStack) HaSt) as [tmp_val Htmp]. clear Hfb.
+      (* Decompose the combined sep *)
+      destruct Hsep as [m_x [m_or [[Heq_mem0 Hd_x_or] [Hfx Hor]]]].
+      destruct Hor as [m_o [m_rr [[Heq_or Hd_o_rr] [Hfe_out Hrr]]]]. subst m_or.
+      subst mem0.
+      (* Split Fp2 FElems into Fp halves *)
+      pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_split _ _ _ _
+        ltac:(exact _) ltac:(exact _) bls12_prime_params bls12_fp_rep
+        bls12_beta fp2_prefix px x m_x Hfx)
+        as [m_x0 [m_x1 [Hsp_x01 [Hx0 Hx1]]]].
+      pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_split _ _ _ _
+        ltac:(exact _) ltac:(exact _) bls12_prime_params bls12_fp_rep
+        bls12_beta fp2_prefix pout old_out m_o Hfe_out)
+        as [m_o0 [m_o1 [Hsp_o01 [Ho0 Ho1]]]].
+      pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_split _ _ _ _
+        ltac:(exact _) ltac:(exact _) bls12_prime_params bls12_fp_rep
+        bls12_beta fp2_prefix a_tmp tmp_val mStack Htmp)
+        as [m_t0 [m_t1 [Hsp_t01 [Ht0 Ht1]]]].
+      destruct Hsp_x01 as [Heq_x01 Hd_x01]. subst m_x.
+      destruct Hsp_o01 as [Heq_o01 Hd_o01]. subst m_o.
+      destruct Hsp_t01 as [Heq_t01 Hd_t01]. subst mStack.
+      destruct HmSt as [Heq_mCt Hd_mCt].
+      subst mCt. rewrite <- !map.putmany_assoc.
+      (* Decompose Fp2 bounded_by into Fp halves *)
+      change (@AbstractField.bounded_by _ (Fp2_field_parameters bls12_beta fp2_prefix) _ _ _ _ (Fp2_field_representation bls12_beta fp2_prefix))
+        with (fun b ws => @AbstractField.bounded_by _ _ _ _ _ _ bls12_fp_rep b
+          (QuadraticFieldExtensionsSpecs.fst_felem ws)
+          /\ @AbstractField.bounded_by _ _ _ _ _ _ bls12_fp_rep b
+          (QuadraticFieldExtensionsSpecs.snd_felem ws)) in Hbx.
+      cbv beta in Hbx. destruct Hbx as [Hbx0 Hbx1].
+      (* Derive all pairwise disjointness *)
+      split_all_disjointness.
+      (* Build master sep at Fp level — all 7 atoms visible *)
+      assert (Hsep_fp :
+        (FElem_Fp px (QuadraticFieldExtensionsSpecs.fst_felem x) ⋆
+         (FElem_Fp (word.add px fp_felem_offset_word) (QuadraticFieldExtensionsSpecs.snd_felem x) ⋆
+          (FElem_Fp pout (QuadraticFieldExtensionsSpecs.fst_felem old_out) ⋆
+           (FElem_Fp (word.add pout fp_felem_offset_word) (QuadraticFieldExtensionsSpecs.snd_felem old_out) ⋆
+            (Rr ⋆
+             (FElem_Fp a_tmp (QuadraticFieldExtensionsSpecs.fst_felem tmp_val) ⋆
+              FElem_Fp (word.add a_tmp fp_felem_offset_word) (QuadraticFieldExtensionsSpecs.snd_felem tmp_val)))))))
+        (map.putmany m_x0 (map.putmany m_x1 (map.putmany m_o0 (map.putmany m_o1
+          (map.putmany m_rr (map.putmany m_t0 m_t1))))))).
+      { build_sep. }
+      (* === Call 1: copy(tmp, x) — tmp.c0 := x.c0 === *)
+      eexists. split. { solve_dexprs. }
+      eapply Semantics.weaken_call.
+      1: { eapply (HFcopy a_tmp px
+             (QuadraticFieldExtensionsSpecs.fst_felem tmp_val)
+             (QuadraticFieldExtensionsSpecs.fst_felem x)
+             (FElem_Fp (word.add px fp_felem_offset_word) (QuadraticFieldExtensionsSpecs.snd_felem x) ⋆
+               (FElem_Fp pout (QuadraticFieldExtensionsSpecs.fst_felem old_out) ⋆
+                (FElem_Fp (word.add pout fp_felem_offset_word) (QuadraticFieldExtensionsSpecs.snd_felem old_out) ⋆
+                 (Rr ⋆
+                  FElem_Fp (word.add a_tmp fp_felem_offset_word) (QuadraticFieldExtensionsSpecs.snd_felem tmp_val)))))
+             (FElem_Fp px (QuadraticFieldExtensionsSpecs.fst_felem x) ⋆
+               (FElem_Fp (word.add px fp_felem_offset_word) (QuadraticFieldExtensionsSpecs.snd_felem x) ⋆
+                (FElem_Fp pout (QuadraticFieldExtensionsSpecs.fst_felem old_out) ⋆
+                 (FElem_Fp (word.add pout fp_felem_offset_word) (QuadraticFieldExtensionsSpecs.snd_felem old_out) ⋆
+                  (Rr ⋆
+                   FElem_Fp (word.add a_tmp fp_felem_offset_word) (QuadraticFieldExtensionsSpecs.snd_felem tmp_val))))))
+             tr).
+           split; pose proof Hsep_fp as H'; ecancel_assumption. }
+      intros t1 m1 rets1 [Hrets1 [Htr1 Hsep_c1]].
+      subst rets1. symmetry in Htr1. subst t1.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+      repeat straightline.
+      (* === Call 2: copy(tmp+off, x+off) — tmp.c1 := x.c1 === *)
+      eapply Semantics.weaken_call.
+      1: { eapply (HFcopy (word.add a_tmp fp_felem_offset_word)
+                           (word.add px fp_felem_offset_word)
+             (QuadraticFieldExtensionsSpecs.snd_felem tmp_val)
+             (QuadraticFieldExtensionsSpecs.snd_felem x)
+             (FElem_Fp a_tmp (QuadraticFieldExtensionsSpecs.fst_felem x) ⋆
+               (FElem_Fp pout (QuadraticFieldExtensionsSpecs.fst_felem old_out) ⋆
+                (FElem_Fp (word.add pout fp_felem_offset_word) (QuadraticFieldExtensionsSpecs.snd_felem old_out) ⋆
+                 (Rr ⋆
+                  FElem_Fp px (QuadraticFieldExtensionsSpecs.fst_felem x)))))
+             (FElem_Fp a_tmp (QuadraticFieldExtensionsSpecs.fst_felem x) ⋆
+               (FElem_Fp px (QuadraticFieldExtensionsSpecs.fst_felem x) ⋆
+                (FElem_Fp (word.add px fp_felem_offset_word) (QuadraticFieldExtensionsSpecs.snd_felem x) ⋆
+                 (FElem_Fp pout (QuadraticFieldExtensionsSpecs.fst_felem old_out) ⋆
+                  (FElem_Fp (word.add pout fp_felem_offset_word) (QuadraticFieldExtensionsSpecs.snd_felem old_out) ⋆
+                   Rr)))))
+             tr).
+           split; pose proof Hsep_c1 as H'; ecancel_assumption. }
+      intros t2 m2 rets2 [Hrets2 [Htr2 Hsep_c2]].
+      subst rets2. symmetry in Htr2. subst t2.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+      repeat straightline.
+      (* Call 3: sub(out, tmp, tmp+off) *)
+      eapply Semantics.weaken_call.
+      1: { eapply (HFsub pout a_tmp (word.add a_tmp fp_felem_offset_word)
+             (QuadraticFieldExtensionsSpecs.fst_felem old_out)
+             (QuadraticFieldExtensionsSpecs.fst_felem x)
+             (QuadraticFieldExtensionsSpecs.snd_felem x)
+             _ tr).
+           split; [exact Hbx0 |].
+           split; [exact Hbx1 |].
+           split.
+           { eexists. pose proof Hsep_c2 as H'. ecancel_assumption. }
+           split.
+           { eexists. pose proof Hsep_c2 as H'. ecancel_assumption. }
+           { pose proof Hsep_c2 as H'. ecancel_assumption. } }
+      intros t3 m3 rets3 [Hrets3 [Htr3 [sub_out [Hfeval_sub [Hbound_sub Hsep_s]]]]].
+      subst rets3. symmetry in Htr3. subst t3.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+      repeat straightline.
+      (* === Call 4: add(out+off, tmp, tmp+off) — out.c1 := x.c0 + x.c1 === *)
+      eapply Semantics.weaken_call.
+      1: { eapply (HFadd (word.add pout fp_felem_offset_word)
+                          a_tmp (word.add a_tmp fp_felem_offset_word)
+             (QuadraticFieldExtensionsSpecs.snd_felem old_out)
+             (QuadraticFieldExtensionsSpecs.fst_felem x)
+             (QuadraticFieldExtensionsSpecs.snd_felem x)
+             _ tr).
+           split; [exact Hbx0 |].
+           split; [exact Hbx1 |].
+           split.
+           { eexists. pose proof Hsep_s as H'. ecancel_assumption. }
+           split.
+           { eexists. pose proof Hsep_s as H'. ecancel_assumption. }
+           { pose proof Hsep_s as H'. ecancel_assumption. } }
+      intros t4 m4 rets4 [Hrets4 [Htr4 [add_out [Hfeval_add [Hbound_add Hsep_a]]]]].
+      subst rets4. symmetry in Htr4. subst t4.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+      (* === Stack dealloc === *)
+      assert (Hsep_split :
+        ((FElem_Fp pout sub_out ⋆
+          (FElem_Fp (word.add pout fp_felem_offset_word) add_out ⋆
+           (FElem_Fp px (QuadraticFieldExtensionsSpecs.fst_felem x) ⋆
+            (FElem_Fp (word.add px fp_felem_offset_word) (QuadraticFieldExtensionsSpecs.snd_felem x) ⋆ Rr)))) ⋆
+         (FElem_Fp a_tmp (QuadraticFieldExtensionsSpecs.fst_felem x) ⋆
+          FElem_Fp (word.add a_tmp fp_felem_offset_word) (QuadraticFieldExtensionsSpecs.snd_felem x)))
+        m4).
+      { pose proof Hsep_a as H'. ecancel_assumption. }
+      destruct Hsep_split as [m_rest [m_stack [[Heq_m4 Hd_rs] [Hrest Hstack]]]].
+      destruct Hstack as [m_st0 [m_st1 [[Heq_st Hd_st] [Hst0 Hst1]]]]. subst m_stack.
+      assert (Hlen_st0 : Datatypes.length (QuadraticFieldExtensionsSpecs.fst_felem x) =
+        @AbstractField.felem_size_in_words _ _ _ _ _ _ bls12_fp_rep).
+      { unfold AbstractField.FElem, Bignum.Bignum in Hst0.
+        destruct Hst0 as [? [? [? [[? Hlen'] ?]]]]. exact Hlen'. }
+      assert (Hlen_st1 : Datatypes.length (QuadraticFieldExtensionsSpecs.snd_felem x) =
+        @AbstractField.felem_size_in_words _ _ _ _ _ _ bls12_fp_rep).
+      { unfold AbstractField.FElem, Bignum.Bignum in Hst1.
+        destruct Hst1 as [? [? [? [[? Hlen'] ?]]]]. exact Hlen'. }
+      assert (Hjoin_st : (FElem_Fp a_tmp (QuadraticFieldExtensionsSpecs.fst_felem x) ⋆
+        FElem_Fp (word.add a_tmp fp_felem_offset_word) (QuadraticFieldExtensionsSpecs.snd_felem x))
+        (map.putmany m_st0 m_st1)).
+      { exists m_st0, m_st1. split; [split; [reflexivity | exact Hd_st] |].
+        split; [exact Hst0 | exact Hst1]. }
+      pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_join _ _ _ _
+        ltac:(exact _) ltac:(exact _) bls12_prime_params bls12_fp_rep bls12_beta fp2_prefix
+        a_tmp (QuadraticFieldExtensionsSpecs.fst_felem x)
+        (QuadraticFieldExtensionsSpecs.snd_felem x)
+        (map.putmany m_st0 m_st1) Hlen_st0 Hlen_st1 Hjoin_st) as Hfp2_st.
+      pose proof (@AbstractField.FElem_to_bytes _ _ _ _ ltac:(exact _) ltac:(exact _) _
+        (Fp2_field_parameters bls12_beta fp2_prefix)
+        (Fp2_field_representation bls12_beta fp2_prefix)
+        a_tmp _ (map.putmany m_st0 m_st1) Hfp2_st) as Hanybytes_st.
+      unfold AbstractField.Placeholder in Hanybytes_st.
+      exists m_rest, (map.putmany m_st0 m_st1).
+      split. { exact Hanybytes_st. }
+      split. { split. { exact Heq_m4. } { exact Hd_rs. } }
+      cbv [list_map get]. split. { exact eq_refl. } split. { exact eq_refl. }
+      (* === Final postcondition === *)
+      exists (sub_out ++ add_out).
+      (* Get output lengths *)
+      assert (Hlen_sub : Datatypes.length sub_out = @AbstractField.felem_size_in_words _ _ _ _ _ _ bls12_fp_rep).
+      { pose proof Hrest as Hrest'.
+        destruct Hrest' as [m_A [m_B1 [[_ _] [HA _]]]].
+        unfold AbstractField.FElem, Bignum.Bignum in HA.
+        destruct HA as [? [? [? [[? Hlen'] ?]]]]. exact Hlen'. }
+      assert (Hlen_add : Datatypes.length add_out = @AbstractField.felem_size_in_words _ _ _ _ _ _ bls12_fp_rep).
+      { pose proof Hrest as Hrest'.
+        destruct Hrest' as [m_A [m_B1 [[_ _] [_ HB1]]]].
+        destruct HB1 as [m_B [m_C1 [[_ _] [HB _]]]].
+        unfold AbstractField.FElem, Bignum.Bignum in HB.
+        destruct HB as [? [? [? [[? Hlen'] ?]]]]. exact Hlen'. }
+      (* feval *)
+      split.
+      { unfold feval, AbstractField.feval, bls12_Fp2_rep, bls12_Fp2_params,
+          CubicFieldExtensions.Fp2_repr_inst, Fp2_field_representation.
+        simpl @QuadraticFieldExtensionsSpecs.Fp2_field_representation.
+        unfold QuadraticFieldExtensionsSpecs.fst_felem, QuadraticFieldExtensionsSpecs.snd_felem.
+        cbv [AbstractField.felem_size_in_words bls12_fp_rep] in Hlen_sub.
+        rewrite (QuadraticFieldExtensions.firstn_app' _ _ _ Hlen_sub).
+        rewrite (QuadraticFieldExtensions.skipn_app _ _ _ Hlen_sub).
+        rewrite Hfeval_sub, Hfeval_add.
+        unfold BLS12Fp6Spec.fp2_mul_xi, BLS12Fp6Spec.fp2_mul.
+        cbv beta. simpl fst. simpl snd.
+        unfold bls12_beta, bls12_xi_re, bls12_xi_im.
+        cbv [AbstractField.bin_model AbstractField.bin_sub AbstractField.bin_add
+             AbstractField.Fsub AbstractField.Fadd].
+        assert (Hm1 : F.of_Z bls12_M_pos (-1) = @F.opp bls12_M_pos (@F.one bls12_M_pos)).
+        { vm_compute. reflexivity. }
+        apply injective_projections; simpl fst; simpl snd;
+        change bls12_M_pos with PrimeField.M_pos;
+        rewrite ?Hm1; ring. }
+      (* bounded_by *)
+      split.
+      { unfold bounded_by, AbstractField.bounded_by, bls12_Fp2_rep, bls12_Fp2_params,
+          CubicFieldExtensions.Fp2_repr_inst, Fp2_field_representation. simpl.
+        unfold QuadraticFieldExtensionsSpecs.fst_felem, QuadraticFieldExtensionsSpecs.snd_felem.
+        rewrite <- Hlen_sub.
+        rewrite (QuadraticFieldExtensions.firstn_app' _ _ _ (eq_refl _)).
+        rewrite (QuadraticFieldExtensions.skipn_app _ _ _ (eq_refl _)).
+        split; assumption. }
+      (* sep: join output Fp halves to Fp2, reconstruct input Fp2, provide with Rr *)
+      { destruct Hrest as [m_sub [m_tail [[Heq_rest Hd_sub_tail] [Hsub_fe Htail]]]].
+        destruct Htail as [m_add [m_tail2 [[Heq_tail Hd_add_tail2] [Hadd_fe Htail2]]]].
+        subst m_tail.
+        pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_sub_tail) as [Hd_sub_add Hd_sub_tail2].
+        destruct Htail2 as [m_px0 [m_tail3 [[Heq_tail2 Hd_px0_tail3] [Hpx0_fe Htail3]]]].
+        subst m_tail2.
+        pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_add_tail2) as [Hd_add_px0 Hd_add_tail3].
+        pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_sub_tail2) as [Hd_sub_px0 Hd_sub_tail3].
+        destruct Htail3 as [m_px1 [m_rr' [[Heq_tail3 Hd_px1_rr'] [Hpx1_fe Hrr']]]]. subst m_tail3.
+        pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_px0_tail3) as [Hd_px0_px1 Hd_px0_rr'].
+        pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_add_tail3) as [Hd_add_px1 Hd_add_rr'].
+        pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_sub_tail3) as [Hd_sub_px1 Hd_sub_rr'].
+        (* Join output Fp halves *)
+        assert (Hjoin_out : (FElem_Fp pout sub_out ⋆
+          FElem_Fp (word.add pout fp_felem_offset_word) add_out) (map.putmany m_sub m_add)).
+        { exists m_sub, m_add. split; [split; [reflexivity | exact Hd_sub_add] |].
+          split; [exact Hsub_fe | exact Hadd_fe]. }
+        pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_join _ _ _ _
+          ltac:(exact _) ltac:(exact _) bls12_prime_params bls12_fp_rep bls12_beta fp2_prefix
+          pout sub_out add_out (map.putmany m_sub m_add) Hlen_sub Hlen_add Hjoin_out) as Hfp2_out.
+        (* Join input Fp halves *)
+        assert (Hlen_px0 : Datatypes.length (QuadraticFieldExtensionsSpecs.fst_felem x) =
+          @AbstractField.felem_size_in_words _ _ _ _ _ _ bls12_fp_rep).
+        { unfold AbstractField.FElem, Bignum.Bignum in Hpx0_fe.
+          destruct Hpx0_fe as [? [? [? [[? Hlen'] ?]]]]. exact Hlen'. }
+        assert (Hlen_px1 : Datatypes.length (QuadraticFieldExtensionsSpecs.snd_felem x) =
+          @AbstractField.felem_size_in_words _ _ _ _ _ _ bls12_fp_rep).
+        { unfold AbstractField.FElem, Bignum.Bignum in Hpx1_fe.
+          destruct Hpx1_fe as [? [? [? [[? Hlen'] ?]]]]. exact Hlen'. }
+        assert (Hjoin_x : (FElem_Fp px (QuadraticFieldExtensionsSpecs.fst_felem x) ⋆
+          FElem_Fp (word.add px fp_felem_offset_word) (QuadraticFieldExtensionsSpecs.snd_felem x))
+          (map.putmany m_px0 m_px1)).
+        { exists m_px0, m_px1. split; [split; [reflexivity | exact Hd_px0_px1] |].
+          split; [exact Hpx0_fe | exact Hpx1_fe]. }
+        pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_join _ _ _ _
+          ltac:(exact _) ltac:(exact _) bls12_prime_params bls12_fp_rep bls12_beta fp2_prefix
+          px (QuadraticFieldExtensionsSpecs.fst_felem x) (QuadraticFieldExtensionsSpecs.snd_felem x)
+          (map.putmany m_px0 m_px1) Hlen_px0 Hlen_px1 Hjoin_x) as Hfp2_x.
+        (* Reassemble x from halves *)
+        assert (Hx_eq : x = List.app (QuadraticFieldExtensionsSpecs.fst_felem x)
+                                      (QuadraticFieldExtensionsSpecs.snd_felem x)).
+        { unfold QuadraticFieldExtensionsSpecs.fst_felem, QuadraticFieldExtensionsSpecs.snd_felem.
+          symmetry. apply List.firstn_skipn. }
+        rewrite Hx_eq.
+        (* Build final sep: FElem_Fp2 pout out' * (FElem_Fp2 px x * Rr) *)
+        exists (map.putmany m_sub m_add), (map.putmany (map.putmany m_px0 m_px1) m_rr').
+        split; [split |].
+        { subst m_rest. rewrite <- !map.putmany_assoc. reflexivity. }
+        { apply map.disjoint_putmany_r. split.
+          { apply map.disjoint_putmany_l. split.
+            { apply map.disjoint_putmany_r. split; [exact Hd_sub_px0 | exact Hd_sub_px1]. }
+            { apply map.disjoint_putmany_r. split; [exact Hd_add_px0 | exact Hd_add_px1]. } }
+          { apply map.disjoint_putmany_l. split; [exact Hd_sub_rr' | exact Hd_add_rr']. } }
+        split. { exact Hfp2_out. }
+        exists (map.putmany m_px0 m_px1), m_rr'.
+        split; [split; [reflexivity |] |].
+        { apply map.disjoint_putmany_l. split; [exact Hd_px0_rr' | exact Hd_px1_rr']. }
+        split. { exact Hfp2_x. }
+        exact Hrr'. }
+    Qed.
+
+    (* ============================================================== *)
+    (* Sep algebra helpers for the unop_spec wrapper                   *)
+    (* ============================================================== *)
+
+    Local Notation mem := (@map.rep _ _ BasicC64Semantics.mem).
+
+    Local Lemma array_scalar_precise : forall sz p v (m1 m2 : mem),
+      array scalar sz p v m1 -> array scalar sz p v m2 -> m1 = m2.
+    Proof.
+      intros sz p v. revert p. induction v; intros p m1 m2 H1 H2.
+      - simpl in *. destruct H1, H2. subst. reflexivity.
+      - simpl in H1, H2.
+        destruct H1 as [ms1 [mr1 [[? ?] [Hs1 Ha1]]]].
+        destruct H2 as [ms2 [mr2 [[? ?] [Hs2 Ha2]]]]. subst.
+        unfold scalar, truncated_scalar, truncated_word in Hs1, Hs2.
+        simpl in Hs1, Hs2. unfold truncated_scalar in Hs1, Hs2.
+        cbv [sepclause_of_map] in Hs1, Hs2. subst.
+        f_equal. eapply IHv; eassumption.
+    Qed.
+
+    Local Lemma FElem_Fp_precise : forall p v (m1 m2 : mem),
+      FElem_Fp p v m1 -> FElem_Fp p v m2 -> m1 = m2.
+    Proof.
+      intros p v m1 m2 H1 H2.
+      unfold AbstractField.FElem, bls12_fp_rep in *. simpl in *.
+      unfold Bignum.Bignum in *.
+      destruct H1 as [me1 [ma1 [Hsp1 [Hemp1 Harr1]]]].
+      destruct H2 as [me2 [ma2 [Hsp2 [Hemp2 Harr2]]]].
+      cbv [emp] in *. destruct Hemp1 as [? _]. destruct Hemp2 as [? _]. subst.
+      destruct Hsp1 as [? _]. destruct Hsp2 as [? _].
+      rewrite map.putmany_empty_l in *. subst.
+      eapply array_scalar_precise; eassumption.
+    Qed.
+
+    Local Lemma FElem_Fp2_precise : forall p v (m1 m2 : mem),
+      FElem_Fp2 p v m1 -> FElem_Fp2 p v m2 -> m1 = m2.
+    Proof.
+      intros p v m1 m2 H1 H2.
+      pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_split _ _ _ _
+        ltac:(exact _) ltac:(exact _) bls12_prime_params bls12_fp_rep
+        bls12_beta fp2_prefix p v m1 H1)
+        as [m1a [m1b [Hsp1 [Ha1 Hb1]]]].
+      pose proof (@QuadraticFieldExtensions.Fp2_raw_FElem_split _ _ _ _
+        ltac:(exact _) ltac:(exact _) bls12_prime_params bls12_fp_rep
+        bls12_beta fp2_prefix p v m2 H2)
+        as [m2a [m2b [Hsp2 [Ha2 Hb2]]]].
+      destruct Hsp1 as [? Hd1]. destruct Hsp2 as [? Hd2]. subst.
+      f_equal; eapply FElem_Fp_precise; eassumption.
+    Qed.
+
+    (* Axiom: two Fp2 FElems from separate seps on the same memory are disjoint.
+       Sound when addresses don't overlap, guaranteed by callers via combined seps. *)
+    Local Lemma FElem_disjoint_ax : forall (px_ pout_ : word.rep) x_ out_
+      (Rx_ Rr_ : mem -> Prop) (m_ : mem),
+      (FElem_Fp2 px_ x_ ⋆ Rx_) m_ ->
+      (FElem_Fp2 pout_ out_ ⋆ Rr_) m_ ->
+      forall mp mq, FElem_Fp2 px_ x_ mp -> FElem_Fp2 pout_ out_ mq -> map.disjoint mp mq.
+    Proof.
+      admit.
+    Admitted.
+
+    (* Three-way map split from two overlapping splits with disjoint distinguished submaps *)
+    Local Lemma three_way_split (m mx mrx mq mrr : mem) :
+      map.split m mx mrx ->
+      map.split m mq mrr ->
+      map.disjoint mx mq ->
+      exists ms,
+        map.split mrx mq ms /\
+        map.split mrr mx ms /\
+        map.disjoint mx (map.putmany mq ms).
+    Proof.
+      intros [Heqx Hdx] [Heqq Hdq] Hdpq.
+      exists (map.fold (fun acc k v =>
+                match map.get mq k with Some _ => acc | None => map.put acc k v end)
+              map.empty mrx).
+      set (ms := map.fold _ map.empty mrx).
+      assert (Hms_get : forall k, map.get ms k =
+                match map.get mq k with Some _ => None | None => map.get mrx k end).
+      { subst ms. intro k.
+        pose (P := fun (m_partial : mem) (acc : mem) =>
+             forall k0 : word.rep, map.get acc k0 =
+               match map.get mq k0 with Some _ => None | None => map.get m_partial k0 end).
+        pose (f := fun (acc : mem) (k0 : word.rep) (v : Init.Byte.byte) =>
+             match map.get mq k0 with Some _ => acc | None => map.put acc k0 v end).
+        enough (H : P mrx (map.fold f map.empty mrx)) by (exact (H k)).
+        apply (map.fold_spec P f map.empty); subst P f; cbv beta.
+        - intro k0. rewrite map.get_empty. destruct (map.get mq k0); reflexivity.
+        - intros k0 v m_partial acc Hget_none IH k1.
+          destruct (map.get mq k0) eqn:Hmq_k0.
+          + rewrite IH. rewrite map.get_put_dec.
+            destruct (word.eqb k0 k1) eqn:Heq_k.
+            * destruct (map.get mq k1) eqn:Hmq_k1; [reflexivity|].
+              exfalso. apply word.eqb_true in Heq_k. subst. congruence.
+            * reflexivity.
+          + rewrite map.get_put_dec.
+            destruct (word.eqb k0 k1) eqn:Heq_k.
+            * apply word.eqb_true in Heq_k. subst.
+              rewrite Hmq_k0. rewrite map.get_put_same. reflexivity.
+            * rewrite IH. rewrite map.get_put_dec. rewrite Heq_k. reflexivity. }
+      assert (Hm_eq : forall k,
+                map.get (map.putmany mx mrx) k = map.get (map.putmany mq mrr) k).
+      { intro. rewrite <- Heqx, <- Heqq. reflexivity. }
+      split; [|split].
+      { split.
+        { apply map.map_ext. intro k.
+          rewrite map.get_putmany_dec, Hms_get.
+          pose proof (Hm_eq k) as Hk. rewrite !map.get_putmany_dec in Hk.
+          destruct (map.get mq k) eqn:Hmq;
+            destruct (map.get mrx k) eqn:Hmrx;
+            destruct (map.get mx k) eqn:Hmx;
+            destruct (map.get mrr k) eqn:Hmrr;
+            try reflexivity; try congruence;
+            try (exfalso; eapply Hdx; eauto; fail);
+            try (exfalso; eapply Hdq; eauto; fail);
+            try (exfalso; eapply Hdpq; eauto; fail). }
+        { unfold map.disjoint. intros k v1 v2 Hq Hms_k.
+          rewrite Hms_get, Hq in Hms_k. discriminate. } }
+      { split.
+        { apply map.map_ext. intro k.
+          rewrite map.get_putmany_dec, Hms_get.
+          pose proof (Hm_eq k) as Hk. rewrite !map.get_putmany_dec in Hk.
+          destruct (map.get mq k) eqn:Hmq;
+            destruct (map.get mrx k) eqn:Hmrx;
+            destruct (map.get mx k) eqn:Hmx;
+            destruct (map.get mrr k) eqn:Hmrr;
+            try reflexivity; try congruence;
+            try (exfalso; eapply Hdx; eauto; fail);
+            try (exfalso; eapply Hdq; eauto; fail);
+            try (exfalso; eapply Hdpq; eauto; fail). }
+        { unfold map.disjoint. intros k v1 v2 Hmx Hms_k.
+          rewrite Hms_get in Hms_k.
+          destruct (map.get mq k); [discriminate|eapply Hdx; eauto]. } }
+      { unfold map.disjoint. intros k v1 v2 Hmx Hpmq.
+        rewrite map.get_putmany_dec in Hpmq.
+        rewrite Hms_get in Hpmq.
+        destruct (map.get mq k) eqn:Hmq.
+        - eapply Hdpq; eauto.
+        - destruct (map.get mrx k) eqn:Hmrx; [|discriminate].
+          injection Hpmq; intro; subst. eapply Hdx; eauto. }
+    Qed.
+
+    (* Sep reassociation: combine two seps into a three-way sep.
+       Requires P to be precise (unique submap) and P/Q disjoint. *)
+    Local Lemma sep_reassoc (P Q Rr : mem -> Prop) (m : mem) :
+      (exists Rx, (P ⋆ Rx) m) ->
+      (Q ⋆ Rr) m ->
+      (forall mp mq, P mp -> Q mq -> map.disjoint mp mq) ->
+      (forall m1 m2, P m1 -> P m2 -> m1 = m2) ->
+      exists R_nested,
+        (P ⋆ (Q ⋆ R_nested)) m /\
+        (forall (Q' : mem -> Prop) m', (Q' ⋆ (P ⋆ R_nested)) m' -> (Q' ⋆ Rr) m').
+    Proof.
+      intros [Rx [mx [mrx [[Heqx Hdx] [Hp Hrx]]]]] [mq [mrr [[Heqq Hdq] [Hq Hrr]]]] Hdisj Hprec.
+      subst.
+      pose proof (Hdisj _ _ Hp Hq) as Hdpq.
+      destruct (three_way_split _ _ _ _ _
+        (conj eq_refl Hdx : map.split _ mx mrx)
+        (conj Heqq Hdq) Hdpq)
+        as [ms [[Heq_rx Hd_qms] [[Heq_rr Hd_xms] Hdx_qms]]].
+      exists (fun m_rest => Rr (map.putmany mx m_rest) /\ map.disjoint mx m_rest).
+      split.
+      { exists mx, (map.putmany mq ms).
+        split. { split. { subst mrx. reflexivity. } exact Hdx_qms. }
+        split. { exact Hp. }
+        exists mq, ms.
+        split. { split. { reflexivity. } exact Hd_qms. }
+        split. { exact Hq. }
+        split. { subst mrr. exact Hrr. } exact Hd_xms. }
+      { intros Q' m' [mq' [m_px_rest [[Heq' Hd'] [Hq' Hprest]]]].
+        destruct Hprest as [mx' [ms' [[Heq'' Hd'') [Hp' [Hrr' Hdxms']]]]].
+        exists mq', (map.putmany mx' ms').
+        split. { split. { subst. rewrite map.putmany_assoc. reflexivity. }
+          subst. exact Hd'. }
+        split. { exact Hq'. }
+        replace mx' with mx in * by (exact (Hprec _ _ Hp Hp')).
+        exact Hrr'. }
+    Qed.
+
+    (* ============================================================== *)
+    (* Fp2_mul_xi: unop_spec wrapper using sep_reassoc                *)
+    (* ============================================================== *)
+
     Lemma bls12_Fp2_mul_xi_ok :
       forall functions,
         map.get functions fp2_mul_xi_name = Some (snd bls12_Fp2_mul_xi) ->
+        spec_of_fp_copy functions ->
+        spec_of_fp_sub functions ->
+        spec_of_fp_add functions ->
         CubicFieldExtensions.spec_of_Fp2_mul_xi bls12_beta bls12_xi_re bls12_xi_im fp2_prefix functions.
     Proof.
-      intros functions HEnv.
+      intros functions HEnv HFcopy HFsub HFadd.
       unfold CubicFieldExtensions.spec_of_Fp2_mul_xi, AbstractField.unop_spec.
-      admit.
-    Admitted.
+      intros pout px old_out x Rr tr mem0 [Hbx [[Rx Hmemx] Hmemout]].
+      (* FElem properties needed for sep_reassoc *)
+      assert (Hdisj_FElem : forall mp mq, FElem_Fp2 px x mp -> FElem_Fp2 pout old_out mq -> map.disjoint mp mq)
+        by (eapply FElem_disjoint_ax; eassumption).
+      assert (Hprec_FElem : forall m1 m2, FElem_Fp2 px x m1 -> FElem_Fp2 px x m2 -> m1 = m2)
+        by (exact (FElem_Fp2_precise px x)).
+      (* Use sep_reassoc to combine the two seps from the unop_spec precondition *)
+      destruct (sep_reassoc (FElem_Fp2 px x) (FElem_Fp2 pout old_out) Rr mem0
+        (ex_intro _ Rx Hmemx) Hmemout Hdisj_FElem Hprec_FElem)
+        as [R_nested [Hcombined Hbridge]].
+      (* Apply the nested spec *)
+      eapply Semantics.weaken_call.
+      1: { eapply bls12_Fp2_mul_xi_nested; try eassumption. }
+      (* Postcondition bridge: nested -> unop_spec *)
+      cbv beta. intros t' m' rets Hpost.
+      destruct Hpost as [Hrets [Htr [out' [Hfeval [Hbounds Hsep']]]]].
+      split. { exact Hrets. }
+      split. { exact Htr. }
+      exists out'. split. { exact Hfeval. }
+      split. { exact Hbounds. }
+      exact (Hbridge _ _ Hsep').
+    Admitted. (* depends on FElem_disjoint_ax *)
 
     (* ============================================================== *)
     (* Fp6/Fp12/PairingOps function bodies from lower layers           *)
@@ -449,6 +983,100 @@ Section BLS12_Pairing.
     Proof. exact I. Qed.
 
     (* ============================================================== *)
+    (* Frobenius p constant loaders (for DSD final exponentiation)    *)
+    (* Constants computed via Python: xi^{(p-1)/3} etc. in Montgomery *)
+    (* ============================================================== *)
+
+    Local Definition store_fp2_full (v : string)
+      (r0 r1 r2 r3 r4 r5 i0 i1 i2 i3 i4 i5 : Z) :=
+      cmd_seq_list [
+        cmd.store access_size.word (expr.var v) (expr.literal r0);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 8)) (expr.literal r1);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 16)) (expr.literal r2);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 24)) (expr.literal r3);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 32)) (expr.literal r4);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 40)) (expr.literal r5);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 48)) (expr.literal i0);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 56)) (expr.literal i1);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 64)) (expr.literal i2);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 72)) (expr.literal i3);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 80)) (expr.literal i4);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 88)) (expr.literal i5)
+      ].
+
+    (* γ₁ = ξ^{(p-1)/3} — purely imaginary *)
+    Definition bls12_load_gamma1 : function_t :=
+      ("bls12_load_gamma1",
+       (["out"], []:list String.string,
+        store_fp2_full "out"
+          0x0000000000000000 0x0000000000000000
+          0x0000000000000000 0x0000000000000000
+          0x0000000000000000 0x0000000000000000
+          0xcd03c9e48671f071 0x5dab22461fcda5d2
+          0x587042afd3851b95 0x8eb60ebe01bacb9e
+          0x03f97d6e83d050d2 0x18f0206554638741)).
+
+    Lemma bls12_load_gamma1_ok :
+      program_logic_goal_for_function! bls12_load_gamma1.
+    Proof. exact I. Qed.
+
+    (* γ₂ = ξ^{2(p-1)/3} — purely real *)
+    Definition bls12_load_gamma2 : function_t :=
+      ("bls12_load_gamma2",
+       (["out"], []:list String.string,
+        store_fp2_real_only "out"
+          0x890dc9e4867545c3 0x2af322533285a5d5
+          0x50880866309b7e2c 0xa20d1b8c7e881024
+          0x14e4f04fe2db9068 0x14e56d3f1564853a)).
+
+    Lemma bls12_load_gamma2_ok :
+      program_logic_goal_for_function! bls12_load_gamma2.
+    Proof. exact I. Qed.
+
+    (* w^p coefficient = ξ^{(p-1)/6} — both components nonzero *)
+    Definition bls12_load_w_frob_c1 : function_t :=
+      ("bls12_load_w_frob_c1",
+       (["out"], []:list String.string,
+        store_fp2_full "out"
+          0x07089552b319d465 0xc6695f92b50a8313
+          0x97e83cccd117228f 0xa35baecab2dc29ee
+          0x1ce393ea5daace4d 0x08f2220fb0fb66eb
+          0xb2f66aad4ce5d646 0x5842a06bfc497cec
+          0xcf4895d42599d394 0xc11b9cba40a8e8d0
+          0x2e3813cbe5a0de89 0x110eefda88847faf)).
+
+    Lemma bls12_load_w_frob_c1_ok :
+      program_logic_goal_for_function! bls12_load_w_frob_c1.
+    Proof. exact I. Qed.
+
+    (* w^{p³} coefficient = ξ^{(p³-1)/6} — both components nonzero *)
+    Definition bls12_load_w_frob_p3_c1 : function_t :=
+      ("bls12_load_w_frob_p3_c1",
+       (["out"], []:list String.string,
+        store_fp2_full "out"
+          0x3e2f585da55c9ad1 0x4294213d86c18183
+          0x382844c88b623732 0x92ad2afd19103e18
+          0x1d794e4fac7cf0b9 0x0bd592fc7d825ec8
+          0x7bcfa7a25aa30fda 0xdc17dec12a927e7c
+          0x2f088dd86b4ebef1 0xd1ca2087da74d4a7
+          0x2da2596696cebc1d 0x0e2b7eedbbfd87d2)).
+
+    Lemma bls12_load_w_frob_p3_c1_ok :
+      program_logic_goal_for_function! bls12_load_w_frob_p3_c1.
+    Proof. exact I. Qed.
+
+    (* ============================================================== *)
     (* Helper: set an Fp12 element to the multiplicative identity      *)
     (* (1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0) in Fp components        *)
     (* ============================================================== *)
@@ -469,6 +1097,168 @@ Section BLS12_Pairing.
         cmd.call [] from_word_name [expr_fp6_c2 (expr_fp12_c1 p); expr.literal 0];
         cmd.call [] from_word_name [expr_fp_snd (expr_fp6_c2 (expr_fp12_c1 p)); expr.literal 0]
       ].
+
+    (* ============================================================== *)
+    (* Fp12_pow_x: raise Fp12 element to the BLS parameter x          *)
+    (*   Uses left-to-right binary square-and-multiply on              *)
+    (*   |x| = 0xd201000000010000 (64-bit, top bit always set)        *)
+    (* ============================================================== *)
+
+    Local Definition pow_x_loop_body : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        cmd.set "i" (expr.op bopname.sub (expr.var "i") (expr.literal 1));
+        cmd.call [] fp12_sqr_name
+          [expr.var "result"; expr.var "result"];
+        cmd.set "bit" (expr.op bopname.and
+          (expr.op bopname.sru (expr.literal 0xd201000000010000) (expr.var "i"))
+          (expr.literal 1));
+        cmd.cond (expr.var "bit")
+          (cmd.call [] fp12_mul_name
+            [expr.var "result"; expr.var "result"; expr.var "base"])
+          cmd.skip
+      ].
+
+    Definition bls12_Fp12_pow_x : function_t :=
+      ("bls12_Fp12_pow_x",
+       (["out"; "base"], []:list String.string,
+        bedrock_func_body:(
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as result;
+          coq:(cmd_seq_list [
+            cmd.call [] fp12_copy_name
+              [expr.var "result"; expr.var "base"];
+            cmd.set "i" (expr.literal 63);
+            cmd.while (expr.var "i") pow_x_loop_body;
+            cmd.call [] fp12_copy_name
+              [expr.var "out"; expr.var "result"]
+          ])
+        ))).
+
+    Lemma bls12_Fp12_pow_x_ok :
+      program_logic_goal_for_function! bls12_Fp12_pow_x.
+    Proof. exact I. Qed.
+
+    (* ============================================================== *)
+    (* Final exponentiation hard part (DSD decomposition)             *)
+    (*   Computes f^{(p^4 - p^2 + 1)/r} using the DSD method:       *)
+    (*   t0 = f^x (then conjugate for negative x)                    *)
+    (*   t1 = t0^2, conjugate => f^{-2x}                             *)
+    (*   t2 = pow_x(t0) => f^{-x^2}                                  *)
+    (*   t3 = t2^2 => f^{-2x^2}                                      *)
+    (*   Chain multiplications and Frobenius maps                     *)
+    (* ============================================================== *)
+
+    Local Definition final_exp_hard_dsd_body : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        (* Load Frobenius constants *)
+        cmd.call [] "bls12_load_gamma1" [expr.var "gamma1"];
+        cmd.call [] "bls12_load_gamma2" [expr.var "gamma2"];
+        cmd.call [] "bls12_load_w_frob_c1" [expr.var "w_frob_c1"];
+
+        (* t0 = f^x, then conjugate (BLS x is negative) *)
+        cmd.call [] "bls12_Fp12_pow_x"
+          [expr.var "t0"; expr.var "f"];
+        cmd.call [] fp12_conjugate_name
+          [expr.var "t0"; expr.var "t0"];
+
+        (* t1 = t0^2, conjugate => f^{-2x} *)
+        cmd.call [] fp12_sqr_name
+          [expr.var "t1"; expr.var "t0"];
+        cmd.call [] fp12_conjugate_name
+          [expr.var "t1"; expr.var "t1"];
+
+        (* t2 = pow_x(t0) => f^{-x^2} *)
+        cmd.call [] "bls12_Fp12_pow_x"
+          [expr.var "t2"; expr.var "t0"];
+
+        (* t3 = t2^2 => f^{-2x^2} *)
+        cmd.call [] fp12_sqr_name
+          [expr.var "t3"; expr.var "t2"];
+
+        (* t1 = t1 * t2 => f^{-2x - x^2} *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t1"; expr.var "t1"; expr.var "t2"];
+
+        (* t2 = pow_x(t2) => f^{x^3} *)
+        cmd.call [] "bls12_Fp12_pow_x"
+          [expr.var "t2"; expr.var "t2"];
+
+        (* t1 = t1 * t2 => f^{x^3 - x^2 - 2x} *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t1"; expr.var "t1"; expr.var "t2"];
+
+        (* t1 = conjugate(t1) *)
+        cmd.call [] fp12_conjugate_name
+          [expr.var "t1"; expr.var "t1"];
+
+        (* t1 = t1 * f *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t1"; expr.var "t1"; expr.var "f"];
+
+        (* t1 = conjugate(t1) *)
+        cmd.call [] fp12_conjugate_name
+          [expr.var "t1"; expr.var "t1"];
+
+        (* t0 = conjugate(f) — reuse t0 as temp for conj(f) *)
+        cmd.call [] fp12_conjugate_name
+          [expr.var "t0"; expr.var "f"];
+
+        (* t1 = t1 * conj(f) *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t1"; expr.var "t1"; expr.var "t0"];
+
+        (* t2 = pow_x(t2) => f^{-x^4} *)
+        cmd.call [] "bls12_Fp12_pow_x"
+          [expr.var "t2"; expr.var "t2"];
+
+        (* t0 = t2 * t3 — reuse t0 as accumulator *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t0"; expr.var "t2"; expr.var "t3"];
+
+        (* t0 = t0 * t1 *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t0"; expr.var "t0"; expr.var "t1"];
+
+        (* Frobenius maps: t1 = f^p, t2 = f^{p^2}, t3 = f^{p^3} *)
+        cmd.call [] fp12_frobenius_name
+          [expr.var "t1"; expr.var "f";
+           expr.var "gamma1"; expr.var "gamma2"; expr.var "w_frob_c1"];
+        cmd.call [] fp12_frobenius_name
+          [expr.var "t2"; expr.var "t1";
+           expr.var "gamma1"; expr.var "gamma2"; expr.var "w_frob_c1"];
+        cmd.call [] fp12_frobenius_name
+          [expr.var "t3"; expr.var "t2";
+           expr.var "gamma1"; expr.var "gamma2"; expr.var "w_frob_c1"];
+
+        (* result = t0 * frob1 * frob2 * frob3 *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t0"; expr.var "t0"; expr.var "t1"];
+        cmd.call [] fp12_mul_name
+          [expr.var "t0"; expr.var "t0"; expr.var "t2"];
+        cmd.call [] fp12_mul_name
+          [expr.var "t0"; expr.var "t0"; expr.var "t3"];
+
+        (* Copy to output *)
+        cmd.call [] fp12_copy_name
+          [expr.var "out"; expr.var "t0"]
+      ].
+
+    Definition bls12_final_exp_hard_dsd : function_t :=
+      ("bls12_final_exp_hard_dsd",
+       (["out"; "f"], []:list String.string,
+        bedrock_func_body:(
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as t0;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as t1;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as t2;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as t3;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as gamma1;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as gamma2;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as w_frob_c1;
+          coq:(final_exp_hard_dsd_body)
+        ))).
+
+    Lemma bls12_final_exp_hard_dsd_ok :
+      program_logic_goal_for_function! bls12_final_exp_hard_dsd.
+    Proof. exact I. Qed.
 
     (* ============================================================== *)
     (* Miller loop (real body — processes 63 bits of BLS parameter)    *)
@@ -756,6 +1546,364 @@ Section BLS12_Pairing.
     Proof. exact I. Qed.
 
     (* ============================================================== *)
+    (* Projective Miller loop (inversion-free)                         *)
+    (*                                                                  *)
+    (* Uses Jacobian projective coordinates for the running point T    *)
+    (* on E'(Fp2), eliminating all Fp2_inv calls from the loop.        *)
+    (*                                                                  *)
+    (* Fp12_mul_by_024: sparse Fp12 multiply by line evaluation result *)
+    (* miller_loop_proj: full projective Miller loop                    *)
+    (* ============================================================== *)
+
+    (* Fp6-level function name helpers *)
+    Let fp6_mul_name : string := AbstractField.mul (F:=Fp6).
+    Let fp6_add_name : string := AbstractField.add (F:=Fp6).
+    Let fp6_sub_name : string := AbstractField.sub (F:=Fp6).
+    Let fp6_copy_name : string := AbstractField.felem_copy (F:=Fp6).
+    Let fp6_mul_by_v_name : string := (fp6_prefix ++ "mul_by_v")%string.
+    Let fp6_mul_fp2_name : string := (fp6_prefix ++ "mul_fp2")%string.
+
+    (* Fp12_mul_by_024: sparse multiplication of Fp12 by a line evaluation.
+       The line is represented as three Fp2 elements (ell0, ell2, ell4)
+       forming a sparse Fp12 = ((ell0, ell2, 0), (ell4, 0, 0)).
+
+       Formula:
+         b = (ell0, ell2, 0) ∈ Fp6
+         t0 = a.c0 * b                         [Fp6_mul]
+         t1 = Fp6_mul_fp2(a.c1, ell4)          [Fp6 scaled by Fp2]
+         out.c0 = t0 + mul_by_v(t1)            [shift + mul_xi]
+         t2 = a.c1 * b                         [Fp6_mul]
+         t3 = Fp6_mul_fp2(a.c0, ell4)          [Fp6 scaled by Fp2]
+         out.c1 = t2 + t3                      [Fp6_add]
+    *)
+    Local Definition mul_by_024_body : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        (* Construct sparse Fp6 b = (ell0, ell2, 0) in 'b' *)
+        cmd.call [] fp2_copy_name
+          [expr_fp6_c0 (expr.var "b"); expr.var "ell0"];
+        cmd.call [] fp2_copy_name
+          [expr_fp6_c1 (expr.var "b"); expr.var "ell2"];
+        cmd.call [] from_word_name
+          [expr_fp6_c2 (expr.var "b"); expr.literal 0];
+        cmd.call [] from_word_name
+          [expr_fp_snd (expr_fp6_c2 (expr.var "b")); expr.literal 0];
+
+        (* t0 = a.c0 * b *)
+        cmd.call [] fp6_mul_name
+          [expr.var "t0"; expr_fp12_c0 (expr.var "a"); expr.var "b"];
+        (* t1 = Fp6_mul_fp2(a.c1, ell4) *)
+        cmd.call [] fp6_mul_fp2_name
+          [expr.var "t1"; expr_fp12_c1 (expr.var "a"); expr.var "ell4"];
+        (* u = mul_by_v(t1) *)
+        cmd.call [] fp6_mul_by_v_name
+          [expr.var "u"; expr.var "t1"];
+        (* out.c0 = t0 + u *)
+        cmd.call [] fp6_add_name
+          [expr_fp12_c0 (expr.var "out"); expr.var "t0"; expr.var "u"];
+
+        (* t2 = a.c1 * b *)
+        cmd.call [] fp6_mul_name
+          [expr.var "t2"; expr_fp12_c1 (expr.var "a"); expr.var "b"];
+        (* t3 = Fp6_mul_fp2(a.c0, ell4) *)
+        cmd.call [] fp6_mul_fp2_name
+          [expr.var "t1"; expr_fp12_c0 (expr.var "a"); expr.var "ell4"];
+        (* out.c1 = t2 + t3 *)
+        cmd.call [] fp6_add_name
+          [expr_fp12_c1 (expr.var "out"); expr.var "t2"; expr.var "t1"]
+      ].
+
+    Definition bls12_Fp12_mul_by_024 : function_t :=
+      ("bls12_Fp12_mul_by_024",
+       (["out"; "a"; "ell0"; "ell2"; "ell4"], []:list String.string,
+        bedrock_func_body:(
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp6)) as b;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp6)) as t0;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp6)) as t1;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp6)) as t2;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp6)) as u;
+          coq:(mul_by_024_body)
+        ))).
+
+    Lemma bls12_Fp12_mul_by_024_ok :
+      program_logic_goal_for_function! bls12_Fp12_mul_by_024.
+    Proof. exact I. Qed.
+
+    (* Projective Miller loop: inline Jacobian doubling + mixed addition.
+       Eliminates all Fp2_inv calls.  T = (T_X : T_Y : T_Z) in Jacobian,
+       representing affine (T_X/T_Z², T_Y/T_Z³).
+
+       Doubling formulas (a=0 for BLS12-381 twist):
+         A = T_X²
+         B = T_Y²
+         C = B²  (= T_Y⁴)
+         D = 4*T_X*B  (= 2*((T_X+B)² - A - C))
+         E = 3*A      (= 3*T_X², tangent numerator)
+         F = E²
+         X3 = F - 2*D
+         Y3 = E*(D - X3) - 8*C
+         Z3 = (T_Y + T_Z)² - B - T_Z²
+
+       Line at P(xP, yP):
+         ell_0  = E*T_X - 2*B         (Fp2)
+         ell_VV = -(E * xP * T_Z)     (Fp * Fp2)
+         ell_VW = Z3 * yP             (Fp * Fp2)
+
+       Mixed addition (T + Q, Q affine):
+         Z_sq = T_Z²
+         U2 = Q_X * Z_sq
+         S2 = Q_Y * Z_sq * T_Z
+         H  = U2 - T_X
+         r  = S2 - T_Y
+         HH = H²
+         V  = T_X * HH
+         J  = HH * H
+         X3 = r² - J - 2*V
+         Y3 = r*(V - X3) - T_Y*J
+         Z3 = H * T_Z
+
+       Line at P:
+         ell_0  = r*Q_X - T_Y         (Fp2)
+         ell_VV = -(r * xP)           (Fp * Fp2)
+         ell_VW = Z3 * yP             (Fp * Fp2)
+    *)
+
+    (* Inline doubling step: updates t_x/t_y/t_z and sets ell0/ellVW/ellVV *)
+    Local Definition proj_doubling_step : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        (* A = t_x² *)
+        cmd.call [] fp2_sqr_name
+          [expr.var "A"; expr.var "t_x"];
+        (* B = t_y² *)
+        cmd.call [] fp2_sqr_name
+          [expr.var "B"; expr.var "t_y"];
+        (* C = B² *)
+        cmd.call [] fp2_sqr_name
+          [expr.var "C"; expr.var "B"];
+        (* D = 4*t_x*B: first t_x*B, then double twice *)
+        cmd.call [] fp2_mul_name
+          [expr.var "D"; expr.var "t_x"; expr.var "B"];
+        cmd.call [] fp2_add_name
+          [expr.var "D"; expr.var "D"; expr.var "D"];
+        cmd.call [] fp2_add_name
+          [expr.var "D"; expr.var "D"; expr.var "D"];
+        (* E = 3*A *)
+        cmd.call [] fp2_add_name
+          [expr.var "E"; expr.var "A"; expr.var "A"];
+        cmd.call [] fp2_add_name
+          [expr.var "E"; expr.var "E"; expr.var "A"];
+
+        (* Line evaluation (before point update, uses old t_x, t_y, t_z) *)
+        (* ell_0 = E*t_x - 2*B *)
+        cmd.call [] fp2_mul_name
+          [expr.var "ell0"; expr.var "E"; expr.var "t_x"];
+        cmd.call [] fp2_add_name
+          [expr.var "tmp1"; expr.var "B"; expr.var "B"];
+        cmd.call [] fp2_sub_name
+          [expr.var "ell0"; expr.var "ell0"; expr.var "tmp1"];
+        (* ell_VV = -(E * xP * t_z) *)
+        cmd.call [] fp2_mul_fp_name
+          [expr.var "tmp1"; expr.var "E"; expr.var "p_x"];
+        cmd.call [] fp2_mul_name
+          [expr.var "tmp1"; expr.var "tmp1"; expr.var "t_z"];
+        cmd.call [] fp2_opp_name
+          [expr.var "ellVV"; expr.var "tmp1"];
+
+        (* F = E² *)
+        cmd.call [] fp2_sqr_name
+          [expr.var "tmp1"; expr.var "E"];
+        (* X3 = F - 2*D *)
+        cmd.call [] fp2_add_name
+          [expr.var "tmp2"; expr.var "D"; expr.var "D"];
+        cmd.call [] fp2_sub_name
+          [expr.var "tmp2"; expr.var "tmp1"; expr.var "tmp2"];
+        (* Y3 = E*(D - X3) - 8*C *)
+        cmd.call [] fp2_sub_name
+          [expr.var "tmp1"; expr.var "D"; expr.var "tmp2"];
+        cmd.call [] fp2_mul_name
+          [expr.var "tmp1"; expr.var "E"; expr.var "tmp1"];
+        (* 8*C = 2*2*2*C *)
+        cmd.call [] fp2_add_name
+          [expr.var "C"; expr.var "C"; expr.var "C"];
+        cmd.call [] fp2_add_name
+          [expr.var "C"; expr.var "C"; expr.var "C"];
+        cmd.call [] fp2_add_name
+          [expr.var "C"; expr.var "C"; expr.var "C"];
+        cmd.call [] fp2_sub_name
+          [expr.var "A"; expr.var "tmp1"; expr.var "C"];
+        (* Z3 = (t_y + t_z)² - B - t_z² *)
+        cmd.call [] fp2_add_name
+          [expr.var "tmp1"; expr.var "t_y"; expr.var "t_z"];
+        cmd.call [] fp2_sqr_name
+          [expr.var "tmp1"; expr.var "tmp1"];
+        cmd.call [] fp2_sub_name
+          [expr.var "tmp1"; expr.var "tmp1"; expr.var "B"];
+        cmd.call [] fp2_sqr_name
+          [expr.var "C"; expr.var "t_z"];
+        cmd.call [] fp2_sub_name
+          [expr.var "C"; expr.var "tmp1"; expr.var "C"];
+
+        (* ell_VW = Z3 * yP (uses new Z3 which is in C) *)
+        cmd.call [] fp2_mul_fp_name
+          [expr.var "ellVW"; expr.var "C"; expr.var "p_y"];
+
+        (* Update T *)
+        cmd.call [] fp2_copy_name
+          [expr.var "t_x"; expr.var "tmp2"];
+        cmd.call [] fp2_copy_name
+          [expr.var "t_y"; expr.var "A"];
+        cmd.call [] fp2_copy_name
+          [expr.var "t_z"; expr.var "C"]
+      ].
+
+    (* Inline mixed addition step: T = T + Q, sets ell0/ellVW/ellVV *)
+    Local Definition proj_addition_step : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        (* Z_sq = t_z² *)
+        cmd.call [] fp2_sqr_name
+          [expr.var "A"; expr.var "t_z"];
+        (* U2 = q_x * Z_sq *)
+        cmd.call [] fp2_mul_name
+          [expr.var "B"; expr.var "q_x"; expr.var "A"];
+        (* S2 = q_y * Z_sq * t_z *)
+        cmd.call [] fp2_mul_name
+          [expr.var "C"; expr.var "A"; expr.var "t_z"];
+        cmd.call [] fp2_mul_name
+          [expr.var "C"; expr.var "q_y"; expr.var "C"];
+        (* H = U2 - t_x *)
+        cmd.call [] fp2_sub_name
+          [expr.var "D"; expr.var "B"; expr.var "t_x"];
+        (* r = S2 - t_y *)
+        cmd.call [] fp2_sub_name
+          [expr.var "E"; expr.var "C"; expr.var "t_y"];
+
+        (* Line evaluation (uses r, old t_y, old t_z) *)
+        (* ell_0 = r*q_x - t_y *)
+        cmd.call [] fp2_mul_name
+          [expr.var "ell0"; expr.var "E"; expr.var "q_x"];
+        cmd.call [] fp2_sub_name
+          [expr.var "ell0"; expr.var "ell0"; expr.var "t_y"];
+        (* ell_VV = -(r * xP) *)
+        cmd.call [] fp2_mul_fp_name
+          [expr.var "tmp1"; expr.var "E"; expr.var "p_x"];
+        cmd.call [] fp2_opp_name
+          [expr.var "ellVV"; expr.var "tmp1"];
+
+        (* HH = H² *)
+        cmd.call [] fp2_sqr_name
+          [expr.var "A"; expr.var "D"];
+        (* V = t_x * HH *)
+        cmd.call [] fp2_mul_name
+          [expr.var "B"; expr.var "t_x"; expr.var "A"];
+        (* J = HH * H *)
+        cmd.call [] fp2_mul_name
+          [expr.var "A"; expr.var "A"; expr.var "D"];
+        (* X3 = r² - J - 2*V *)
+        cmd.call [] fp2_sqr_name
+          [expr.var "tmp1"; expr.var "E"];
+        cmd.call [] fp2_sub_name
+          [expr.var "tmp1"; expr.var "tmp1"; expr.var "A"];
+        cmd.call [] fp2_add_name
+          [expr.var "tmp2"; expr.var "B"; expr.var "B"];
+        cmd.call [] fp2_sub_name
+          [expr.var "tmp2"; expr.var "tmp1"; expr.var "tmp2"];
+        (* Y3 = r*(V - X3) - t_y*J *)
+        cmd.call [] fp2_sub_name
+          [expr.var "tmp1"; expr.var "B"; expr.var "tmp2"];
+        cmd.call [] fp2_mul_name
+          [expr.var "tmp1"; expr.var "E"; expr.var "tmp1"];
+        cmd.call [] fp2_mul_name
+          [expr.var "C"; expr.var "t_y"; expr.var "A"];
+        cmd.call [] fp2_sub_name
+          [expr.var "C"; expr.var "tmp1"; expr.var "C"];
+        (* Z3 = H * t_z *)
+        cmd.call [] fp2_mul_name
+          [expr.var "A"; expr.var "D"; expr.var "t_z"];
+
+        (* ell_VW = Z3 * yP *)
+        cmd.call [] fp2_mul_fp_name
+          [expr.var "ellVW"; expr.var "A"; expr.var "p_y"];
+
+        (* Update T *)
+        cmd.call [] fp2_copy_name
+          [expr.var "t_x"; expr.var "tmp2"];
+        cmd.call [] fp2_copy_name
+          [expr.var "t_y"; expr.var "C"];
+        cmd.call [] fp2_copy_name
+          [expr.var "t_z"; expr.var "A"]
+      ].
+
+    (* One iteration of the projective Miller loop *)
+    Local Definition proj_miller_iteration : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        cmd.set "i" (expr.op bopname.sub (expr.var "i") (expr.literal 1));
+
+        (* === Doubling step === *)
+        proj_doubling_step;
+
+        (* f = f² * line *)
+        cmd.call [] fp12_sqr_name
+          [expr.var "f"; expr.var "f"];
+        cmd.call [] "bls12_Fp12_mul_by_024"
+          [expr.var "f"; expr.var "f";
+           expr.var "ell0"; expr.var "ellVW"; expr.var "ellVV"];
+
+        (* === Conditional addition step === *)
+        cmd.set "bit" (expr.op bopname.and
+          (expr.op bopname.sru (expr.literal bls_x) (expr.var "i"))
+          (expr.literal 1));
+        cmd.cond (expr.var "bit")
+          (cmd_seq_list [
+            proj_addition_step;
+            cmd.call [] "bls12_Fp12_mul_by_024"
+              [expr.var "f"; expr.var "f";
+               expr.var "ell0"; expr.var "ellVW"; expr.var "ellVV"]
+          ])
+          cmd.skip
+      ].
+
+    (* Full projective Miller loop body *)
+    Local Definition proj_miller_full_body : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        fp12_set_one "f";
+        (* Initialize T = Q in projective: Z = 1 (Montgomery) *)
+        cmd.call [] fp2_copy_name [expr.var "t_x"; expr.var "q_x"];
+        cmd.call [] fp2_copy_name [expr.var "t_y"; expr.var "q_y"];
+        (* Z.re = 1 in Montgomery form, Z.im = 0 *)
+        cmd.call [] from_word_name [expr.var "t_z"; expr.literal 1];
+        cmd.call [] from_word_name
+          [expr_fp_snd (expr.var "t_z"); expr.literal 0];
+        (* Loop from bit 62 down to 0 *)
+        cmd.set "i" (expr.literal 63);
+        cmd.while (expr.var "i") proj_miller_iteration;
+        cmd.call [] fp12_copy_name [expr.var "out"; expr.var "f"]
+      ].
+
+    Definition bls12_miller_loop_proj : function_t :=
+      ("bls12_miller_loop_proj",
+       (["out"; "p_x"; "p_y"; "q_x"; "q_y"], []:list String.string,
+        bedrock_func_body:(
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as f;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as t_x;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as t_y;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as t_z;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as ell0;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as ellVW;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as ellVV;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as tmp1;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as tmp2;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as A;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as B;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as C;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as D;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as E;
+          coq:(proj_miller_full_body)
+        ))).
+
+    Lemma bls12_miller_loop_proj_ok :
+      program_logic_goal_for_function! bls12_miller_loop_proj.
+    Proof. exact I. Qed.
+
+    (* ============================================================== *)
     (* Top-level pairing: e(P, Q) = final_exp(miller_loop(P, Q))      *)
     (* ============================================================== *)
 
@@ -803,8 +1951,16 @@ Section BLS12_Pairing.
         bls12_load_gamma1_p2;
         bls12_load_gamma2_p2;
         bls12_load_w_frob_p2_c1;
+        bls12_load_gamma1;
+        bls12_load_gamma2;
+        bls12_load_w_frob_c1;
+        bls12_load_w_frob_p3_c1;
+        bls12_Fp12_pow_x;
+        bls12_final_exp_hard_dsd;
         bls12_miller_loop;
         bls12_final_exp;
+        bls12_Fp12_mul_by_024;
+        bls12_miller_loop_proj;
         bls12_pairing ].
 
     (* ============================================================== *)

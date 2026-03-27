@@ -144,33 +144,105 @@ Section BLS377.
     (@F.field_modulo PrimeField.M_pos prime_bls12_377).
   Add Field Fp_field : ftfst.
 
+  (* Fp2 field theory for cancellation *)
+  Let FFp2 := QuadraticExtensions.FFp2 PrimeField.M_pos prime_bls12_377
+    bls377_M_big bls377_beta bls377_beta_nz bls377_beta_qnr.
+  Add Field Fp2field : FFp2.
+
+  (* a² = 0 => a = 0 in Fp *)
+  Local Lemma Fp_sq_zero : forall a : F PrimeField.M_pos,
+    @F.mul PrimeField.M_pos a a = @F.zero PrimeField.M_pos ->
+    a = @F.zero PrimeField.M_pos.
+  Proof.
+    intros a Ha.
+    destruct (F.eq_dec a (@F.zero PrimeField.M_pos)); [assumption|].
+    exfalso. apply n.
+    transitivity (@F.mul PrimeField.M_pos (@F.inv PrimeField.M_pos a)
+                   (@F.mul PrimeField.M_pos a a)).
+    - field. exact n.
+    - rewrite Ha. ring.
+  Qed.
+
+  (* β being QNR + (a0,a1) ≠ 0 implies a0²-β·a1² ≠ 0 *)
+  Local Lemma bls377_norm_nonzero : forall a0 a1 : F PrimeField.M_pos,
+    (a0, a1) <> QuadraticExtensions.zerop2 PrimeField.M_pos ->
+    @F.sub PrimeField.M_pos
+      (@F.mul PrimeField.M_pos a0 a0)
+      (@F.mul PrimeField.M_pos (@F.mul PrimeField.M_pos bls377_beta a1) a1)
+      <> @F.zero PrimeField.M_pos.
+  Proof.
+    intros a0 a1 Hx Habs.
+    apply bls377_beta_qnr.
+    destruct (F.eq_dec a1 (@F.zero PrimeField.M_pos)) as [Ha1|Ha1].
+    - (* a1 = 0 => a0² = 0 => a0 = 0, contradicting Hx *)
+      subst a1.
+      assert (Ha0sq : @F.mul PrimeField.M_pos a0 a0 = @F.zero PrimeField.M_pos).
+      { replace (@F.mul PrimeField.M_pos (@F.mul PrimeField.M_pos bls377_beta (@F.zero PrimeField.M_pos)) (@F.zero PrimeField.M_pos))
+          with (@F.zero PrimeField.M_pos) in Habs by ring.
+        replace (@F.sub PrimeField.M_pos (@F.mul PrimeField.M_pos a0 a0) (@F.zero PrimeField.M_pos))
+          with (@F.mul PrimeField.M_pos a0 a0) in Habs by ring.
+        exact Habs. }
+      apply Fp_sq_zero in Ha0sq. subst a0. exfalso. apply Hx. reflexivity.
+    - (* a1 ≠ 0 => β = (a0·inv(a1))² *)
+      exists (@F.mul PrimeField.M_pos a0 (@F.inv PrimeField.M_pos a1)).
+      assert (Heq : @F.mul PrimeField.M_pos a0 a0 =
+                     @F.mul PrimeField.M_pos (@F.mul PrimeField.M_pos bls377_beta a1) a1).
+      { assert (@F.sub PrimeField.M_pos (@F.mul PrimeField.M_pos a0 a0)
+                  (@F.mul PrimeField.M_pos (@F.mul PrimeField.M_pos bls377_beta a1) a1) =
+                @F.zero PrimeField.M_pos) by exact Habs.
+        assert (@F.mul PrimeField.M_pos a0 a0 =
+                @F.sub PrimeField.M_pos (@F.zero PrimeField.M_pos)
+                  (@F.opp PrimeField.M_pos (@F.mul PrimeField.M_pos (@F.mul PrimeField.M_pos bls377_beta a1) a1))).
+        { rewrite <- H. ring. }
+        rewrite H0. ring. }
+      transitivity (@F.mul PrimeField.M_pos (@F.mul PrimeField.M_pos a0 a0)
+                     (@F.mul PrimeField.M_pos (@F.inv PrimeField.M_pos a1) (@F.inv PrimeField.M_pos a1))).
+      + ring.
+      + rewrite Heq. field. exact Ha1.
+  Qed.
+
+  (* Both invp2 and fp2_inv are right-inverses under mulp2.
+     Since the Fp2 field has unique inverses, they must be equal. *)
   Lemma bls377_invp2_eq_fp2_inv : forall x,
+    x <> QuadraticExtensions.zerop2 PrimeField.M_pos ->
     QuadraticExtensions.invp2 PrimeField.M_pos bls377_beta x =
     Fp6.fp2_inv PrimeField.M_pos bls377_beta x.
   Proof.
-    intros [a0 a1]. unfold QuadraticExtensions.invp2, Fp6.fp2_inv. simpl.
-    destruct (F.to_Z a0 =? 0) eqn:Heq.
-    - (* a0 = 0 case: both formulas give (0, inv(a1*β)) after simplification *)
-      apply Z.eqb_eq in Heq.
-      assert (Ha0 : a0 = @F.zero PrimeField.M_pos).
-      { apply (f_equal (fun y => F.of_Z PrimeField.M_pos y)) in Heq.
-        rewrite F.of_Z_to_Z in Heq. exact Heq. }
-      rewrite Ha0. unfold F.div. f_equal.
-      + ring.
-      + (* inv(a1*β) = opp(a1) * inv(0 - β*a1*a1) = -a1/(−β·a1²) = 1/(β·a1) *)
-        (* Both sides compute F.inv applied to expressions that are equal *)
-        (* when a0 = 0, invp2 re = 0 = fp2_inv re, already done above *)
-        (* invp2 im = F.inv(a1 * β) *)
-        (* fp2_inv im = F.opp(a1) * F.inv(0 - β*a1*a1) *)
-        (* These are equal: -a1/(−β·a1²) = -a1·(-1)/(β·a1²) = 1/(β·a1) = inv(a1*β) *)
-        admit.
-    - (* a0 ≠ 0 case: use field_simplify *)
-      unfold F.div.
-      f_equal; field_simplify.
-      (* field_simplify should normalize both sides *)
-      all: try (apply Z.eqb_neq in Heq; intro Hc; apply Heq; rewrite Hc; reflexivity).
-      all: admit.
-  Admitted.
+    intros [a0 a1] Hx.
+    pose proof (bls377_norm_nonzero a0 a1 Hx) as Hnorm.
+    (* invp2 is correct inverse: mulp2 x (invp2 x) = 1 *)
+    assert (Hinvp2 : QuadraticExtensions.mulp2 PrimeField.M_pos bls377_beta (a0,a1)
+      (QuadraticExtensions.invp2 PrimeField.M_pos bls377_beta (a0,a1)) =
+      QuadraticExtensions.onep2 PrimeField.M_pos).
+    { pose proof (Finv_l FFp2 (a0,a1) Hx). rewrite <- H. ring. }
+    (* fp2_inv is also correct: mulp2 x (fp2_inv x) = 1 *)
+    assert (Hfpinv : QuadraticExtensions.mulp2 PrimeField.M_pos bls377_beta (a0,a1)
+      (Fp6.fp2_inv PrimeField.M_pos bls377_beta (a0,a1)) =
+      QuadraticExtensions.onep2 PrimeField.M_pos).
+    { unfold QuadraticExtensions.mulp2, Fp6.fp2_inv, QuadraticExtensions.onep2.
+      cbn -[F.inv F.mul F.add F.sub F.opp F.zero F.one F.div PrimeField.M_pos].
+      apply injective_projections;
+        cbn -[F.inv F.mul F.add F.sub F.opp F.zero F.one F.div PrimeField.M_pos];
+        field; assumption. }
+    (* Both are right-inverses => both equal invp2 x => equal to each other *)
+    pose proof (Finv_l FFp2 (a0,a1) Hx) as Hinv_l.
+    (* Hinv_l : mulp2 (invp2 x) x = onep2 *)
+    (* Show: invp2 x = y iff x * y = 1, by cancellation *)
+    assert (Hy1 : QuadraticExtensions.invp2 PrimeField.M_pos bls377_beta (a0, a1) =
+                  QuadraticExtensions.invp2 PrimeField.M_pos bls377_beta (a0, a1)) by reflexivity.
+    assert (Hy2 : Fp6.fp2_inv PrimeField.M_pos bls377_beta (a0, a1) =
+                  QuadraticExtensions.invp2 PrimeField.M_pos bls377_beta (a0, a1)).
+    { transitivity (QuadraticExtensions.mulp2 PrimeField.M_pos bls377_beta
+        (QuadraticExtensions.onep2 PrimeField.M_pos)
+        (Fp6.fp2_inv PrimeField.M_pos bls377_beta (a0, a1))). { ring. }
+      rewrite <- Hinv_l.
+      transitivity (QuadraticExtensions.mulp2 PrimeField.M_pos bls377_beta
+        (QuadraticExtensions.invp2 PrimeField.M_pos bls377_beta (a0, a1))
+        (QuadraticExtensions.mulp2 PrimeField.M_pos bls377_beta (a0, a1)
+          (Fp6.fp2_inv PrimeField.M_pos bls377_beta (a0, a1)))). { ring. }
+      rewrite Hfpinv. ring. }
+    symmetry. exact Hy2.
+  Qed.
 
   (* ================================================================ *)
   (* Fp6/Fp12 instances via generic tower                              *)

@@ -30,6 +30,7 @@
 Require Import Rupicola.Lib.Api.
 Require Import bedrock2.Semantics.
 Require Import bedrock2.WeakestPrecondition.
+Require Import Crypto.Bedrock.Specs.AbstractField.
 
 (** ** ecancel_assumption_with_copy
 
@@ -388,3 +389,461 @@ Ltac wp_from_word_pair HFfromword split_lemma join_lemma len_tac :=
   | Hsep : (_ * _)%sep _ |- _ =>
     eapply join_lemma in Hsep; [ | len_tac | len_tac ]
   end.
+
+(** ** putmany_transfer
+
+    Key lemma for unop-style WP proofs where the same memory has two
+    overlapping decompositions (one for the output, one for the input).
+
+    If M = A + B = C + D with A ⊥ B, C ⊥ D, A ⊥ C, then C is a
+    submap of B: there exists B' such that B = C + B' and C ⊥ B'.
+
+    Application: After a call modifies the output region A (replacing it
+    with A'), the frame B is preserved. Input FElems (from C) are in B
+    because they're disjoint from A. So we can provide sep witnesses for
+    input FElems using the frame. *)
+
+Lemma putmany_transfer {key value : Type} {map : map.map key value}
+    {ok : map.ok map}
+    {key_eqb : key -> key -> bool}
+    {key_eqb_spec : forall x y, BoolSpec (x = y) (x <> y) (key_eqb x y)} :
+  forall (A B C D : map.rep (map:=map)),
+    map.putmany A B = map.putmany C D ->
+    map.disjoint A B -> map.disjoint C D ->
+    map.disjoint A C ->
+    exists B', B = map.putmany C B' /\ map.disjoint C B'.
+Proof.
+  intros A B C D Heq HdAB HdCD HdAC.
+  assert (HCinB : forall k v, map.get C k = Some v -> map.get B k = Some v).
+  { intros k v Hk.
+    assert (HgetCD : map.get (map.putmany C D) k = Some v).
+    { rewrite map.get_putmany_dec.
+      assert (HgetDk : map.get D k = None).
+      { destruct (map.get D k) eqn:E; auto. exfalso. eapply HdCD; eauto. }
+      rewrite HgetDk. exact Hk. }
+    rewrite <- Heq in HgetCD. rewrite map.get_putmany_dec in HgetCD.
+    destruct (map.get B k) eqn:HgetBk.
+    - injection HgetCD; auto.
+    - exfalso. eapply HdAC; eauto. }
+  assert (HBkeys : map.forall_keys
+    (fun k => (exists v, map.get C k = Some v) \/ map.get C k = None) B).
+  { unfold map.forall_keys. intros k v Hk.
+    destruct (map.get C k) eqn:HC; [left; eauto | right; auto]. }
+  apply map.split_by_or in HBkeys.
+  destruct HBkeys as [mBC [mBrest [HBeq [HdBCrest [HkBC HkBrest]]]]].
+  assert (HmBC_eq_C : mBC = C).
+  { apply map.map_ext. intros k.
+    destruct (map.get mBC k) eqn:HmBC.
+    - unfold map.forall_keys in HkBC. specialize (HkBC k v HmBC).
+      destruct HkBC as [vc Hvc].
+      assert (HBk : map.get B k = Some v).
+      { rewrite HBeq. rewrite map.get_putmany_dec.
+        destruct (map.get mBrest k) as [vr|] eqn:Hr;
+          [exfalso; eapply HdBCrest; eauto | auto]. }
+      specialize (HCinB k vc Hvc). rewrite HBk in HCinB.
+      injection HCinB; intros; subst. symmetry. exact Hvc.
+    - destruct (map.get C k) eqn:HC; auto.
+      assert (HBk := HCinB k v HC).
+      rewrite HBeq in HBk. rewrite map.get_putmany_dec in HBk.
+      rewrite HmBC in HBk.
+      unfold map.forall_keys in HkBrest.
+      destruct (map.get mBrest k) as [vr|] eqn:Hr.
+      + specialize (HkBrest k vr Hr). congruence.
+      + congruence. }
+  subst mBC.
+  exists mBrest. split; [exact HBeq | exact HdBCrest].
+Qed.
+
+(** ** sep_lift_putmany
+
+    Lifts a sep from memory [m] to extended memory [putmany m mS].
+    Used after stackalloc: if [(P * Q) m] and [disjoint m mS],
+    then [(P * (Q * eq mS)) (putmany m mS)].
+
+    This enables [ecancel_assumption] to find FElems from the original
+    memory in the stack-extended memory. *)
+
+Lemma sep_lift_putmany {key value : Type} {map : map.map key value}
+    {ok : map.ok map}
+    {key_eqb : key -> key -> bool}
+    {key_eqb_spec : forall x y, BoolSpec (x = y) (x <> y) (key_eqb x y)} :
+  forall (P Q : @map.rep key value map -> Prop)
+    (m mS : @map.rep key value map),
+    sep P Q m -> map.disjoint m mS ->
+    sep P (sep Q (eq mS)) (map.putmany m mS).
+Proof.
+  intros P Q m mS [mP [mQ [Hsp [HP HQ]]]] HdmS.
+  destruct Hsp as [Heq Hd]. subst m.
+  assert (HdQS : map.disjoint mQ mS).
+  { unfold map.disjoint in *. intros k v1 v2 HgQ HgS.
+    eapply HdmS. exact (map.get_putmany_right _ _ _ _ HgQ). exact HgS. }
+  assert (HdPQS : map.disjoint mP (map.putmany mQ mS)).
+  { unfold map.disjoint in *. intros k v1 v2 HgP HgQS.
+    rewrite map.get_putmany_dec in HgQS.
+    destruct (map.get mS k) eqn:HgS.
+    - eapply HdmS.
+      + assert (Hn : map.get mQ k = None)
+          by (destruct (map.get mQ k) eqn:E; [exfalso; eapply Hd; eauto | reflexivity]).
+        exact (eq_trans (map.get_putmany_left _ _ _ Hn) HgP).
+      + exact HgS.
+    - eapply Hd; eauto. }
+  exists mP, (map.putmany mQ mS).
+  split; [split |].
+  - rewrite map.putmany_assoc. reflexivity.
+  - exact HdPQS.
+  - split; [exact HP |].
+    exists mQ, mS. split; [split; [reflexivity | exact HdQS] |].
+    split; [exact HQ | reflexivity].
+Qed.
+
+(** ================================================================ *)
+(** * Enhanced WP automation for multi-call proofs                    *)
+(** ================================================================ *)
+
+(** ** assert_sep_from_context
+
+    Automatically collects ALL FElem, Bignum, scalar, and R hypotheses
+    that hold on submaps of the current combined memory, and asserts
+    a master sep covering all of them.
+
+    Usage: after destructing Hsep + substing stackalloc splits +
+    split_all_disjointness, the context has individual hypotheses like:
+      Hfe_ox : FElem bounds ptr val m_ox
+      Hbn_k1 : Bignum n pk1 k1_words m_k1
+      Hsc_iter : scalar addr val m_iter
+      HR : R m_R
+    The tactic builds:
+      Hsep_master : (FElem ... ⋆ (Bignum ... ⋆ (... ⋆ R))) mem_combined
+    and proves it using build_sep_reorder. *)
+
+(** ** resolve_map_get_fast
+
+    Faster version of resolve_map_get that uses native_compute-friendly
+    string comparison. For deep locals maps (20+ puts), this avoids
+    the O(n) congruence chain. *)
+
+Ltac resolve_map_get_fast :=
+  lazymatch goal with
+  | |- map.get (map.put ?m ?k ?v) ?k' = Some ?e =>
+    first
+    [ constr_eq k k'; rewrite map.get_put_same; exact eq_refl
+    | rewrite map.get_put_diff by discriminate;
+      resolve_map_get_fast ]
+  | |- map.get ?m ?k = Some _ =>
+    first [ assumption
+          | match goal with H : map.get m k = Some _ |- _ => exact H end ]
+  end.
+
+(** ** eval_dexprs_fast
+
+    Faster dexprs evaluator using resolve_map_get_fast. *)
+Ltac eval_dexprs_fast :=
+  cbv [dexprs list_map list_map_body
+       WeakestPrecondition.expr WeakestPrecondition.expr_body
+       WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet];
+  repeat (first
+    [ exact eq_refl
+    | eexists; split; [resolve_map_get_fast |]
+    | eexists; split; [exact eq_refl |]
+    ]).
+
+(** ** wp_straightline
+
+    Process cmd.seq/set/skip/store with abstract locals.
+    Curve-independent version of MillerLoop's miller_straightline. *)
+Ltac wp_straightline :=
+  match goal with
+  | |- WeakestPrecondition.cmd _ (cmd.seq _ _) _ _ _ _ =>
+    unfold1_cmd_goal; cbv beta match delta [cmd_body]
+  | |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post =>
+    unfold1_cmd_goal; cbv beta match delta [cmd_body];
+    letexists; split; [solve [eval_dexprs_fast] |]
+  | |- WeakestPrecondition.cmd _ cmd.skip _ _ _ ?post =>
+    unfold1_cmd_goal; cbv beta match delta [cmd_body]
+  | |- WeakestPrecondition.cmd _ (cmd.store _ _) _ _ _ _ =>
+    unfold1_cmd_goal; cbv beta match delta [cmd_body]
+  end.
+
+(** ** wp_gcall
+
+    Process one function call with abstract locals. Curve-independent.
+    1. Peel cmd.seq if needed
+    2. Expose cmd.call, provide args via eval_dexprs_fast
+    3. Apply weaken_call with spec
+    4. Leave callee precondition and postcondition as subgoals
+
+    Usage:
+      wp_gcall HSpec.
+      { solve_precondition. }
+      { solve_postcondition. }
+    *)
+Ltac wp_gcall spec_hyp :=
+  try wp_straightline;
+  unfold1_cmd_goal; cbv beta match delta [cmd_body];
+  letexists; split; [solve [eval_dexprs_fast] |];
+  eapply Semantics.weaken_call;
+  [ eapply spec_hyp
+  | cbv beta; intros ? ? ? ?;
+    repeat match goal with H : _ /\ _ |- _ => destruct H end;
+    try subst;
+    cbv [map.putmany_of_list_zip];
+    try (eexists; split; [ exact eq_refl | ]) ].
+
+(* ================================================================== *)
+(** * Phase 0 Automation — New shared tactics for pairing proofs      *)
+(* ================================================================== *)
+
+(** ** T1: solve_one_mapget / solve_mapgets_n
+
+    Generic n-ary conjunction solver for map.get goals.
+    Replaces the hardcoded 8-element [solve_loop_mapgets] in
+    BLS12_FinalExp.v with a recursive version that handles any n.
+
+    Avoids focus corruption by using [lazymatch] for recursion
+    instead of [split; [leaf | recurse]] inside brackets. *)
+
+Ltac solve_one_mapget :=
+  lazymatch goal with
+  | |- map.get (map.put _ _ _) _ = Some _ =>
+    first
+    [ rewrite map.get_put_same; reflexivity
+    | rewrite map.get_put_diff by congruence; solve_one_mapget ]
+  | |- map.get _ _ = Some _ => assumption
+  end.
+
+Ltac solve_mapgets_n :=
+  lazymatch goal with
+  | |- _ /\ _ => split; [ solve_one_mapget | solve_mapgets_n ]
+  | |- map.get _ _ = Some _ => solve_one_mapget
+  | |- True => exact I
+  end.
+
+(* T2 (wp_straight_call) and T3 (dealloc_one) were removed:
+   wp_gcall and repeat straightline already handle these cases. *)
+
+(* ================================================================== *)
+(** * Phase 1 Automation — Pairing-level call tactics                  *)
+(* ================================================================== *)
+
+(** ** wp_pairing_precond: solve preconditions for Fp6/Fp12 level ops.
+
+    Pairing-level specs (conjugate, frobenius, pow_u, etc.) have
+    preconditions of the form:
+      bounds1 /\ bounds2 /\ ... /\ sep_assertion
+    where the last conjunct is a sep and everything else is a bound.
+
+    Strategy: repeatedly split, try bounds from context, then ecancel
+    for the sep part. *)
+
+Ltac wp_pairing_precond :=
+  repeat match goal with
+  | |- _ /\ _ => split; [ first [ solve_bounds_auto
+                                 | eexists; ecancel_assumption
+                                 | ecancel_assumption ] | ]
+  end;
+  first [ ecancel_assumption
+        | eexists; ecancel_assumption
+        | solve_bounds_auto
+        | idtac ].
+
+(** ** wp_pairing_call: one call in a pairing-level straight-line proof.
+
+    Combines wp_gcall + precondition solving + postcondition processing.
+    After this tactic, the proof state has fresh output value hypotheses
+    (feval, bounds, sep) and is ready for the next call.
+
+    Usage: wp_pairing_call HSpec.
+    where HSpec is a hypothesis of the form:
+      spec_of_SomeOp functions   or
+      map.get functions name = Some body  (for EnvContains)
+
+    For specs that need explicit pointer/value arguments, use wp_gcall
+    directly. *)
+
+Ltac wp_pairing_postcall :=
+  cbv beta;
+  intros ? ? ? ?;
+  repeat match goal with H : _ /\ _ |- _ => destruct H end;
+  try subst;
+  cbv [map.putmany_of_list_zip];
+  try (eexists; split; [ exact eq_refl | ]);
+  repeat (try wp_straightline; try straightline).
+
+Ltac wp_pairing_call spec_hyp :=
+  try wp_straightline;
+  try straightline;
+  unfold1_cmd_goal; cbv beta match delta [cmd_body];
+  letexists; split; [solve [eval_dexprs_fast] |];
+  eapply Semantics.weaken_call;
+  [ eapply spec_hyp; wp_pairing_precond
+  | wp_pairing_postcall ].
+
+(** ** wp_loop: apply while_localsmap with a given invariant.
+
+    Usage: wp_loop inv measure.
+    where inv is the loop invariant and measure is the initial value.
+
+    Sets up the while proof with:
+    - well_foundedness of nat
+    - subgoal for initial invariant
+    - subgoal for loop body preservation *)
+
+Ltac wp_loop invariant v0 :=
+  eapply Loops.while_localsmap
+    with (v0 := v0)
+         (lt := Nat.lt)
+         (invariant := invariant);
+  [ exact lt_wf | | ].
+
+(* ================================================================== *)
+(** * Phase 2 Automation — Multi-call chains and batch operations      *)
+(* ================================================================== *)
+
+(** ** wp_auto_precond: smart precondition solver for any op level.
+
+    Tries, in order:
+    1. Solve as unop precond (3-part: bound, exist sep, sep)
+    2. Solve as binop precond (5-part: bound, bound, exist sep, exist sep, sep)
+    3. Solve as pairing precond (N bounds + sep)
+    4. Solve as felem_copy precond (sep pair)
+    5. Solve as load_constant precond (single sep)
+    6. Raw ecancel_assumption as last resort *)
+
+Ltac wp_auto_precond :=
+  first
+    [ (* felem_copy shape: (sep) /\ (sep) *)
+      split; [ecancel_assumption | ecancel_assumption]
+    | (* unop shape: bound /\ (exists Rx, sep) /\ sep *)
+      wp_unop_precond solve_bounds_auto
+    | (* binop shape: bound /\ bound /\ ... /\ sep *)
+      wp_binop_precond solve_bounds_auto
+    | (* pairing general: N bounds + sep *)
+      wp_pairing_precond
+    | (* single sep (load constants, etc.) *)
+      ecancel_assumption
+    | (* existential sep *)
+      eexists; ecancel_assumption ].
+
+(** ** wp_step: process one call + postcondition in a straight-line proof.
+
+    This is the workhorse tactic. Given a spec hypothesis, it:
+    1. Advances past any cmd.seq/set/skip
+    2. Evaluates call arguments
+    3. Applies weaken_call with the spec
+    4. Solves preconditions automatically
+    5. Destructures postcondition
+    6. Continues past the return-locals update
+
+    After wp_step, fresh hypotheses for the output value (feval,
+    bounded_by, sep) are in context and the goal is at the next call.
+
+    Usage:
+      wp_step HFmul.    (* for a mul call *)
+      wp_step HFconj.   (* for a conjugate call *)
+      wp_step HFpow.    (* for a pow_u call *)
+*)
+
+Ltac wp_step spec_hyp :=
+  (* Phase 1: advance to the call *)
+  repeat (first [ wp_straightline | straightline ]);
+  (* Phase 2: process the call *)
+  (tryif (unfold1_cmd_goal; cbv beta match delta [cmd_body];
+          letexists; split; [solve [eval_dexprs_fast] |])
+   then idtac
+   else (letexists; split; [solve [eval_dexprs_fast] |]));
+  eapply Semantics.weaken_call;
+  [ (* Callee obligation *)
+    eapply spec_hyp; wp_auto_precond
+  | (* Continuation: destructure postcondition *)
+    cbv beta;
+    let t := fresh "t" in let m := fresh "m" in
+    let rets := fresh "rets" in let Hpost := fresh "Hpost" in
+    intros t m rets Hpost;
+    (* Postconditions come in several shapes.
+       Common: rets = [] /\ tr = t /\ (exists out, feval /\ bound /\ sep) *)
+    repeat match goal with
+    | H : _ /\ _ |- _ => destruct H
+    end;
+    try subst;
+    cbv [map.putmany_of_list_zip];
+    try (eexists; split; [ exact eq_refl | ]);
+    repeat (first [ wp_straightline | straightline ]) ].
+
+(** ** wp_steps: process N calls in sequence.
+
+    Takes a list of spec hypotheses and applies wp_step to each.
+    Usage:
+      wp_steps [HFconj; HFinv; HFmul; HFfrob; HFmul; HFhard].
+*)
+
+Ltac wp_steps specs :=
+  lazymatch specs with
+  | ?h :: ?rest => wp_step h; wp_steps rest
+  | nil => idtac
+  | ?h => wp_step h  (* single spec, not in list *)
+  end.
+
+(** ** wp_stackalloc_one: handle one stackalloc + anybytes→FElem conversion.
+
+    Processes:
+      stackalloc N as ptr; ...
+    into:
+      ptr : word, mStack : mem, mCombined : mem,
+      Hfelem : FElem ptr init_val mStack
+
+    Arguments:
+      field_params  — e.g., Fp12_fp_inst
+      field_repr    — e.g., Fp12_repr_inst
+
+    Usage:
+      wp_stackalloc_one Fp12_fp_inst Fp12_repr_inst.
+*)
+
+Ltac wp_stackalloc_one fp_inst fr_inst :=
+  straightline;
+  split; [ first [ apply Z_mod_mult | reflexivity ] | ];
+  let a := fresh "a" in
+  let mS := fresh "mS" in
+  let mC := fresh "mC" in
+  let HaS := fresh "HaS" in
+  let HmS := fresh "HmS" in
+  intros a mS mC HaS HmS;
+  let Hex := fresh "Hex" in
+  assert (Hex : exists v, @AbstractField.FElem _ fp_inst _ _ _ _ fr_inst a v mS);
+  [ let Hconv := fresh "Hconv" in
+    pose proof (@AbstractField.FElem_from_bytes _ fp_inst _ _ _ _ fr_inst) as Hconv;
+    cbv [Lift1Prop.iff1 AbstractField.Placeholder] in Hconv;
+    apply Hconv; [typeclasses eauto | typeclasses eauto | exact HaS]
+  | let vi := fresh "vi" in let Hvi := fresh "Hvi" in
+    destruct Hex as [vi Hvi] ].
+
+(** ** wp_dealloc_one: deallocate one stack-allocated FElem.
+
+    Given a sep hypothesis containing (FElem ptr val) for a stack pointer,
+    converts it back to anybytes and provides the map.split witness.
+
+    This tactic should be called once per stack allocation, in reverse
+    order of allocation.
+
+    Usage (inside the final postcondition):
+      (* Reorder to isolate stack FElem *)
+      assert (Hsplit : (Rest * FElem a_stk stk_val) m_final).
+      { pose proof Hsep as H'. ecancel_assumption. }
+      wp_dealloc_one Hsplit fp_inst fr_inst.
+*)
+
+Ltac wp_dealloc_one Hsplit fp_inst fr_inst :=
+  let m_rest := fresh "m_rest" in
+  let m_stk := fresh "m_stk" in
+  let Heq := fresh "Heq" in
+  let Hd := fresh "Hd" in
+  let Hrest := fresh "Hrest" in
+  let Hstk := fresh "Hstk" in
+  destruct Hsplit as [m_rest [m_stk [[Heq Hd] [Hrest Hstk]]]];
+  let Hab := fresh "Hab" in
+  pose proof (@AbstractField.FElem_to_bytes _ _ _ _ ltac:(exact _) ltac:(exact _) _
+    fp_inst fr_inst _ _ m_stk Hstk) as Hab;
+  try (unfold AbstractField.Placeholder in Hab);
+  exists m_rest, m_stk;
+  split; [ exact Hab | ];
+  split; [ split; [ exact Heq | exact Hd ] | ].

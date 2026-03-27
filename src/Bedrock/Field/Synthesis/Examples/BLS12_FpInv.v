@@ -375,12 +375,87 @@ Section FpInv.
       (C) is proved as [precomp_times_pow2].
 
       The Z modular arithmetic bookkeeping for the sign correction
-      (combining A+B+C into the final result) is algebraically straightforward
-      but involves tedious Zmod rewriting. We axiomatize the combined result. *)
-  Axiom fp_inv_correct_ax : forall x,
+      (combining A+B+C into the final result) is proved below using
+      standard Zmod lemmas. *)
+  Lemma fp_inv_correct_ax : forall x,
     0 < x < p ->
     Z.gcd x p = 1 ->
     (fp_inv_spec x * x) mod p = 1.
+  Proof.
+    intros x Hx Hgcd.
+    unfold fp_inv_spec.
+    destruct (iter_divstep_spec p (Z.to_nat bls12_divstep_iters) 1 p x 0 1)
+      as [[[[d_N f_N] g_N] v_N] r_N] eqn:Hiter.
+    (* (A) Loop invariant *)
+    pose proof (iter_invariant p (Z.to_nat bls12_divstep_iters) 1 p x 0 1 x
+                  p_pos p_odd) as Hinv.
+    assert (H0 : (0 * x - p) mod p = 0)
+      by (replace (0 * x - p) with ((-1) * p) by ring; rewrite Z_mod_mult; reflexivity).
+    assert (H1 : (1 * x - x) mod p = 0)
+      by (replace (1 * x - x) with 0 by ring; reflexivity).
+    specialize (Hinv H0 H1). rewrite Hiter in Hinv.
+    destruct Hinv as [Hv_inv Hr_inv].
+    (* (B) Convergence *)
+    pose proof (by_convergence_dfg x Hx Hgcd) as Hconv.
+    pose proof (iter_dfg_agree (Z.to_nat bls12_divstep_iters) p 1 p x 0 1) as Hagree.
+    rewrite Hiter in Hagree.
+    destruct (iter_divstep_dfg (Z.to_nat bls12_divstep_iters) 1 p x)
+      as [[d2 f2] g2] eqn:Hdfg.
+    destruct Hagree as [_ [Hf_eq Hg_eq]].
+    subst f_N g_N. destruct Hconv as [Hg0 Hf_cases]. subst g2.
+    clear Hr_inv H0 H1 Hiter Hdfg d_N d2 r_N.
+    (* Case split on f2 = 1 or f2 = -1 *)
+    destruct Hf_cases as [Hf1 | Hfm1]; subst f2.
+    - (* Case f_N = 1: no sign correction needed *)
+      replace (1 <? 0) with false by reflexivity.
+      rewrite Z.mul_1_r in Hv_inv.
+      (* Simplify nested mods: ((v mod p * precomp) mod p * x) mod p *)
+      rewrite Zmult_mod_idemp_l.
+      replace (v_N mod p * precomp_val * x)
+        with (v_N mod p * (precomp_val * x)) by ring.
+      rewrite Zmult_mod_idemp_l.
+      replace (v_N * (precomp_val * x))
+        with (precomp_val * (v_N * x)) by ring.
+      (* Use loop invariant: v_N * x ≡ 2^iters (mod p) *)
+      assert (Hmod : (v_N * x) mod p = (2 ^ Z.of_nat (Z.to_nat bls12_divstep_iters)) mod p). {
+        assert (Hp : p <> 0) by (pose proof p_pos; lia).
+        apply Z.mod_divide in Hv_inv; [|exact Hp].
+        destruct Hv_inv as [k Hk].
+        assert (v_N * x = 2 ^ Z.of_nat (Z.to_nat bls12_divstep_iters) + k * p) by lia.
+        rewrite H.
+        rewrite Zplus_mod, Z_mod_mult, Z.add_0_r, Z.mod_mod by lia.
+        reflexivity.
+      }
+      rewrite <- Zmult_mod_idemp_r, Hmod, Zmult_mod_idemp_r.
+      rewrite Z2Nat.id by (unfold bls12_divstep_iters; vm_compute; discriminate).
+      exact precomp_times_pow2.
+    - (* Case f_N = -1: sign correction via (p - v_N) *)
+      replace (-1 <? 0) with true by reflexivity.
+      replace (2 ^ Z.of_nat (Z.to_nat bls12_divstep_iters) * -1)
+        with (- (2 ^ Z.of_nat (Z.to_nat bls12_divstep_iters))) in Hv_inv by ring.
+      replace (v_N * x - - 2 ^ Z.of_nat (Z.to_nat bls12_divstep_iters))
+        with (v_N * x + 2 ^ Z.of_nat (Z.to_nat bls12_divstep_iters)) in Hv_inv by ring.
+      set (iters := Z.of_nat (Z.to_nat bls12_divstep_iters)) in *.
+      assert (HpN : p <> 0) by (pose proof p_pos; lia).
+      (* Key fact: (p - v_N) * x ≡ 2^iters (mod p) *)
+      assert (Hmod_neg : ((p - v_N) * x) mod p = (2 ^ iters) mod p). {
+        replace ((p - v_N) * x) with (x * p + (-(v_N * x + 2 ^ iters) + 2 ^ iters)) by ring.
+        rewrite Zplus_mod, Z_mod_mult, Z.add_0_l, Z.mod_mod by lia.
+        rewrite Zplus_mod, (Z.mod_opp_l_z _ _ HpN Hv_inv).
+        simpl. rewrite Z.mod_mod by lia. reflexivity.
+      }
+      (* Simplify nested mods: (((p-v) mod p * precomp) mod p * x) mod p *)
+      rewrite Zmult_mod_idemp_l.
+      replace ((p - v_N) mod p * precomp_val * x)
+        with ((p - v_N) mod p * (precomp_val * x)) by ring.
+      rewrite Zmult_mod_idemp_l.
+      replace ((p - v_N) * (precomp_val * x))
+        with (precomp_val * ((p - v_N) * x)) by ring.
+      rewrite <- Zmult_mod_idemp_r, Hmod_neg, Zmult_mod_idemp_r.
+      subst iters.
+      rewrite Z2Nat.id by (unfold bls12_divstep_iters; vm_compute; discriminate).
+      exact precomp_times_pow2.
+  Qed.
 
   Theorem fp_inv_correct : forall x,
     0 < x < p ->

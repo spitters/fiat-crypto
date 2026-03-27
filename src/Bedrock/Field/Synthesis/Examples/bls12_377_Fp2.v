@@ -218,28 +218,27 @@ Section bls377_Fp2.
     (* Result: (-5·a1, a0)                                              *)
     (* ================================================================ *)
 
+    (* Restructured: all x-reads via stack temp, out-writes last.
+       This avoids the cross-disjointness issue in the WP proof. *)
     Definition Fp2_mul_xi : string * Syntax.func :=
       ("bls377_Fp2_mul_xi", (["out"; "x"], []:list String.string, bedrock_func_body:(
-        (* Compute 5*x.im in out.re: v = x.im+x.im; v = v+v; v = v+x.im *)
-        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "out"; expr_2nd_felem (expr.var "x"); expr_2nd_felem (expr.var "x")]);
-        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "out"; expr.var "out"; expr.var "out"]);
-        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "out"; expr.var "out"; expr_2nd_felem (expr.var "x")]);
-        (* out.im = x.re (copy before overwriting out.re) *)
-        coq:(cmd.call [] (AbstractField.felem_copy (F:=F)) [expr_2nd_felem (expr.var "out"); expr.var "x"]);
-        (* out.re = 0 - 5*x.im = -5*x.im *)
         stackalloc (AbstractField.felem_size_in_bytes (F:=F)) as tmp;
-        coq:(cmd.call [] (AbstractField.sub (F:=F)) [expr.var "tmp"; expr.var "tmp"; expr.var "tmp"]);
-        coq:(cmd.call [] (AbstractField.sub (F:=F)) [expr.var "out"; expr.var "tmp"; expr.var "out"])
+        (* tmp = 5*x.im: v = x.im+x.im; v = v+v; v = v+x.im *)
+        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "tmp"; expr_2nd_felem (expr.var "x"); expr_2nd_felem (expr.var "x")]);
+        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "tmp"; expr.var "tmp"; expr.var "tmp"]);
+        coq:(cmd.call [] (AbstractField.add (F:=F)) [expr.var "tmp"; expr.var "tmp"; expr_2nd_felem (expr.var "x")]);
+        (* out.im = x.re *)
+        coq:(cmd.call [] (AbstractField.felem_copy (F:=F)) [expr_2nd_felem (expr.var "out"); expr.var "x"]);
+        (* out.re = 0 - tmp = -5*x.im *)
+        coq:(cmd.call [] (@AbstractField.opp _ prime_field_parameters) [expr.var "out"; expr.var "tmp"])
       ))).
 
-    (* Fp2 conjugate: conj(a + bu) = a - bu *)
+    (* Fp2 conjugate: conj(a + bu) = a - bu
+       Uses copy(out.re, inx.re) + opp(out.im, inx.im). *)
     Definition Fp2_conjugate : string * Syntax.func :=
-      ("bls377_Fp2_conjugate", (["out"; "inx"], []:list String.string, bedrock_func_body:(
-        coq:(cmd.call [] (AbstractField.felem_copy (F:=F)) [expr.var "out"; expr.var "inx"]);
-        (* out.im = 0 - inx.im *)
-        stackalloc (AbstractField.felem_size_in_bytes (F:=F)) as tmp;
-        coq:(cmd.call [] (AbstractField.sub (F:=F)) [expr.var "tmp"; expr.var "tmp"; expr.var "tmp"]);
-        coq:(cmd.call [] (AbstractField.sub (F:=F)) [expr_2nd_felem (expr.var "out"); expr.var "tmp"; expr_2nd_felem (expr.var "inx")])
+      ("bls377_Fp2_conjugate", (["out"; "x"], []:list String.string, bedrock_func_body:(
+        coq:(cmd.call [] (AbstractField.felem_copy (F:=F)) [expr.var "out"; expr.var "x"]);
+        coq:(cmd.call [] (@AbstractField.opp _ prime_field_parameters) [expr_2nd_felem (expr.var "out"); expr_2nd_felem (expr.var "x")])
       ))).
 
 End bls377_Fp2.

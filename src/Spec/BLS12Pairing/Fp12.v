@@ -11,6 +11,8 @@
 
 From Stdlib Require Import ZArith BinPos List.
 Require Import Crypto.Spec.ModularArithmetic.
+Require Import Crypto.Arithmetic.PrimeFieldTheorems.
+Require Import Crypto.Algebra.Ring.
 Require Import Crypto.Spec.BLS12Pairing.Fp6.
 
 Import ListNotations.
@@ -202,9 +204,134 @@ Section BLS12_Fp12.
   Definition fp12_pow_bls_x_signed (a : Fp12) : Fp12 :=
     fp12_conjugate (fp12_pow_bls_x a).
 
-  (* Cyclotomic squaring — falls back to standard squaring for now *)
+  (* Cyclotomic squaring for elements in the cyclotomic subgroup.
+     Uses the constraint f * conj(f) = 1, equivalently:
+       c0^2 - v * c1^2 = 1
+     to compute f^2 as:
+       new_c0 = 1 + 2*v*c1^2
+       new_c1 = 2*c0*c1
+
+     This saves 1 Fp6_sqr compared to standard fp12_sqr.
+     For elements NOT in the cyclotomic subgroup, this gives a WRONG result.
+     It is only used inside pow_x after the easy part of final exponentiation
+     has placed the element in the cyclotomic subgroup. *)
   Definition fp12_cyclotomic_sqr (f : Fp12) : Fp12 :=
-    fp12_sqr f.
+    let c0 := fp12_c0 f in
+    let c1 := fp12_c1 f in
+    let c1_sq := fp6_mul c1 c1 in         (* c1^2 *)
+    let cross := fp6_mul c0 c1 in         (* c0*c1 *)
+    let v_c1_sq := fp6_mul_by_v c1_sq in  (* v*c1^2 *)
+    let two_v_c1_sq := fp6_add v_c1_sq v_c1_sq in  (* 2*v*c1^2 *)
+    let new_c0 := fp6_add fp6_one two_v_c1_sq in    (* 1 + 2*v*c1^2 *)
+    let new_c1 := fp6_add cross cross in             (* 2*c0*c1 *)
+    mk_fp12 new_c0 new_c1.
+
+  (* Correctness of cyclotomic squaring:
+     For f in the cyclotomic subgroup (f * conj(f) = fp12_one),
+     cyclotomic_sqr f = fp12_sqr f.
+
+     Proof sketch: The cyclotomic constraint gives
+       c0^2 - v*c1^2 = 1
+     Standard squaring gives:
+       new_c0 = c0^2 + v*c1^2 = (1 + v*c1^2) + v*c1^2 = 1 + 2*v*c1^2
+     which matches cyclotomic_sqr. For c1: both give 2*c0*c1. *)
+  (* Register the ring tactic for F p *)
+  Local Lemma Fp_ring_theory : Ring_theory.ring_theory (F.zero) (F.one) (@F.add p) (@F.mul p) (@F.sub p) (@F.opp p) eq.
+  Proof. exact (Algebra.Ring.ring_theory_for_stdlib_tactic (zero:=F.zero) (one:=F.one)). Qed.
+  Add Ring Fp_ring : Fp_ring_theory.
+
+  (* Fp6 ring lemma: x * (-y) = -(x * y).
+     Proved by unfolding to Fp2 components and using Fp ring. *)
+  Local Lemma fp6_mul_neg_r : forall x y,
+    fp6_mul x (fp6_neg y) = fp6_neg (fp6_mul x y).
+  Proof.
+    intros [[xa xb] xc] [[ya yb] yc].
+    unfold fp6_mul, fp6_neg, fp6_add, fp6_sub, fp6_mul_by_v,
+           Fp6.fp6_mul, Fp6.fp6_neg, Fp6.fp6_add, Fp6.fp6_sub, Fp6.fp6_mul_by_v,
+           Fp6.fp6_c0, Fp6.fp6_c1, Fp6.fp6_c2, fp6_build, Fp6.fp6_build.
+    unfold fp2_add, fp2_sub, fp2_neg, fp2_mul, fp2_mul_xi,
+           Fp6.fp2_add, Fp6.fp2_sub, Fp6.fp2_neg, Fp6.fp2_mul, Fp6.fp2_mul_xi.
+    destruct xa as [a0 a1]. destruct xb as [a2 a3]. destruct xc as [a4 a5].
+    destruct ya as [b0 b1]. destruct yb as [b2 b3]. destruct yc as [b4 b5].
+    simpl fst. simpl snd.
+    repeat (f_equal; try ring).
+  Qed.
+
+  Local Lemma fp6_mul_by_v_neg : forall x,
+    fp6_mul_by_v (fp6_neg x) = fp6_neg (fp6_mul_by_v x).
+  Proof.
+    intros [[xa xb] xc].
+    unfold fp6_mul_by_v, fp6_neg, Fp6.fp6_mul_by_v, Fp6.fp6_neg,
+           Fp6.fp6_c0, Fp6.fp6_c1, Fp6.fp6_c2, fp6_build, Fp6.fp6_build.
+    unfold fp2_neg, fp2_mul_xi, Fp6.fp2_neg, Fp6.fp2_mul_xi.
+    destruct xa as [a0 a1]. destruct xb as [a2 a3]. destruct xc as [a4 a5].
+    simpl fst. simpl snd.
+    repeat (f_equal; try ring).
+  Qed.
+
+  Local Lemma fp6_add_neg_is_sub : forall x y, fp6_add x (fp6_neg y) = fp6_sub x y.
+  Proof.
+    intros [[xa xb] xc] [[ya yb] yc].
+    unfold fp6_add, fp6_neg, fp6_sub, Fp6.fp6_add, Fp6.fp6_neg, Fp6.fp6_sub,
+           Fp6.fp6_c0, Fp6.fp6_c1, Fp6.fp6_c2, fp6_build, Fp6.fp6_build,
+           fp2_add, fp2_neg, fp2_sub, Fp6.fp2_add, Fp6.fp2_neg, Fp6.fp2_sub.
+    destruct xa as [a0 a1]. destruct xb as [a2 a3]. destruct xc as [a4 a5].
+    destruct ya as [b0 b1]. destruct yb as [b2 b3]. destruct yc as [b4 b5].
+    simpl fst. simpl snd.
+    repeat (f_equal; try ring).
+  Qed.
+
+  (* Fp6 lemmas needed for cyclotomic proof — avoid unfolding fp6_mul *)
+  Local Lemma fp6_sub_eq_add : forall a b c,
+    fp6_sub a b = c -> a = fp6_add c b.
+  Proof.
+    intros [[xa xb] xc] [[ya yb] yc] [[za zb] zc] H.
+    unfold fp6_sub, fp6_add, Fp6.fp6_sub, Fp6.fp6_add,
+           Fp6.fp6_c0, Fp6.fp6_c1, Fp6.fp6_c2, fp6_build, Fp6.fp6_build,
+           fp2_sub, fp2_add, Fp6.fp2_sub, Fp6.fp2_add in *.
+    destruct xa as [a0 a1]. destruct xb as [a2 a3]. destruct xc as [a4 a5].
+    destruct ya as [b0 b1]. destruct yb as [b2 b3]. destruct yc as [b4 b5].
+    destruct za as [c0 c1]. destruct zb as [c2 c3]. destruct zc as [c4 c5].
+    simpl in *.
+    injection H as H0 H1 H2 H3 H4 H5. subst.
+    f_equal; [f_equal |]; f_equal; ring.
+  Qed.
+
+  Local Lemma fp6_add_assoc : forall a b c,
+    fp6_add a (fp6_add b c) = fp6_add (fp6_add a b) c.
+  Proof.
+    intros [[xa xb] xc] [[ya yb] yc] [[za zb] zc].
+    unfold fp6_add, Fp6.fp6_add, Fp6.fp6_c0, Fp6.fp6_c1, Fp6.fp6_c2,
+           fp6_build, Fp6.fp6_build, fp2_add, Fp6.fp2_add.
+    destruct xa as [a0 a1]. destruct xb as [a2 a3]. destruct xc as [a4 a5].
+    destruct ya as [b0 b1]. destruct yb as [b2 b3]. destruct yc as [b4 b5].
+    destruct za as [c0 c1]. destruct zb as [c2 c3]. destruct zc as [c4 c5].
+    simpl in *.
+    f_equal; [f_equal |]; f_equal; ring.
+  Qed.
+
+  Lemma fp12_cyclotomic_sqr_correct : forall f,
+    fp12_mul f (fp12_conjugate f) = mk_fp12 fp6_one fp6_zero ->
+    fp12_cyclotomic_sqr f = fp12_sqr f.
+  Proof.
+    intros f Hcyc.
+    unfold fp12_cyclotomic_sqr, fp12_sqr, fp12_mul, fp12_conjugate, mk_fp12,
+           fp12_c0, fp12_c1 in *.
+    simpl fst in *. simpl snd in *.
+    (* c1 components are identical *)
+    f_equal.
+    (* c0: need 1 + 2*v*c1² = c0² + v*c1² *)
+    apply (f_equal fst) in Hcyc. simpl fst in Hcyc.
+    rewrite fp6_mul_neg_r in Hcyc.
+    rewrite fp6_mul_by_v_neg in Hcyc.
+    rewrite fp6_add_neg_is_sub in Hcyc.
+    (* Hcyc: fp6_sub c0² (v*c1²) = 1 *)
+    apply fp6_sub_eq_add in Hcyc.
+    (* Hcyc: c0² = fp6_add 1 (v*c1²) *)
+    rewrite Hcyc.
+    (* Goal: fp6_add 1 (fp6_add (v*c1²) (v*c1²)) = fp6_add (fp6_add 1 (v*c1²)) (v*c1²) *)
+    apply fp6_add_assoc.
+  Qed.
 
   (* ================================================================== *)
   (* Sparse multiplication (for pairing line functions)                 *)
