@@ -39,6 +39,7 @@ Require Import Crypto.Bedrock.Field.FieldExtensions.DodecicFieldExtensions.
 Require Import Crypto.Bedrock.Field.FieldExtensions.PairingFieldOps.
 Require Import Crypto.Bedrock.Field.FieldExtensions.WPTactics.
 Require Import Crypto.Algebra.Ring.
+Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS12_CurveInstances.
 
 Import BinInt String List.ListNotations.
 Import Syntax.
@@ -162,9 +163,9 @@ Section BLS12_Pairing.
     (* ============================================================== *)
 
     Instance bls12_Fp2_params : AbstractField.FieldParameters Fp2 :=
-      Fp2_field_parameters bls12_beta fp2_prefix.
+      ext_Fp2_params bls12_beta "bls12_".
     Instance bls12_Fp2_rep : AbstractField.FieldRepresentation (F:=Fp2) :=
-      Fp2_field_representation bls12_beta fp2_prefix.
+      ext_Fp2_rep bls12_beta "bls12_".
     Instance bls12_Fp2_names : FieldNames (F:=Fp2) :=
       field_names_prefixed fp2_prefix.
 
@@ -173,9 +174,9 @@ Section BLS12_Pairing.
     (* ============================================================== *)
 
     Instance bls12_Fp6_params : AbstractField.FieldParameters Fp6 :=
-      Fp6_field_parameters bls12_beta bls12_xi_re bls12_xi_im (fp6_prefix:=fp6_prefix).
+      ext_Fp6_params bls12_beta bls12_xi_re bls12_xi_im "bls12_".
     Instance bls12_Fp6_rep : AbstractField.FieldRepresentation (F:=Fp6) :=
-      Fp6_field_representation bls12_beta bls12_xi_re bls12_xi_im (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+      ext_Fp6_rep bls12_beta bls12_xi_re bls12_xi_im "bls12_".
     Instance bls12_Fp6_names : FieldNames (F:=Fp6) :=
       field_names_prefixed fp6_prefix.
 
@@ -184,9 +185,9 @@ Section BLS12_Pairing.
     (* ============================================================== *)
 
     Instance bls12_Fp12_params : AbstractField.FieldParameters Fp12 :=
-      Fp12_field_parameters bls12_beta bls12_xi_re bls12_xi_im (fp12_prefix:=fp12_prefix).
+      ext_Fp12_params bls12_beta bls12_xi_re bls12_xi_im "bls12_".
     Instance bls12_Fp12_rep : AbstractField.FieldRepresentation (F:=Fp12) :=
-      Fp12_field_representation bls12_beta bls12_xi_re bls12_xi_im (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+      ext_Fp12_rep bls12_beta bls12_xi_re bls12_xi_im "bls12_".
     Instance bls12_Fp12_names : FieldNames (F:=Fp12) :=
       field_names_prefixed fp12_prefix.
     Instance bls12_Fp_names : FieldNames (F:=Fp) :=

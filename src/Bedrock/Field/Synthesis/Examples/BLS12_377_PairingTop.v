@@ -27,6 +27,7 @@ Require Import Crypto.Bedrock.Field.FieldExtensions.PairingFieldOps.
 Require Import Crypto.Bedrock.Field.FieldExtensions.WPTactics.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS12_377_Pairing.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS12_377_PairingHelpers.
+Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS12_CurveInstances.
 
 Import BinInt String List.ListNotations.
 
@@ -102,27 +103,17 @@ Section BLS12_377_PairingTop.
     Let bls377_xi_im : F PrimeField.M_pos := @F.one PrimeField.M_pos.
 
     Instance bls377_Fp2_params' : AbstractField.FieldParameters Fp2 :=
-      Fp2_field_parameters bls377_beta fp2_prefix.
+      ext_Fp2_params bls377_beta "bls377_".
     Instance bls377_Fp2_rep' : AbstractField.FieldRepresentation (F:=Fp2) :=
-      Fp2_field_representation bls377_beta fp2_prefix.
-    Instance bls377_Fp2_names' : FieldNames (F:=Fp2) :=
-      field_names_prefixed fp2_prefix.
-
+      ext_Fp2_rep bls377_beta "bls377_".
     Instance bls377_Fp6_params' : AbstractField.FieldParameters Fp6 :=
-      Fp6_field_parameters bls377_beta bls377_xi_re bls377_xi_im (fp6_prefix:=fp6_prefix).
+      ext_Fp6_params bls377_beta bls377_xi_re bls377_xi_im "bls377_".
     Instance bls377_Fp6_rep' : AbstractField.FieldRepresentation (F:=Fp6) :=
-      Fp6_field_representation bls377_beta bls377_xi_re bls377_xi_im (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
-    Instance bls377_Fp6_names' : FieldNames (F:=Fp6) :=
-      field_names_prefixed fp6_prefix.
-
+      ext_Fp6_rep bls377_beta bls377_xi_re bls377_xi_im "bls377_".
     Instance bls377_Fp12_params' : AbstractField.FieldParameters Fp12 :=
-      Fp12_field_parameters bls377_beta bls377_xi_re bls377_xi_im (fp12_prefix:=fp12_prefix).
+      ext_Fp12_params bls377_beta bls377_xi_re bls377_xi_im "bls377_".
     Instance bls377_Fp12_rep' : AbstractField.FieldRepresentation (F:=Fp12) :=
-      Fp12_field_representation bls377_beta bls377_xi_re bls377_xi_im (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
-    Instance bls377_Fp12_names' : FieldNames (F:=Fp12) :=
-      field_names_prefixed fp12_prefix.
-    Instance bls377_Fp_names' : FieldNames (F:=Fp) :=
-      field_names_prefixed "bls377_".
+      ext_Fp12_rep bls377_beta bls377_xi_re bls377_xi_im "bls377_".
 
     Local Notation FElem_Fp := (@AbstractField.FElem _ _ _ _ _ _ bls377_Fp_rep).
     Local Notation FElem_Fp2 := (@AbstractField.FElem _ bls377_Fp2_params' _ _ _ _ bls377_Fp2_rep').

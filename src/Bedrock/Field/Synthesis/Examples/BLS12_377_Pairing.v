@@ -43,6 +43,7 @@ Require Import Crypto.Bedrock.Field.FieldExtensions.DodecicFieldExtensionsSpecs.
 Require Import Crypto.Bedrock.Field.FieldExtensions.DodecicFieldExtensions.
 Require Import Crypto.Bedrock.Field.FieldExtensions.PairingFieldOps.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS12_377_FinalExpH3.
+Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS12_CurveInstances.
 
 Import BinInt String List.ListNotations.
 Import Syntax.
@@ -167,9 +168,9 @@ Section BLS12_377_Pairing.
     (* ============================================================== *)
 
     Instance bls377_Fp2_params : AbstractField.FieldParameters Fp2 :=
-      Fp2_field_parameters bls377_beta fp2_prefix.
+      ext_Fp2_params bls377_beta "bls377_".
     Instance bls377_Fp2_rep : AbstractField.FieldRepresentation (F:=Fp2) :=
-      Fp2_field_representation bls377_beta fp2_prefix.
+      ext_Fp2_rep bls377_beta "bls377_".
     Instance bls377_Fp2_names : FieldNames (F:=Fp2) :=
       field_names_prefixed fp2_prefix.
 
@@ -178,9 +179,9 @@ Section BLS12_377_Pairing.
     (* ============================================================== *)
 
     Instance bls377_Fp6_params : AbstractField.FieldParameters Fp6 :=
-      Fp6_field_parameters bls377_beta bls377_xi_re bls377_xi_im (fp6_prefix:=fp6_prefix).
+      ext_Fp6_params bls377_beta bls377_xi_re bls377_xi_im "bls377_".
     Instance bls377_Fp6_rep : AbstractField.FieldRepresentation (F:=Fp6) :=
-      Fp6_field_representation bls377_beta bls377_xi_re bls377_xi_im (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+      ext_Fp6_rep bls377_beta bls377_xi_re bls377_xi_im "bls377_".
     Instance bls377_Fp6_names : FieldNames (F:=Fp6) :=
       field_names_prefixed fp6_prefix.
 
@@ -189,9 +190,9 @@ Section BLS12_377_Pairing.
     (* ============================================================== *)
 
     Instance bls377_Fp12_params : AbstractField.FieldParameters Fp12 :=
-      Fp12_field_parameters bls377_beta bls377_xi_re bls377_xi_im (fp12_prefix:=fp12_prefix).
+      ext_Fp12_params bls377_beta bls377_xi_re bls377_xi_im "bls377_".
     Instance bls377_Fp12_rep : AbstractField.FieldRepresentation (F:=Fp12) :=
-      Fp12_field_representation bls377_beta bls377_xi_re bls377_xi_im (fp12_prefix:=fp12_prefix) (fp6_prefix:=fp6_prefix) (fp2_prefix:=fp2_prefix).
+      ext_Fp12_rep bls377_beta bls377_xi_re bls377_xi_im "bls377_".
     Instance bls377_Fp12_names : FieldNames (F:=Fp12) :=
       field_names_prefixed fp12_prefix.
     Instance bls377_Fp_names : FieldNames (F:=Fp) :=
@@ -282,15 +283,15 @@ Section BLS12_377_Pairing.
     Lemma bls377_Fp2_mul_xi_name_eq : fst bls377_Fp2_mul_xi = fp2_mul_xi_name.
     Proof. reflexivity. Qed.
 
+    (* Fp2_mul_xi: flat unop_spec wrapper — admitted because unop_spec's
+       two-part precondition doesn't provide cross-disjointness for the
+       in-place case (px=pout). The nested proof (unop_spec_nested) is
+       Qed in bls12_377_Fp2_proofs.v for callers with distinct pointers. *)
     Lemma bls377_Fp2_mul_xi_ok :
       forall functions,
         map.get functions fp2_mul_xi_name = Some (snd bls377_Fp2_mul_xi) ->
         CubicFieldExtensions.spec_of_Fp2_mul_xi bls377_beta bls377_xi_re bls377_xi_im fp2_prefix functions.
-    Proof.
-      intros functions HEnv.
-      unfold CubicFieldExtensions.spec_of_Fp2_mul_xi, AbstractField.unop_spec.
-      admit.
-    Admitted.
+    Proof. admit. Admitted.
 
     (* ============================================================== *)
     (* Fp6/Fp12/PairingOps function bodies from lower layers           *)

@@ -27,6 +27,7 @@ Require Import Crypto.Bedrock.Field.Synthesis.Examples.bls12_felem_copy.
 Require Import Crypto.Bedrock.Field.FieldExtensions.QuadraticFieldExtensionsSpecs.
 Require Import Crypto.Bedrock.Field.FieldExtensions.QuadraticFieldExtensions.
 Require Import Crypto.Spec.ModularArithmetic.
+Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS12_CurveInstances.
 
 Import BinInt String List.ListNotations.
 Import Syntax.
@@ -101,9 +102,9 @@ Section bls12_G2.
     Let bls12_beta : F PrimeField.M_pos := F.of_Z PrimeField.M_pos (-1).
 
     Instance bls12_Fp2_params : AbstractField.FieldParameters Fp2 :=
-      Fp2_field_parameters bls12_beta fp2_prefix.
+      ext_Fp2_params bls12_beta "bls12_".
     Instance bls12_Fp2_rep : AbstractField.FieldRepresentation (F:=Fp2) :=
-      Fp2_field_representation bls12_beta fp2_prefix.
+      ext_Fp2_rep bls12_beta "bls12_".
 
     (* ============================================================== *)
     (* Fp2 operation names                                             *)
