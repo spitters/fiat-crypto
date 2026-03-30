@@ -209,6 +209,7 @@ src/Bedrock/Field/Synthesis/Examples/BLS12_MillerLoop.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_Pairing.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_PairingHelpers.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_PairingTop.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_PowGeneric.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_PowX.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_ScalarReduce.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_Sqrt.v
