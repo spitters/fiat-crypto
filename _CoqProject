@@ -1,15 +1,6 @@
 -R src Crypto
--Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/coqprime/src/Coqprime Coqprime
--Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/deps/coqutil/src/coqutil coqutil
--Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/src/Rupicola Rupicola 
--Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/bedrock2/src/bedrock2 bedrock2
--Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/bedrock2/src/bedrock2Examples bedrock2Examples
--Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/compiler/src/compiler compiler
--Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/deps/riscv-coq/src/riscv riscv
--Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rewriter/src/Rewriter Rewriter
--I /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rewriter/src/Rewriter/Util/plugins
--arg -w -arg +implicit-core-hint-db,+implicits-in-term,+non-reversible-notation,+deprecated-intros-until-0,+deprecated-focus,+unused-intro-pattern,+variable-collision,+unexpected-implicit-declaration,+omega-is-deprecated,+deprecated-instantiate-syntax,+non-recursive,+undeclared-scope,+deprecated-hint-rewrite-without-locality,+deprecated-hint-without-locality,+deprecated-instance-without-locality,+deprecated-typeclasses-transparency-without-locality,+fragile-hint-constr,-deprecated-since-9.0,-deprecated-since-8.20,-deprecated-from-Coq
--arg -native-compiler -arg ondemand
+-arg -native-compiler -arg no
+-arg -w -arg -deprecated-since-9.0,-deprecated-since-8.20,-deprecated-from-Coq
 src/Everything.v
 src/Bedrock/Everything.v
 src/BoundsPipeline.v
@@ -29,6 +20,7 @@ src/StandaloneMonadicUtils.v
 src/StandaloneOCamlMain.v
 src/TAPSort.v
 src/UnsaturatedSolinasHeuristics.v
+src/test_feval.v
 src/AbstractInterpretation/AbstractInterpretation.v
 src/AbstractInterpretation/Proofs.v
 src/AbstractInterpretation/Wf.v
@@ -67,6 +59,30 @@ src/Arithmetic/SolinasReduction.v
 src/Arithmetic/UniformWeight.v
 src/Arithmetic/WordByWordMontgomery.v
 src/Arithmetic/WordByWordMontgomeryUtil.v
+src/Arithmetic/BYInv_fullproof_ref/ArithmeticShiftr.v
+src/Arithmetic/BYInv_fullproof_ref/BYInv.v
+src/Arithmetic/BYInv_fullproof_ref/BYInvJump.v
+src/Arithmetic/BYInv_fullproof_ref/Definitions.v
+src/Arithmetic/BYInv_fullproof_ref/Divstep.v
+src/Arithmetic/BYInv_fullproof_ref/EvalLemmas.v
+src/Arithmetic/BYInv_fullproof_ref/Firstn.v
+src/Arithmetic/BYInv_fullproof_ref/Hints.v
+src/Arithmetic/BYInv_fullproof_ref/JumpDivstep.v
+src/Arithmetic/BYInv_fullproof_ref/Mod2.v
+src/Arithmetic/BYInv_fullproof_ref/One.v
+src/Arithmetic/BYInv_fullproof_ref/Ones.v
+src/Arithmetic/BYInv_fullproof_ref/Partition.v
+src/Arithmetic/BYInv_fullproof_ref/Ref.v
+src/Arithmetic/BYInv_fullproof_ref/Select.v
+src/Arithmetic/BYInv_fullproof_ref/Shiftr.v
+src/Arithmetic/BYInv_fullproof_ref/TCAdd.v
+src/Arithmetic/BYInv_fullproof_ref/TCMul.v
+src/Arithmetic/BYInv_fullproof_ref/TCOpp.v
+src/Arithmetic/BYInv_fullproof_ref/TCSignBit.v
+src/Arithmetic/BYInv_fullproof_ref/TCSignExtend.v
+src/Arithmetic/BYInv_fullproof_ref/UnsaturatedSolinas.v
+src/Arithmetic/BYInv_fullproof_ref/WordByWordMontgomery.v
+src/Arithmetic/BYInv_fullproof_ref/Zero.v
 src/Arithmetic/BarrettReduction/Generalized.v
 src/Arithmetic/BarrettReduction/HAC.v
 src/Arithmetic/BarrettReduction/Refined.v
@@ -140,14 +156,22 @@ src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsMul.v
 src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsSpecs.v
 src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsSqr.v
 src/Bedrock/Field/FieldExtensions/PairingFieldOps.v
+src/Bedrock/Field/FieldExtensions/PutmanyPerm.v
 src/Bedrock/Field/FieldExtensions/QuadraticFieldExtensions.v
 src/Bedrock/Field/FieldExtensions/QuadraticFieldExtensionsMul.v
 src/Bedrock/Field/FieldExtensions/QuadraticFieldExtensionsSpecs.v
+src/Bedrock/Field/FieldExtensions/SepFromPutmany.v
+src/Bedrock/Field/FieldExtensions/SepFromPutmany_test.v
+src/Bedrock/Field/FieldExtensions/SepFromPutmany_test2.v
+src/Bedrock/Field/FieldExtensions/SepFromPutmany_test3.v
+src/Bedrock/Field/FieldExtensions/WPFp2Auto.v
+src/Bedrock/Field/FieldExtensions/WPFp2Tactics.v
 src/Bedrock/Field/FieldExtensions/WPTactics.v
 src/Bedrock/Field/FieldExtensions/Theory/CubicExtensions.v
 src/Bedrock/Field/FieldExtensions/Theory/FieldsUtil.v
 src/Bedrock/Field/FieldExtensions/Theory/QuadraticExtensions.v
 src/Bedrock/Field/FieldExtensions/Theory/QuadraticExtensionsFiat.v
+src/Bedrock/Field/FieldExtensions/Theory/QuadraticExtensionsGeneric.v
 src/Bedrock/Field/FieldExtensions/Theory/RingsUtil.v
 src/Bedrock/Field/FieldExtensions/Theory/UList.v
 src/Bedrock/Field/FieldExtensions/Theory/UListUtil.v
@@ -158,12 +182,52 @@ src/Bedrock/Field/Stringification/FlattenVarData.v
 src/Bedrock/Field/Stringification/LoadStoreListVarData.v
 src/Bedrock/Field/Stringification/Stringification.v
 src/Bedrock/Field/Synthesis/Examples/ArrayUtil.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_377_Extract.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_377_FinalExpDSD.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_377_FinalExpH3.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_377_FinalExpHardDSD.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_377_MillerLoop.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_377_Pairing.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_377_PairingHelpers.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_377_PairingTop.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_377_PowU.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_Endomorphism.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_Extract.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_FinalExp.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_FinalExpH3.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_FpInv.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_FpInv_proof.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_FpInv_test.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_FpInv_test2.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_G1.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_G1_alt.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_G2.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_GLV_Decompose.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_GLV_ScalarMult.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_GLV_ScalarMultBedrock.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_Legendre.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_MillerLoop.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_Pairing.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_PairingHelpers.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_PairingTop.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_PowX.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_ScalarReduce.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_Sqrt.v
 src/Bedrock/Field/Synthesis/Examples/ScalarsUtil.v
+src/Bedrock/Field/Synthesis/Examples/bls12_377_Fp2.v
+src/Bedrock/Field/Synthesis/Examples/bls12_377_Fp2_mul_test.v
+src/Bedrock/Field/Synthesis/Examples/bls12_377_Fp2_proofs.v
+src/Bedrock/Field/Synthesis/Examples/bls12_377_felem_copy.v
+src/Bedrock/Field/Synthesis/Examples/bls12_377_instances.v
+src/Bedrock/Field/Synthesis/Examples/bls12_377_inv_test.v
+src/Bedrock/Field/Synthesis/Examples/bls12_377_mul_xi_test.v
+src/Bedrock/Field/Synthesis/Examples/bls12_377_prime.v
+src/Bedrock/Field/Synthesis/Examples/bls12_377_prime_certif.v
+src/Bedrock/Field/Synthesis/Examples/bls12_377_sqr_test.v
+src/Bedrock/Field/Synthesis/Examples/bls12_377_three_b.v
+src/Bedrock/Field/Synthesis/Examples/bls12_377_wrapper_test.v
 src/Bedrock/Field/Synthesis/Examples/bls12_Fp2.v
+src/Bedrock/Field/Synthesis/Examples/bls12_Fp2_mul_xi_ok.v
 src/Bedrock/Field/Synthesis/Examples/bls12_felem_copy.v
 src/Bedrock/Field/Synthesis/Examples/bls12_from_list_F.v
 src/Bedrock/Field/Synthesis/Examples/bls12_from_list_Fp2.v
@@ -173,7 +237,10 @@ src/Bedrock/Field/Synthesis/Examples/bls12_three_b.v
 src/Bedrock/Field/Synthesis/Examples/bls12_three_b_Fp2.v
 src/Bedrock/Field/Synthesis/Examples/p224_64_new.v
 src/Bedrock/Field/Synthesis/Examples/p224_Fp2.v
+src/Bedrock/Field/Synthesis/Examples/p256_bridge.v
+src/Bedrock/Field/Synthesis/Examples/p256_prime.v
 src/Bedrock/Field/Synthesis/Examples/redc.v
+src/Bedrock/Field/Synthesis/Examples/test_inv.v
 src/Bedrock/Field/Synthesis/Examples/test_prime.v
 src/Bedrock/Field/Synthesis/Generic/Bignum.v
 src/Bedrock/Field/Synthesis/Generic/ptsto_bytes.v
@@ -223,12 +290,16 @@ src/Bedrock/Group/ScalarMult/CSwap.v
 src/Bedrock/Group/ScalarMult/LadderStep.v
 src/Bedrock/Group/ScalarMult/MontgomeryLadder.v
 src/Bedrock/Group/ScalarMult/Test.v
+src/Bedrock/P256/Bridge.v
 src/Bedrock/P256/Coord.v
 src/Bedrock/P256/Coord32.v
 src/Bedrock/P256/Jacobian.v
 src/Bedrock/P256/JacobianAffine.v
 src/Bedrock/P256/Platform.v
+src/Bedrock/P256/ProgramLogic_compat.v
+src/Bedrock/P256/Repr.v
 src/Bedrock/P256/Specs.v
+src/Bedrock/P256/Synthesis.v
 src/Bedrock/Secp256k1/Addchain.v
 src/Bedrock/Secp256k1/Field256k1.v
 src/Bedrock/Secp256k1/JacobianCoZ.v
@@ -334,9 +405,11 @@ src/Spec/ModularArithmetic.v
 src/Spec/MontgomeryCurve.v
 src/Spec/MxDH.v
 src/Spec/WeierstrassCurve.v
+src/Spec/BLS12Pairing/FinalExpEquiv.v
 src/Spec/BLS12Pairing/Fp12.v
 src/Spec/BLS12Pairing/Fp6.v
 src/Spec/BLS12Pairing/Pairing.v
+src/Spec/BLS12Pairing/ProjectiveEquiv.v
 src/Spec/Test/X25519.v
 src/Stringification/C.v
 src/Stringification/Go.v
