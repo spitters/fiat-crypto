@@ -494,12 +494,38 @@ Section BLS12_377_MillerLoop.
     (* u6p2 array to anybytes: convert 2-word scalar array back to anybytes 16.
        This is the reverse of anybytes16_to_2scalars: two 8-byte scalars
        can be converted back to 16 bytes of anybytes.
-       Mechanical fact about memory representation -- axiomatized. *)
-    Local Axiom array_scalar2_to_anybytes16 :
+       Proof: array scalar → Bignum → Bignum_to_bytes → array ptsto → anybytes *)
+    Local Lemma array_scalar2_to_anybytes16 :
       forall (a : word) (ws : list word) (m : mem),
       length ws = 2%nat ->
       array scalar (word.of_Z 8) a ws m ->
       Memory.anybytes a 16 m.
+    Proof.
+      intros a ws m Hlen Harr.
+      (* Destruct ws into [w0; w1] using the length constraint *)
+      destruct ws as [|w0 ws']; [simpl in Hlen; discriminate |].
+      destruct ws' as [|w1 ws'']; [simpl in Hlen; discriminate |].
+      destruct ws'' as [| w2 ws3]; [| simpl in Hlen; discriminate].
+      (* Now ws = [w0; w1], Harr : array scalar 8 a [w0; w1] m *)
+      assert (Hbn : Bignum.Bignum 2 a [w0; w1] m).
+      { unfold Bignum.Bignum. exists map.empty, m.
+        split. { split.
+          { apply (proj2 (Properties.map.split_empty_l m m)). reflexivity. }
+          { apply Properties.map.disjoint_empty_l. } }
+        split. { split; [reflexivity | reflexivity]. }
+        { exact Harr. } }
+      pose proof (proj1 (Bignum.Bignum_to_bytes 2 a [w0; w1] m) Hbn) as Hbn2.
+      destruct Hbn2 as [m_e [m_a [Hspl [[He Hlen_bs] Harr_ptsto]]]].
+      subst m_e. apply Properties.map.split_empty_l in Hspl. subst m_a.
+      apply (Array.array_1_to_anybytes) in Harr_ptsto.
+      (* Hlen_bs : length ... = (2 * Z.to_nat (bytes_per_word 64))%nat *)
+      (* Harr_ptsto : anybytes a (Z.of_nat (length ...)) m *)
+      rewrite Hlen_bs in Harr_ptsto.
+      (* Now: anybytes a (Z.of_nat (2 * Z.to_nat (bytes_per_word 64))) m *)
+      change (Z.of_nat (2 * Z.to_nat (Memory.bytes_per_word 64))) with 16
+        in Harr_ptsto.
+      exact Harr_ptsto.
+    Qed.
 
     (* u6p2 array load lemma: load from 2-word u6p2 array at symbolic index *)
     Local Lemma u6p2_array_load (a_u6p2 i_val : word) (m : mem) (R : mem -> Prop)
