@@ -71,10 +71,13 @@ Section BLS12_381_h3.
   Lemma h3_exact_division : (bls_p^4 - bls_p^2 + 1) mod bls_r = 0.
   Proof. vm_compute. reflexivity. Qed.
 
-  (** The DSD exponent from Pairing.v is NOT equal to h3. *)
-  Lemma dsd_exponent_incorrect :
-    let x := -bls_x_abs in
-    h3_exp <> bls_p + bls_p^2 + bls_p^3 + (-x^4 + x^3 - 3*x^2 - 2*x - 2).
-  Proof. vm_compute. discriminate. Qed.
+  (** The corrected DSD (Hayashida-Hayasaka-Teruya, eprint 2020/875)
+      computes f^{3*h3}. The gnark algorithm's exponent trace:
+        3 + (|x|²-1+p²) * (|x|+1)² * (p-|x|) = 3*h3
+      Verified numerically: *)
+  Lemma dsd_corrected_computes_3h3 :
+    let u := bls_x_abs in
+    3 * h3_exp = 3 + (u^2 - 1 + bls_p^2) * (u + 1)^2 * (bls_p - u).
+  Proof. native_compute. reflexivity. Qed.
 
 End BLS12_381_h3.
