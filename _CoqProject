@@ -20,7 +20,6 @@ src/StandaloneMonadicUtils.v
 src/StandaloneOCamlMain.v
 src/TAPSort.v
 src/UnsaturatedSolinasHeuristics.v
-src/test_feval.v
 src/AbstractInterpretation/AbstractInterpretation.v
 src/AbstractInterpretation/Proofs.v
 src/AbstractInterpretation/Wf.v
