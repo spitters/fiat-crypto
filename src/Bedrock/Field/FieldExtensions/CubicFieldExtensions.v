@@ -436,21 +436,29 @@ Section Fp6.
        AbstractField.un_xbounds := @AbstractField.tight_bounds _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst;
        AbstractField.un_outbounds := @AbstractField.loose_bounds _ Fp2_fp_inst _ _ _ _ Fp2_repr_inst |}.
 
-  (* Fp2_mul_xi spec — derived from the model, transparent for proof automation *)
+  (* Fp2_mul_xi spec — flat version for in-place calls (px = pout) *)
   Instance spec_of_Fp2_mul_xi : spec_of fp2_mul_xi_name :=
     AbstractField.unop_spec (field_representation:=Fp2_repr_inst) un_Fp2_mul_xi.
 
-  (* Curve must separately prove that the body satisfies the spec.
-     This is provided as a Hypothesis so that program_logic_goal_for_function!
-     generates the right goals for Fp6 operations that call fp2_mul_xi.
-     The Fp-level spec requirements are needed because the mul_xi body
-     calls Fp copy/add/sub. *)
+  (* Nested version for non-in-place calls — gives cross-disjointness for free *)
+  Definition spec_of_Fp2_mul_xi_nested : spec_of fp2_mul_xi_name :=
+    AbstractField.unop_spec_nested (field_representation:=Fp2_repr_inst) un_Fp2_mul_xi.
+
+  (* Curve must prove both specs. The nested version is strictly stronger
+     for the non-in-place case. *)
   Hypothesis Fp2_mul_xi_ok :
     forall functions, map.get functions fp2_mul_xi_name = Some (snd Fp2_mul_xi) ->
     spec_of_Fp_felem_copy functions ->
     spec_of_Fp_sub functions ->
     spec_of_Fp_add functions ->
     spec_of_Fp2_mul_xi functions.
+
+  Hypothesis Fp2_mul_xi_nested_ok :
+    forall functions, map.get functions fp2_mul_xi_name = Some (snd Fp2_mul_xi) ->
+    spec_of_Fp_felem_copy functions ->
+    spec_of_Fp_sub functions ->
+    spec_of_Fp_add functions ->
+    spec_of_Fp2_mul_xi_nested functions.
 
   Local Notation FElem_Fp := (@AbstractField.FElem _ _ _ _ _ _ F_representation).
   Local Notation fp_felem_offset_word := (word.of_Z fp_felem_offset).

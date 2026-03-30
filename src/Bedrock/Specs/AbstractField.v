@@ -178,6 +178,21 @@ Section FieldSpecs.
             /\ bounded_by un_outbounds out
             /\ (FElem pout out * Rr)%sep mem' }.
 
+    (* Nested-sep variant: precondition combines both FElems in a single sep,
+       giving cross-disjointness for free. Postcondition preserves input FElem.
+       Suitable for out-of-place operations (pout <> px). *)
+    Definition unop_spec_nested {name} (op: UnOp name) :=
+      fnspec! name (pout px : word) / (out x : felem) Rr,
+      { requires tr mem :=
+          bounded_by un_xbounds x
+          /\ (FElem px x * (FElem pout out * Rr))%sep mem;
+        ensures tr' mem' :=
+          tr = tr' /\
+          exists result,
+            feval result = un_model (feval x)
+            /\ bounded_by un_outbounds result
+            /\ (FElem pout result * (FElem px x * Rr))%sep mem' }.
+
     Instance spec_of_UnOp {name} (op: UnOp name) : spec_of name :=
       unop_spec op.
 
