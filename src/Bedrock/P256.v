@@ -44,22 +44,11 @@ Import Macros.WithBaseName.
 Import String List. Local Open Scope string_scope. Local Open Scope list_scope.
 
 
-(* Concrete function bodies from fiat-crypto synthesis *)
+(* Concrete function bodies + correctness proofs from fiat-crypto synthesis *)
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.p256_bridge.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.p256_prime.
-Definition p256_coord_sqr : Syntax.func := p256_coord_sqr_body.
-Definition p256_coord_mul : Syntax.func := p256_coord_mul_body.
-
-(* Correctness of mul/sqr: proved in Synthesis.v + Bridge.v (separate files
-   to avoid OOM — the synthesis valid_func proof terms are very large).
-   See Synthesis.v for spec_of_BinOp/UnOp proofs via mul/square_func_correct.
-   The bridge from FElem to coord.to_bytes needs 4 representation lemmas:
-   - coord_to_FElem [via felem_from_bytes]
-   - FElem_to_coord [via felem_to_bytes + Montgomery encoding]
-   - coord_bounded [canonical encoding ⊂ loose_bounds]
-   - coord_feval [from_mont(x*R) = x] *)
-Axiom p256_coord_sqr_ok : forall functions, map.get functions "p256_coord_sqr" = Some p256_coord_sqr -> spec_of_p256_coord_sqr functions.
-Axiom p256_coord_mul_ok : forall functions, map.get functions "p256_coord_mul" = Some p256_coord_mul -> spec_of_p256_coord_mul functions.
+From Crypto.Bedrock.P256 Require Import Bridge.
+(* Bridge.v exports: p256_coord_mul, p256_coord_square, p256_coord_mul_ok, p256_coord_square_ok *)
 
 Import memcpy shrd full_sub full_add full_mul memmove.
 
@@ -99,7 +88,7 @@ Proof.
   destruct (word.ltu x y); destruct (word.ltu _ borrow); ZnWords.ZnWords.
 Qed.
 
-(* br_full_mul_ok is not needed: p256_coord_mul_ok is axiomatized. *)
+(* br_full_mul_ok is not needed: p256_coord_mul_ok comes from Bridge.v. *)
 
 Definition platform := &[,
   br_full_add; br_full_sub; br_full_mul; shrd;
@@ -136,7 +125,7 @@ Compute String.concat LF (List.map c_func jacobian).
  fe_set_1;
   *)
 
-Definition asm := &[, p256_coord_sqr; p256_coord_mul
+Definition asm := &[, p256_coord_square; p256_coord_mul
  ].
 
 Definition funcs := Eval cbv [List.app] in (jacobian ++ coord64 ++ asm ++ platform ++ libc)%list.
@@ -160,7 +149,7 @@ Lemma link_jacobian  : spec_of_p256_point_add_vartime_if_doubling (map.of_list f
 Proof.
   pose_correctness br_full_add_ok.
   pose_correctness br_full_sub_ok.
-  (* br_full_mul_ok not needed: p256_coord_mul_ok is axiomatized *)
+  (* br_full_mul_ok not needed: p256_coord_mul_ok comes from Bridge.v *)
   pose_correctness value_barrier_ok.
   pose_correctness br_declassify_ok.
   pose_correctness br_broadcast_negative_ok.
@@ -184,7 +173,7 @@ Proof.
   pose_correctness fiat_coord_nonzero_ok.
   pose_correctness p256_coord_halve_ok.
 
-  pose_correctness p256_coord_sqr_ok.
+  pose_correctness p256_coord_square_ok.
   pose_correctness p256_coord_mul_ok.
   
   pose_correctness p256_point_iszero_ok.

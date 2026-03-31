@@ -260,8 +260,8 @@ Context {ext_spec : Semantics.ExtSpec}.
   { requires t m := m =*> x$@p_x /\ m =*> y$@p_y /\ m =* out$@p_out * R /\ length out = length x;
     ensures t' m := let r : coord := F.mul x y in t' = t /\ m =* r$@p_out * R }.
 
-#[export] Instance spec_of_p256_coord_sqr : spec_of "p256_coord_sqr" :=
-  fnspec! "p256_coord_sqr" p_out p_x / out (x : coord) R,
+#[export] Instance spec_of_p256_coord_square : spec_of "p256_coord_square" :=
+  fnspec! "p256_coord_square" p_out p_x / out (x : coord) R,
   { requires t m := m =*> x$@p_x /\ m =* out$@p_out * R /\ length out = length x;
     ensures t' m := let r : coord := F.pow x 2 in t' = t /\ m =* r$@p_out * R }.
 

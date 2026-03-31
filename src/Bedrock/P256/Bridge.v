@@ -26,7 +26,7 @@ Local Notation "xs $@ a" := (map.of_list_word_at a xs)
   (at level 10, format "xs $@ a").
 
 Definition p256_coord_mul : Syntax.func := p256_coord_mul_body.
-Definition p256_coord_sqr : Syntax.func := p256_coord_sqr_body.
+Definition p256_coord_square : Syntax.func := p256_coord_sqr_body.
 
 (* ================================================================ *)
 (* mul bridge                                                        *)
@@ -58,7 +58,7 @@ Proof.
   intros t' m' rets [Ht' [out_felem [Heval [Hbnd Hpost]]]].
   split; [exact Ht'|].
   rewrite coord_feval, coord_feval in Heval.
-  apply (FElem_to_coord (F.mul x y) p_out out_felem Heval).
+  apply (FElem_to_coord (F.mul x y) p_out out_felem Heval Hbnd).
   exact Hpost.
 Qed.
 
@@ -66,14 +66,15 @@ Qed.
 (* sqr bridge                                                        *)
 (* ================================================================ *)
 
-(* The synthesis name is "p256_coord_square" but the spec uses "p256_coord_sqr".
-   We use call_body to enter the function body directly, bypassing the name. *)
-Lemma p256_coord_sqr_ok : forall functions,
-  Interface.map.get functions "p256_coord_sqr" = Some p256_coord_sqr ->
-  spec_of_p256_coord_sqr functions.
+(* Now that names match: synthesis uses "p256_coord_square" = Field.square,
+   and the spec also uses "p256_coord_square". *)
+Lemma p256_coord_square_ok : forall functions,
+  Interface.map.get functions "p256_coord_square" = Some p256_coord_square ->
+  spec_of_p256_coord_square functions.
 Proof.
   intros functions Hget.
-  cbv [spec_of_p256_coord_sqr].
+  pose proof (p256_sqr_synthesis_ok functions Hget) as Hsqr.
+  cbv [spec_of_p256_coord_square spec_of_UnOp un_square unop_spec] in *.
   intros p_out p_x out x R0 t m [Hx [Hout Hlen]].
   set (xf := bs2felem (coord.to_bytes x)).
   assert (HxF : exists Rx, (FElem p_x xf * Rx)%sep m).
@@ -81,16 +82,14 @@ Proof.
     apply (coord_to_FElem x p_x). exact Hx. }
   eapply Proper_call.
   2: {
-    (* Enter function body directly via Hget, bypassing name mismatch.
-       The body is p256_coord_sqr = b2_func square_op definitionally. *)
-    cbv [Semantics.call WeakestPrecondition.call WeakestPrecondition.call_body].
-    eexists; split; [exact Hget|].
-    (* Body WP identical to square_func_correct. *)
-    admit.
+    eapply (Hsqr p_out p_x xf out R0 t m).
+    refine (conj (coord_bounded x)
+      (conj _ (conj HxF Hout))).
+    rewrite coord.length_coord in Hlen. exact Hlen.
   }
   intros t' m' rets [Ht' [out_felem [Heval [Hbnd Hpost]]]].
   split; [exact Ht'|].
   rewrite coord_feval in Heval.
-  apply (FElem_to_coord (F.pow x 2) p_out out_felem Heval).
+  apply (FElem_to_coord (F.pow x 2) p_out out_felem Heval Hbnd).
   exact Hpost.
-Admitted.
+Qed.

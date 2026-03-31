@@ -173,8 +173,37 @@ Proof.
 Qed.
 
 (* ================================================================ *)
-(* coord_feval, coord_bounded, FElem_to_coord — remaining admits *)
+(* coord_feval, coord_bounded, FElem_to_coord *)
 (* ================================================================ *)
+
+(* Helper: partition validity for Montgomery bridge proofs *)
+Local Ltac assert_mont_params :=
+  let r' := fresh "r'" in
+  let m' := fresh "m'" in
+  set (r' := @WordByWordMontgomery.r' 64 p256_field_parameters);
+  set (m' := WordByWordMontgomery.m' m 64);
+  assert (Hr'_correct : (2 ^ 64 * r') mod m = 1) by (subst r'; apply Z.eqb_eq; vm_compute; reflexivity);
+  assert (Hm'_correct : (m * m') mod 2 ^ 64 = (-1) mod 2 ^ 64) by (subst m'; apply Z.eqb_eq; vm_compute; reflexivity);
+  assert (Hm_big : m < (2 ^ 64) ^ Z.of_nat 4) by (apply Z.ltb_lt; vm_compute; reflexivity);
+  assert (Hm_small : 1 < m) by (apply Z.ltb_lt; vm_compute; reflexivity);
+  assert (Hr4 : (r' ^ 4 * 2^256) mod m = 1) by (subst r'; apply Z.eqb_eq; vm_compute; reflexivity).
+
+Local Ltac prove_partition_valid z Hz :=
+  pose proof (@uwprops 64 ltac:(lia)) as Huw;
+  split;
+  [ (* small *)
+    unfold WordByWordMontgomery.WordByWordMontgomery.small;
+    change (WordByWordMontgomery.WordByWordMontgomery.eval 64 _)
+      with (Core.Positional.eval (uweight 64) 4 (Partition.partition (uweight 64) 4 z));
+    rewrite eval_partition by exact Huw;
+    rewrite Z.mod_small by (split; [lia|]; cbv [uweight ModOps.weight]; simpl; lia);
+    reflexivity
+  | (* 0 <= eval < m *)
+    change (WordByWordMontgomery.WordByWordMontgomery.eval 64 _)
+      with (Core.Positional.eval (uweight 64) 4 (Partition.partition (uweight 64) 4 z));
+    rewrite eval_partition by exact Huw;
+    rewrite Z.mod_small by (split; [lia|]; cbv [uweight ModOps.weight]; simpl; lia);
+    exact Hz ].
 
 Lemma coord_feval : forall (x : coord), feval (bs2felem (coord.to_bytes x)) = x.
 Proof.
@@ -183,8 +212,38 @@ Proof.
   unfold coord.to_bytes.
   rewrite words_of_coord_eq_partition by (apply F.to_Z_range; reflexivity).
   rewrite <- (F.of_Z_to_Z x). apply F.eq_of_Z_iff.
-  admit.
-Admitted.
+  (* Goal: Positional.eval ... (eval_trans m (partition ... (F.to_Z(x*R)))) mod M_pos
+           = F.to_Z x mod M_pos *)
+  assert_mont_params.
+  set (z := F.to_Z (F.of_Z P256.p256 (F.to_Z x) * R)).
+  set (v := Partition.partition (uweight 64) 4 z).
+  assert (Hz : 0 <= z < m) by (subst z; split; apply F.to_Z_range; reflexivity).
+  assert (Heval_v : Core.Positional.eval (uweight 64) 4 v = z mod uweight 64 4)
+    by (subst v; apply eval_partition; apply (@uwprops 64 ltac:(lia))).
+  assert (Hzmod : z mod uweight 64 4 = z)
+    by (apply Z.mod_small; split; [lia|]; cbv [uweight ModOps.weight]; simpl; lia).
+  assert (Hvalid : WordByWordMontgomery.WordByWordMontgomery.valid 64 4 m v)
+    by (change (WordByWordMontgomery.n m 64) with 4%nat; prove_partition_valid z Hz).
+  change (WordByWordMontgomery.n m 64) with 4%nat.
+  pose proof (WordByWordMontgomery.WordByWordMontgomery.eval_from_montgomerymod
+    64 4 m r' m' Hr'_correct Hm'_correct ltac:(lia) Hm_small ltac:(lia) Hm_big v Hvalid) as Hfrom_eval.
+  replace (WordByWordMontgomery.WordByWordMontgomery.eval 64 v)
+    with (Core.Positional.eval (uweight 64) 4 v) in Hfrom_eval by reflexivity.
+  rewrite Heval_v, Hzmod in Hfrom_eval.
+  (* Hfrom_eval : WBW.eval(from_mont v) mod m = (z * r'^4) mod m *)
+  (* Show (z * r'^4) mod m = F.to_Z x mod m *)
+  assert (Hz_cong : z mod m = (F.to_Z x * 2 ^ 256) mod m).
+  { subst z. unfold R. rewrite F.to_Z_mul, F.to_Z_of_Z, F.to_Z_of_Z.
+    change (Z.pos P256.p256) with m.
+    rewrite Zmult_mod_idemp_l, Zmult_mod_idemp_r, Z.mod_mod by lia. reflexivity. }
+  assert (Hrhs : (z * r' ^ Z.of_nat 4) mod m = F.to_Z x mod m).
+  { change (Z.of_nat 4) with 4.
+    rewrite <- Zmult_mod_idemp_l, Hz_cong, Zmult_mod_idemp_l.
+    replace (F.to_Z x * 2 ^ 256 * r' ^ 4) with (F.to_Z x * (r' ^ 4 * 2 ^ 256)) by ring.
+    rewrite <- Zmult_mod_idemp_r. rewrite Hr4. rewrite Z.mul_1_r. reflexivity. }
+  rewrite Hrhs in Hfrom_eval.
+  vm_cast_no_check Hfrom_eval.
+Qed.
 
 Lemma coord_bounded : forall (x : coord),
   bounded_by loose_bounds (bs2felem (coord.to_bytes x)).
@@ -198,13 +257,71 @@ Proof.
   rewrite (felem_to_list_bs2felem (coord.to_bytes x) (coord_length_felem x)).
   unfold coord.to_bytes. cbv [list_in_bounds].
   rewrite words_of_coord_eq_partition by (apply F.to_Z_range; reflexivity).
-  admit.
-Admitted.
+  change (WordByWordMontgomery.n m 64) with 4%nat.
+  set (z := F.to_Z (x * R)).
+  assert (Hz : 0 <= z < m) by (subst z; split; apply F.to_Z_range; reflexivity).
+  prove_partition_valid z Hz.
+Qed.
 
+(* Reverse bridge: FElem → coord bytes in memory.
+   Needs bounded_by to know the word list is in canonical Montgomery form. *)
 Lemma FElem_to_coord : forall (r : coord) pout (out_felem : felem),
   feval (felem_to_list out_felem) = r ->
+  bounded_by loose_bounds (felem_to_list out_felem) ->
   Lift1Prop.impl1 (FElem pout out_felem) ((coord.to_bytes r)$@pout).
 Proof.
-  intros r pout out_felem Heval m0 Hfelem.
-  apply (felem_to_bytes pout out_felem) in Hfelem. admit.
-Admitted.
+  intros r pout out_felem Heval Hbnd m0 Hfelem.
+  apply (felem_to_bytes pout out_felem) in Hfelem.
+  change (Z.to_nat (Memory.bytes_per_word 64)) with 8%nat in Hfelem.
+  rewrite <- Heval. set (ws := felem_to_list out_felem) in *.
+  enough (Heq : to_bytes (feval ws) = ws2bs 8 ws) by (rewrite Heq; exact Hfelem).
+  (* Extract WBW validity from bounded_by *)
+  change (@bounded_by _ _ _ _ _ p256_frep) with
+    (fun (b : @bounds _ _ _ _ _ p256_frep) (ws0 : list word.rep) =>
+       @list_in_bounds 64 m b (List.map (@word.unsigned _ word) ws0)) in Hbnd.
+  change (@loose_bounds _ _ _ _ _ p256_frep) with wordlist in Hbnd.
+  cbv beta in Hbnd. cbv [list_in_bounds] in Hbnd.
+  set (zs := List.map (@word.unsigned _ word) ws) in *.
+  change (WordByWordMontgomery.n m 64) with 4%nat in Hbnd.
+  destruct Hbnd as [Hsmall Hrange].
+  change (WordByWordMontgomery.WordByWordMontgomery.eval 64 zs)
+    with (Core.Positional.eval (uweight 64) 4 zs) in Hrange.
+  unfold WordByWordMontgomery.WordByWordMontgomery.small in Hsmall.
+  change (WordByWordMontgomery.WordByWordMontgomery.eval 64 zs)
+    with (Core.Positional.eval (uweight 64) 4 zs) in Hsmall.
+  (* Hsmall : zs = partition (uweight 64) 4 (eval zs) *)
+  (* Hrange : 0 <= eval zs < m *)
+  (* Montgomery parameters *)
+  assert_mont_params.
+  unfold to_bytes. rewrite feval_eq. unfold feval_expand.
+  unfold eval_trans.
+  change (WordByWordMontgomery.n m 64) with 4%nat.
+  change (WordByWordMontgomery.m' m 64) with m'0.
+  set (from_mont_val := WordByWordMontgomery.WordByWordMontgomery.from_montgomerymod 64 4 m m'0 zs).
+  (* Show F.to_Z(F.of_Z(eval(from_mont zs)) * R) = eval(zs) *)
+  pose proof (WordByWordMontgomery.WordByWordMontgomery.eval_from_montgomerymod
+    64 4 m r'0 m'0 Hr'_correct Hm'_correct ltac:(lia) Hm_small ltac:(lia) Hm_big
+    zs (conj Hsmall Hrange)) as Hfrom_eval.
+  replace (WordByWordMontgomery.WordByWordMontgomery.eval 64 zs)
+    with (Core.Positional.eval (uweight 64) 4 zs) in Hfrom_eval by reflexivity.
+  assert (Hkey : F.to_Z (F.of_Z M_pos (Core.Positional.eval (uweight 64) 4 from_mont_val) * R)
+                = Core.Positional.eval (uweight 64) 4 zs).
+  { rewrite F.to_Z_mul, F.to_Z_of_Z. unfold R. rewrite F.to_Z_of_Z.
+    change (Z.pos M_pos) with m. change (Z.of_nat 4) with 4 in Hfrom_eval.
+    rewrite Zmult_mod_idemp_l, Zmult_mod_idemp_r.
+    rewrite <- Zmult_mod_idemp_l.
+    assert (Hbridge : Core.Positional.eval (uweight 64) 4 from_mont_val mod m
+                    = (Core.Positional.eval (uweight 64) 4 zs * r'0 ^ 4) mod m)
+      by (vm_cast_no_check Hfrom_eval).
+    rewrite Hbridge, Zmult_mod_idemp_l.
+    replace (Core.Positional.eval (uweight 64) 4 zs * r'0 ^ 4 * 2 ^ 256)
+      with (Core.Positional.eval (uweight 64) 4 zs * (r'0 ^ 4 * 2 ^ 256)) by ring.
+    rewrite <- Zmult_mod_idemp_r, Hr4, Z.mul_1_r.
+    rewrite Z.mod_small by exact Hrange. reflexivity. }
+  (* Now: le_split 32 (F.to_Z (...)) = ws2bs 8 ws *)
+  (* Use Hkey to replace F.to_Z(...) with eval(zs) *)
+  assert (Hgoal2 : le_split 32 (Core.Positional.eval (uweight 64) 4 zs) = ws2bs 8 ws).
+  { change (ws2bs 8 ws) with (zs2bs 8 (ws2zs ws)). unfold ws2zs. fold zs.
+    rewrite Hsmall. apply le_split_eq_zs2bs_partition. lia. }
+  vm_cast_no_check (eq_trans (f_equal (le_split 32) Hkey) Hgoal2).
+Qed.

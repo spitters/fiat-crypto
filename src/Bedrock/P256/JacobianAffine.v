@@ -60,15 +60,15 @@ Definition p256_point_add_affine_nz_nz_neq := func! (p_out, p_P, p_Q) ~> ok {
   stackalloc 32 as Hsqr;
   stackalloc 32 as Hcub;
 
-  p256_coord_sqr(z1z1, p_P.+$32.+$32);
+  p256_coord_square(z1z1, p_P.+$32.+$32);
   p256_coord_mul(u2, p_Q, z1z1);
   p256_coord_sub(h, u2, p_P);
   p256_coord_mul(s2, p_P.+$32.+$32, z1z1);
   p256_coord_mul(p_out.+$32.+$32, h, p_P.+$32.+$32);
   p256_coord_mul(s2, s2, p_Q.+$32);
   p256_coord_sub(r, s2, p_P.+$32);
-  p256_coord_sqr(Hsqr, h);
-  p256_coord_sqr(p_out, r);
+  p256_coord_square(Hsqr, h);
+  p256_coord_square(p_out, r);
   p256_coord_mul(Hcub, Hsqr, h);
   p256_coord_mul(u2, p_P, Hsqr);
 

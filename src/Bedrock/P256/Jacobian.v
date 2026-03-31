@@ -181,9 +181,9 @@ Definition p256_point_add_nz_nz_neq := func! (p_out, p_P, p_Q) ~> ok {
   stackalloc 32 as r;
   stackalloc 32 as Hsqr;
   stackalloc 32 as Hcub;
-  p256_coord_sqr(z1z1, p_P.+$32.+$32);
+  p256_coord_square(z1z1, p_P.+$32.+$32);
   p256_coord_mul(u2, p_Q, z1z1);
-  p256_coord_sqr(z2z2, p_Q.+$32.+$32);
+  p256_coord_square(z2z2, p_Q.+$32.+$32);
   p256_coord_mul(u1, p_P, z2z2);
   p256_coord_sub(h, u2, u1);
   p256_coord_mul(s2, p_P.+$32.+$32, z1z1);
@@ -193,8 +193,8 @@ Definition p256_point_add_nz_nz_neq := func! (p_out, p_P, p_Q) ~> ok {
   p256_coord_mul(s1, p_Q.+$32.+$32, z2z2);
   p256_coord_mul(s1, s1, p_P.+$32);
   p256_coord_sub(r, s2, s1);
-  p256_coord_sqr(Hsqr, h);
-  p256_coord_sqr(p_out, r);
+  p256_coord_square(Hsqr, h);
+  p256_coord_square(p_out, r);
   p256_coord_mul(Hcub, Hsqr, h);
   p256_coord_mul(u2, u1, Hsqr);
 
@@ -434,17 +434,17 @@ Definition p256_point_double := func!(out, in1) {
   stackalloc 32 as A;
   stackalloc 32 as tmp;
   p256_coord_add(D, in1.+$32, in1.+$32);
-  p256_coord_sqr(tmp, in1.+$32.+$32);
-  p256_coord_sqr(D, D);
+  p256_coord_square(tmp, in1.+$32.+$32);
+  p256_coord_square(D, D);
   p256_coord_mul(out.+$32.+$32, in1.+$32.+$32, in1.+$32);
   p256_coord_add(out.+$32.+$32, out.+$32.+$32, out.+$32.+$32);
   p256_coord_add(A, in1, tmp);
   p256_coord_sub(tmp, in1, tmp);
   { stackalloc 32 as t2; p256_coord_add(t2, tmp, tmp); p256_coord_add(tmp, t2, tmp) };
-  p256_coord_sqr(out.+$32, D);
+  p256_coord_square(out.+$32, D);
   p256_coord_mul(A, A, tmp);
   p256_coord_mul(D, D, in1);
-  p256_coord_sqr(out, A);
+  p256_coord_square(out, A);
   p256_coord_add(tmp, D, D);
   p256_coord_sub(out, out, tmp);
   p256_coord_sub(D, D, out);
