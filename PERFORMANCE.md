@@ -1,0 +1,166 @@
+# BLS12-381 Pairing Performance Analysis
+
+## Benchmark Results (2026-03-31)
+
+### Fp-level operations
+
+| Operation | fiat-crypto (C) | CryptOpt (asm) | blst (asm) | CryptOpt speedup |
+|-----------|-----------------|----------------|------------|-------------------|
+| Fp mul    | 70 ns           | 37 ns          | ~22 ns     | 1.9x              |
+| Fp sqr    | 66 ns           | 38 ns          | ~20 ns     | 1.7x              |
+| Fp add    | 7 ns            | (same)         | ~3 ns      | -                 |
+| Fp sub    | 6 ns            | (same)         | ~3 ns      | -                 |
+
+CryptOpt assembly from: https://github.com/0xADE1A1DE/CryptOpt/tree/main/generated/bls12
+
+### Tower operations
+
+| Operation | fiat-crypto (C) | With CryptOpt | blst |
+|-----------|-----------------|---------------|------|
+| Fp2 mul   | 268 ns          | ~140 ns       | ~66 ns |
+| Fp12 mul  | 5,800 ns        | ~3,100 ns     | ~900 ns |
+| Fp12 sqr  | 4,500 ns        | ~2,400 ns     | ~650 ns |
+
+### Full pairing projections
+
+| Configuration | Miller loop | Final exp | **Total** | **vs blst** |
+|--------------|------------|-----------|-----------|-------------|
+| Baseline (C, naive h3) | 543 μs | 9,472 μs | **10,015 μs** | 23x |
+| + CryptOpt Fp mul/sqr | 287 μs | 5,007 μs | **5,294 μs** | 12x |
+| + DSD final exp (corrected) | 287 μs | 948 μs | **1,235 μs** | 2.8x |
+| + Cyclotomic squaring | 287 μs | 865 μs | **1,153 μs** | 2.6x |
+| + Lazy reduction | 261 μs | 788 μs | **~1,049 μs** | 2.4x |
+| blst (hand-optimized asm) | 187 μs | 249 μs | **436 μs** | 1.0x |
+
+## Optimization Status
+
+### Implemented and verified
+- **DSD final exponentiation**: Corrected Hayashida-Hayasaka-Teruya algorithm.
+  Gallina model proved correct: `3*h3 = 3 + (u²-1+p²)*(u+1)²*(p-u)`.
+  Reduces hard part from 1268-bit to ~320-bit exponentiation (~4x speedup).
+- **Cyclotomic squaring**: `fp12_cyclotomic_sqr_correct` in Fp12.v (Qed).
+  Uses 1 Fp6_mul + 1 Fp6_mul_by_v instead of 2 Fp6_mul + 1 Fp6_sqr (~11% savings).
+
+### Implemented, not verified
+- **CryptOpt Fp mul/sqr**: Drop-in x86-64 assembly from CryptOpt's verified
+  compiler. 1.9x speedup on Fp mul.
+- **Lazy Fp2 reduction**: Skip 2 Fp reductions per Karatsuba Fp2 mul (~9%).
+  Exploits Montgomery multiplier's tolerance for loose inputs (< 2p).
+
+### Not effective
+- **GCC `always_inline` + uninitialized stack**: Tested, no improvement.
+  GCC `-O3` already inlines and optimizes stack allocation.
+- **Asm Fp add/sub**: fiat-crypto's generated add/sub is already optimal
+  under GCC `-O3`. Hand-written `__int128` version was slower.
+- **NAF for exp-by-x**: BLS12-381's parameter x already has Hamming weight 6,
+  same as its NAF representation. No benefit.
+
+## The Remaining 2.4x Gap: Root Cause Analysis
+
+### Why bedrock2 generated C is slower than hand-optimized asm
+
+The dominant overhead is **not** the Fp arithmetic — it's the generated code structure.
+Measured: Fp12_mul takes 5,800 ns, but only ~1,260 ns (22%) is Fp multiplications.
+The other 78% is overhead from bedrock2's code generation pattern.
+
+#### 1. Redundant memory copies (biggest factor)
+
+bedrock2's separation logic requires proving memory non-aliasing. The generated
+C achieves this by **copying inputs to local stack** before every operation:
+
+```c
+void bls12_Fp6_add(uintptr_t out, uintptr_t inx, uintptr_t iny) {
+    uint8_t _br2_stackalloc_allocx[288];  // 288 bytes copied
+    uint8_t _br2_stackalloc_allocy[288];  // 288 bytes copied
+    allocx = (uintptr_t)&_br2_stackalloc_allocx;
+    allocy = (uintptr_t)&_br2_stackalloc_allocy;
+    bls12_Fp6_felem_copy(allocx, inx);     // copy 288 bytes
+    bls12_Fp6_felem_copy(allocy, iny);     // copy 288 bytes
+    bls12_Fp2_add(out, allocx, allocy);    // operate on copies
+    bls12_Fp2_add(out+96, allocx+96, allocy+96);
+    bls12_Fp2_add(out+192, allocx+192, allocy+192);
+}
+```
+
+For Fp12_mul, this pattern nests: Fp12 copies Fp6 operands, Fp6 copies Fp2 operands,
+Fp2 copies Fp operands. Total: thousands of bytes copied per Fp12 operation.
+
+#### 2. uintptr_t defeats alias analysis
+
+bedrock2 uses `uintptr_t` (integer) for all memory addresses, not typed pointers.
+This prevents GCC/Clang from doing alias analysis:
+
+```c
+// GCC sees integers, not pointers — can't prove non-aliasing
+void fp_add(uintptr_t out, uintptr_t a, uintptr_t b);
+```
+
+Even with all functions inlined, GCC cannot eliminate the copies because it can't
+prove `out` doesn't alias with `a` or `b` through the integer-to-pointer casts.
+
+#### 3. No register allocation across operations
+
+bedrock2 stores all intermediates in stack memory. In contrast, blst keeps
+Fp2 Karatsuba intermediates in registers across the 3 Fp multiplications,
+avoiding 6 × 48 = 288 bytes of memory traffic per Fp2 mul.
+
+### Can we fix this in GCC/Clang?
+
+**Option A: Teach the compiler about the copy-then-read pattern**
+
+The pattern `memcpy(local, src, N); f(local); // f only reads local` could be
+optimized to `f(src)` if the compiler can prove `src` is not modified between
+the copy and the last read. This is a form of **copy propagation through memory**.
+
+GCC's `-ftree-dse` (dead store elimination) and `-ftree-fre` (full redundancy
+elimination) come close but fail because:
+- The `uintptr_t` cast breaks the pointer provenance chain
+- The compiler can't track that the callee only reads (not writes) the copy
+
+A GCC plugin or LLVM pass that recognizes this pattern specifically for
+bedrock2-generated code could be valuable. The pass would:
+1. Detect: `memcpy(stack_local, src, N)` followed by calls using `stack_local`
+2. Verify: `src` is not modified between the copy and last use
+3. Replace: uses of `stack_local` with `src` directly
+
+**Option B: Change bedrock2's C backend to use typed pointers**
+
+Replace `uintptr_t` with `const uint64_t *restrict` for read-only parameters.
+This gives GCC full alias information. The change is in ToCString.v (216 lines)
+and does not affect any WP proofs.
+
+Challenges: bedrock2's semantics are defined over integer addresses, not pointers.
+The C backend would need to prove the typed-pointer translation is correct,
+or accept it as a trusted (unverified) optimization.
+
+**Option C: Post-processing pass on the generated C**
+
+A simple text-processing pass that:
+1. Identifies `felem_copy(local, input)` calls
+2. Checks that `local` is only passed as a read-only argument
+3. Replaces `local` with `input` in subsequent calls
+4. Removes the dead copy
+
+This is ~100 lines of Python/sed and could be verified by differential testing
+(run both versions on test vectors and compare results).
+
+**Option D: Custom LLVM pass**
+
+An LLVM optimization pass that operates on the IR level, after inlining.
+It would recognize the `load-store-to-stack; load-from-stack` pattern
+and short-circuit it. LLVM's MemorySSA framework provides the alias
+analysis infrastructure. Estimated: ~500 lines of C++.
+
+### Recommendation
+
+The most practical path to closing the 2.4x gap:
+
+1. **Option C (post-processing)** for immediate results: ~2-3 days, testable
+2. **Option B (typed pointers)** for long-term: requires ToCString.v changes,
+   but gives GCC full optimization ability
+3. **Option D (LLVM pass)** for production: most robust, reusable across
+   all bedrock2-generated code
+
+Expected impact: eliminating copies would reduce Fp12_mul from 5,800 ns to
+~2,500 ns (the "CryptOpt only" projection), giving a full pairing of ~540 μs
+(1.2x of blst) with CryptOpt + DSD + cyclotomic squaring.
