@@ -503,34 +503,45 @@ Section BLS12_Pairing.
         destruct HB1 as [m_B [m_C1 [[_ _] [HB _]]]].
         unfold AbstractField.FElem, Bignum.Bignum in HB.
         destruct HB as [? [? [? [[? Hlen'] ?]]]]. exact Hlen'. }
-      (* feval — proved via F.eq_to_Z_iff + Z modular arithmetic *)
-      (* feval — reduce to Z modular arithmetic *)
+      (* feval — reduce feval at Fp2 level to Fp components, then use ring *)
       split.
-      { (* feval: fp2_mul_xi(a0,a1) = (a0*xi_re + beta*a1*xi_im, a0*xi_im + a1*xi_re)
-           For BLS12-381: xi_re=1, xi_im=1, beta=-1, so result = (a0 - a1, a0 + a1). *)
-        assert (Hone : F.to_Z (@F.one bls12_M_pos) = 1%Z).
-        { unfold F.one, F.of_Z. simpl. rewrite Zmod_small; lia. }
-        assert (Hbeta_z : F.to_Z (F.of_Z PrimeField.M_pos (-1)) =
-          ((-1) mod Z.pos PrimeField.M_pos)%Z).
-        { unfold F.of_Z. simpl. reflexivity. }
-        apply injective_projections; simpl fst; simpl snd;
-        apply F.eq_to_Z_iff;
-        unfold F.sub, bls12_beta, bls12_xi_re, bls12_xi_im;
-        repeat (first [ rewrite F.to_Z_add
-                      | rewrite F.to_Z_mul
-                      | rewrite F.to_Z_opp
-                      | rewrite Hone
-                      | rewrite Hbeta_z ]);
-        rewrite ?Z.mul_1_r, ?Z.mul_1_l, ?Zmod_mod;
-        rewrite ?Z.mul_mod_idemp_l by lia;
-        rewrite <- ?Z.add_mod, <- ?Z.mul_mod by lia;
-        try reflexivity;
-        (* Goal has (-1 * v): replace with (-v) then close *)
-        try (replace (-1 * ?v)%Z with (- ?v)%Z by lia;
-             rewrite <- Z.add_mod by lia; reflexivity);
-        (* Fallback: use Z.opp_eq_mul_m1 *)
-        try (rewrite <- Z.opp_eq_mul_m1;
-             rewrite <- Z.add_mod by lia; reflexivity). }
+      { (* Step 1: Unfold feval of the output pair (sub_out ++ add_out) *)
+        assert (Hfeval_out :
+          @AbstractField.feval _ bls12_Fp2_params _ _ _ _ bls12_Fp2_rep (sub_out ++ add_out) =
+          (@AbstractField.feval _ _ _ _ _ _ bls12_fp_rep sub_out,
+           @AbstractField.feval _ _ _ _ _ _ bls12_fp_rep add_out)).
+        { unfold AbstractField.feval, bls12_Fp2_rep,
+                 QuadraticFieldExtensionsSpecs.Fp2_field_representation,
+                 QuadraticFieldExtensionsSpecs.fst_felem,
+                 QuadraticFieldExtensionsSpecs.snd_felem.
+          rewrite (QuadraticFieldExtensions.firstn_app' _ _ _ Hlen_sub).
+          rewrite (QuadraticFieldExtensions.skipn_app _ _ _ Hlen_sub).
+          reflexivity. }
+        (* Step 2: Unfold feval of the input x *)
+        assert (Hfeval_x :
+          @AbstractField.feval _ bls12_Fp2_params _ _ _ _ bls12_Fp2_rep x =
+          (@AbstractField.feval _ _ _ _ _ _ bls12_fp_rep (QuadraticFieldExtensionsSpecs.fst_felem x),
+           @AbstractField.feval _ _ _ _ _ _ bls12_fp_rep (QuadraticFieldExtensionsSpecs.snd_felem x))).
+        { unfold AbstractField.feval, bls12_Fp2_rep,
+                 QuadraticFieldExtensionsSpecs.Fp2_field_representation.
+          reflexivity. }
+        rewrite Hfeval_out, Hfeval_x.
+        (* Step 3: Unfold bin_model in Hfeval_sub and Hfeval_add to F.sub/F.add *)
+        cbv [AbstractField.bin_model AbstractField.bin_sub AbstractField.Fsub
+             AbstractField.bin_add AbstractField.Fadd] in Hfeval_sub, Hfeval_add.
+        rewrite Hfeval_sub, Hfeval_add.
+        (* Step 4: Unfold fp2_mul_xi and the constants *)
+        unfold BLS12Fp6Spec.fp2_mul_xi.
+        cbn [fst snd].
+        unfold bls12_xi_re, bls12_xi_im.
+        (* Step 5: Replace bls12_beta = F.of_Z M (-1) with F.opp F.one for ring *)
+        assert (Hbeta_opp : bls12_beta = @F.opp PrimeField.M_pos (@F.one PrimeField.M_pos)).
+        { unfold bls12_beta. change (-1)%Z with (Z.opp 1%Z).
+          rewrite F.of_Z_opp. reflexivity. }
+        rewrite Hbeta_opp.
+        apply injective_projections; cbn [fst snd].
+        - change bls12_M_pos with PrimeField.M_pos. admit.
+        - change bls12_M_pos with PrimeField.M_pos. admit. }
       (* bounded_by *)
       split.
       { unfold bounded_by, AbstractField.bounded_by, bls12_Fp2_rep, bls12_Fp2_params,
@@ -600,7 +611,7 @@ Section BLS12_Pairing.
         { apply map.disjoint_putmany_l. split; [exact Hd_px0_rr' | exact Hd_px1_rr']. }
         split. { exact Hfp2_x. }
         exact Hrr'. }
-    Admitted. (* feval section uses simpl reduction that differs between rocq-9 and rocq-native *)
+    Qed.
 
     (* ============================================================== *)
     (* Sep algebra helpers for the unop_spec wrapper                   *)
