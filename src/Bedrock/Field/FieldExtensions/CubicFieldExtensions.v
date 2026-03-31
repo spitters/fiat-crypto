@@ -1599,20 +1599,86 @@ Section Fp6.
     assert (Hsep_fp2 : (FElem_Fp2 px (c0_felem x) ⋆ (FElem_Fp2 (word.add px fp6_c1_offset) (c1_felem x) ⋆ (FElem_Fp2 (word.add px fp6_c2_offset) (c2_felem x) ⋆ (FElem_Fp2 py (c0_felem y) ⋆ (FElem_Fp2 (word.add py fp6_c1_offset) (c1_felem y) ⋆ (FElem_Fp2 (word.add py fp6_c2_offset) (c2_felem y) ⋆ (FElem_Fp2 pout (c0_felem old_out) ⋆ (FElem_Fp2 (word.add pout fp6_c1_offset) (c1_felem old_out) ⋆ (FElem_Fp2 (word.add pout fp6_c2_offset) (c2_felem old_out) ⋆ Rr))))))))) (map.putmany m_x0 (map.putmany m_x1 (map.putmany m_x2 (map.putmany m_y0 (map.putmany m_y1 (map.putmany m_y2 (map.putmany m_o0 (map.putmany m_o1 (map.putmany m_o2 m_rr)))))))))).
     { build_sep. }
     (* Call 1 *)
-    (* === Process 3 Fp2_add calls directly on input pointers ===
-       Each call uses weaken_call with the Fp2_add spec.
-       The sep preconditions are solved by ecancel_assumption on Hsep_fp2
-       (for call 1) or on the previous call's postcondition (calls 2-3).
-       
-       The sep goals are solvable because:
-       1. All 9 Fp2 FElems + Rr are in Hsep_fp2 on the flat memory
-       2. Each call consumes 1 output FElem and produces 1 new output FElem
-       3. Input FElems (px, py slices) survive unchanged in the frame
-       4. ecancel_assumption handles the reordering automatically
-
-       The final postcondition assembles 3 Fp2 results into Fp6 via
-       Fp6_raw_FElem_join, identical to Fp6_add_ok lines ~1400-1528. *)
-    admit. (* 3 weaken_call + postcondition assembly — mechanical, same as Fp6_add_ok *)
+    (* === Call 1: Fp2_add(out.c0, inx.c0, iny.c0) === *)
+    exists [pout; px; py]. split.
+    { cbv [dexprs list_map expr_fp6_c0 WeakestPrecondition.expr WeakestPrecondition.expr_body].
+      eexists. split.
+      { rewrite map.get_put_diff by (cbv; congruence).
+        rewrite map.get_put_diff by (cbv; congruence).
+        apply map.get_put_same. }
+      eexists. split.
+      { rewrite map.get_put_diff by (cbv; congruence).
+        apply map.get_put_same. }
+      eexists. split.
+      { apply map.get_put_same. }
+      exact eq_refl. }
+    eapply Semantics.weaken_call.
+    1: { eapply (HFadd1 pout px py (c0_felem old_out) (c0_felem x) (c0_felem y) _ tr).
+         split; [exact Hbx0 |]. split; [exact Hby0 |].
+         split.
+         { eexists. exact Hsep_fp2. }
+         split.
+         { eexists. pose proof Hsep_fp2 as H'. ecancel_assumption. }
+         pose proof Hsep_fp2 as H'. ecancel_assumption. }
+    intros t1 m1 rets1 [Hrets1 [Htr1 [out0 [Hfeval0 [Hbound0 Hsep1]]]]].
+    subst rets1 t1. cbv [map.putmany_of_list_zip].
+    eexists. split. { exact eq_refl. }
+    (* === Call 2: Fp2_add(out.c1, inx.c1, iny.c1) === *)
+    exists [word.add pout fp6_c1_offset; word.add px fp6_c1_offset; word.add py fp6_c1_offset]. split.
+    { cbv [dexprs list_map expr_fp6_c1 WeakestPrecondition.expr WeakestPrecondition.expr_body].
+      eexists. split.
+      { rewrite map.get_put_diff by (cbv; congruence).
+        rewrite map.get_put_diff by (cbv; congruence).
+        apply map.get_put_same. }
+      eexists. split.
+      { rewrite map.get_put_diff by (cbv; congruence).
+        apply map.get_put_same. }
+      eexists. split.
+      { apply map.get_put_same. }
+      exact eq_refl. }
+    eapply Semantics.weaken_call.
+    1: { eapply (HFadd2 (word.add pout fp6_c1_offset) (word.add px fp6_c1_offset) (word.add py fp6_c1_offset) (c1_felem old_out) (c1_felem x) (c1_felem y) _ tr).
+         split; [exact Hbx1 |]. split; [exact Hby1 |].
+         split.
+         { eexists. pose proof Hsep1 as H'. ecancel_assumption. }
+         split.
+         { eexists. pose proof Hsep1 as H'. ecancel_assumption. }
+         pose proof Hsep1 as H'. ecancel_assumption. }
+    intros t2 m2 rets2 [Hrets2 [Htr2 [out1 [Hfeval1 [Hbound1 Hsep2]]]]].
+    subst rets2 t2. cbv [map.putmany_of_list_zip].
+    eexists. split. { exact eq_refl. }
+    (* === Call 3: Fp2_add(out.c2, inx.c2, iny.c2) === *)
+    exists [word.add pout fp6_c2_offset; word.add px fp6_c2_offset; word.add py fp6_c2_offset]. split.
+    { cbv [dexprs list_map expr_fp6_c2 WeakestPrecondition.expr WeakestPrecondition.expr_body].
+      eexists. split.
+      { rewrite map.get_put_diff by (cbv; congruence).
+        rewrite map.get_put_diff by (cbv; congruence).
+        apply map.get_put_same. }
+      eexists. split.
+      { rewrite map.get_put_diff by (cbv; congruence).
+        apply map.get_put_same. }
+      eexists. split.
+      { apply map.get_put_same. }
+      exact eq_refl. }
+    eapply Semantics.weaken_call.
+    1: { eapply (HFadd3 (word.add pout fp6_c2_offset) (word.add px fp6_c2_offset) (word.add py fp6_c2_offset) (c2_felem old_out) (c2_felem x) (c2_felem y) _ tr).
+         split; [exact Hbx2 |]. split; [exact Hby2 |].
+         split.
+         { eexists. pose proof Hsep2 as H'. ecancel_assumption. }
+         split.
+         { eexists. pose proof Hsep2 as H'. ecancel_assumption. }
+         pose proof Hsep2 as H'. ecancel_assumption. }
+    intros t3 m3 rets3 [Hrets3 [Htr3 [out2 [Hfeval2 [Hbound2 Hsep3]]]]].
+    subst rets3 t3.
+    (* Postcondition: list_map/get + exists Fp6 result + feval + bounded + sep.
+       The list_map/get step triggers the x-variable-name conflict.
+       Workaround: use the original proof's pattern with l0 substitution.
+       The remaining admits are:
+       1. list_map/get reduction (variable name conflict workaround)
+       2. feval equation: componentwise Fadd
+       3. bounded_by: componentwise loose_bounds
+       4. sep: Fp6_raw_FElem_join for output + unchanged inputs + Rr *)
+    admit.
   Admitted.
   (* -------------------------------------------------------------- *)
   (* fp6_sub: componentwise subtraction of 3 Fp2 elements            *)
