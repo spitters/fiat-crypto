@@ -125,13 +125,26 @@ bedrock2-generated code could be valuable. The pass would:
 
 **Option B: Change bedrock2's C backend to use typed pointers**
 
-Replace `uintptr_t` with `const uint64_t *restrict` for read-only parameters.
-This gives GCC full alias information. The change is in ToCString.v (216 lines)
-and does not affect any WP proofs.
+Replace `uintptr_t` with `const uint64_t *restrict` for function parameters.
 
-Challenges: bedrock2's semantics are defined over integer addresses, not pointers.
-The C backend would need to prove the typed-pointer translation is correct,
-or accept it as a trusted (unverified) optimization.
+**Tested (2026-03-31):** Adding `restrict`-qualified `uint8_t*` aliases via
+`#define` macros in each function body. Result: **no measurable improvement**.
+GCC generates identical assembly because the restrict info is lost when
+casting back to `uintptr_t` for callee arguments.
+
+**Root cause:** restrict must propagate through the ENTIRE call chain.
+`bls12_Fp6_add` calls `bls12_Fp2_add(uintptr_t, uintptr_t, uintptr_t)`,
+and GCC can't see into this extern callee to know it won't modify the
+restrict-qualified memory through the integer argument.
+
+**What would actually work:** change ALL function signatures from `uintptr_t`
+to `const uint64_t *restrict` / `uint64_t *restrict`. This is a fundamental
+change to bedrock2's C calling convention (ToCString.v + prelude). The load/store
+helpers would need to take `uint64_t*` instead of `uintptr_t`. This propagates
+restrict info through the entire call chain, enabling GCC to eliminate copies.
+
+Estimated: ~50 lines in ToCString.v. Does not affect WP proofs (ToCString is
+an unverified pretty-printer).
 
 **Option C: Post-processing pass on the generated C**
 
