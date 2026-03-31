@@ -283,15 +283,9 @@ Section BLS12_377_Pairing.
     Lemma bls377_Fp2_mul_xi_name_eq : fst bls377_Fp2_mul_xi = fp2_mul_xi_name.
     Proof. reflexivity. Qed.
 
-    (* Fp2_mul_xi: flat unop_spec wrapper — admitted because unop_spec's
-       two-part precondition doesn't provide cross-disjointness for the
-       in-place case (px=pout). The nested proof (unop_spec_nested) is
-       Qed in bls12_377_Fp2_proofs.v for callers with distinct pointers. *)
-    Lemma bls377_Fp2_mul_xi_ok :
-      forall functions,
-        map.get functions fp2_mul_xi_name = Some (snd bls377_Fp2_mul_xi) ->
-        CubicFieldExtensions.spec_of_Fp2_mul_xi bls377_beta bls377_xi_re bls377_xi_im fp2_prefix functions.
-    Proof. admit. Admitted.
+    (* Fp2_mul_xi flat unop_spec: not needed — Fp6 proofs resolve via the
+       typeclass instance, not this Hypothesis. The nested version
+       (unop_spec_nested) is Qed in bls12_377_Fp2_proofs.v. *)
 
     (* ============================================================== *)
     (* Fp6/Fp12/PairingOps function bodies from lower layers           *)
