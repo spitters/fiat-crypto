@@ -7,6 +7,28 @@
  * Drop-in replacement for bls12_final_exp.
  */
 
+/* No-alias Fp12_mul: skip input copies when caller guarantees out != inx && out != iny */
+static void bls12_Fp12_mul_noalias(br_word_t out, br_word_t inx, br_word_t iny) {
+    br_word_t v0, v1, t, u;
+    uint8_t _v0[0x120], _v1[0x120], _t[0x120], _u[0x120];
+    v0 = (br_word_t)&_v0; v1 = (br_word_t)&_v1;
+    t = (br_word_t)&_t; u = (br_word_t)&_u;
+    bls12_Fp6_mul(v0, inx, iny);
+    bls12_Fp6_mul(v1, inx+0x120, iny+0x120);
+    bls12_Fp6_add(t, inx, inx+0x120);
+    bls12_Fp6_add(u, iny, iny+0x120);
+    bls12_Fp6_mul(t, t, u);
+    bls12_Fp6_mul_by_v(u, v1);
+    bls12_Fp6_add(out, v0, u);
+    bls12_Fp6_sub(t, t, v0);
+    bls12_Fp6_sub(out+0x120, t, v1);
+}
+
+/* No-alias Fp12_square: skip input copy */
+static void bls12_Fp12_square_noalias(br_word_t out, br_word_t x) {
+    bls12_Fp12_mul_noalias(out, x, x);
+}
+
 /* Montgomery form of 1 for BLS12-381 */
 static const uint64_t FP_MONT_ONE[6] = {
     0x760900000002fffdULL, 0xebf4000bc40c0002ULL,
@@ -145,7 +167,7 @@ static void bls12_final_exp_hard_dsd(br_word_t out, br_word_t f,
     bls12_Fp12_mul((br_word_t)t1, (br_word_t)t1, (br_word_t)t2);
 
     /* result = f * t0 = f^3 */
-    bls12_Fp12_mul((br_word_t)result, f, (br_word_t)t0);
+    bls12_Fp12_mul_noalias((br_word_t)result, f, (br_word_t)t0);
 
     /* t0 = t1^{-|x|} */
     bls12_exp_by_x_signed((br_word_t)t0, (br_word_t)t1);
@@ -166,7 +188,7 @@ static void bls12_final_exp_hard_dsd(br_word_t out, br_word_t f,
     bls12_Fp12_mul((br_word_t)t1, (br_word_t)t1, (br_word_t)t0);
 
     /* result = result * t1 = f^{3*h3} */
-    bls12_Fp12_mul(out, (br_word_t)result, (br_word_t)t1);
+    bls12_Fp12_mul_noalias(out, (br_word_t)result, (br_word_t)t1);
 }
 
 /* Complete optimized final exponentiation.

@@ -1,0 +1,49 @@
+# BLS12-381 Pairing Benchmark Makefile
+#
+# Targets:
+#   make -f Makefile.bench bench         # fiat-crypto C vs blst
+#   make -f Makefile.bench bench-cryptopt # with CryptOpt Fp asm
+#
+# Prerequisites:
+#   - blst: set BLST_LIB and BLST_HDR
+#   - CryptOpt: set CRYPTOPT_DIR
+
+CC = gcc
+CFLAGS = -O3 -march=native -w
+LDFLAGS = -lpthread
+
+# blst paths (adjust for your system)
+BLST_SRC ?= $(HOME)/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/blst-0.3.16/blst
+BLST_LIB ?= $(wildcard $(HOME)/Claude/SSProve-lean/bls-hax/target/debug/build/blst-*/out/libblst.a)
+BLST_HDR ?= $(BLST_SRC)/bindings
+
+# CryptOpt paths
+CRYPTOPT_DIR ?= $(HOME)/Claude/BLS/CryptOpt/generated/bls12
+CRYPTOPT_MUL ?= $(CRYPTOPT_DIR)/fiat_bls12_381_p_mul/seed0000000046129964_ratio18433.asm
+CRYPTOPT_SQR ?= $(CRYPTOPT_DIR)/fiat_bls12_381_p_square/seed0000000271124530_ratio18886.asm
+
+# Apply copy elimination
+/tmp/bls12_opt.c: bls12_pairing.c apply_copy_elim.py
+	python3 apply_copy_elim.py < $< > $@
+
+# Assemble CryptOpt
+/tmp/cryptopt_mul.o: $(CRYPTOPT_MUL)
+	nasm -f elf64 -o $@ $<
+
+/tmp/cryptopt_sqr.o: $(CRYPTOPT_SQR)
+	nasm -f elf64 -o $@ $<
+
+# Benchmark: fiat-crypto C vs blst
+bench: bench_final.c /tmp/bls12_opt.c bls12_optimized.c
+	$(CC) $(CFLAGS) -I. -I$(BLST_HDR) -o $@ $< $(BLST_LIB) $(LDFLAGS)
+	./$@
+
+# Benchmark: with CryptOpt Fp asm
+bench-cryptopt: bench_final.c /tmp/bls12_opt.c bls12_optimized.c /tmp/cryptopt_mul.o /tmp/cryptopt_sqr.o
+	$(CC) $(CFLAGS) -I. -I$(BLST_HDR) -DCRYPTOPT -o $@ $< /tmp/cryptopt_mul.o /tmp/cryptopt_sqr.o $(BLST_LIB) $(LDFLAGS)
+	./$@
+
+clean:
+	rm -f bench bench-cryptopt /tmp/bls12_opt.c /tmp/cryptopt_*.o
+
+.PHONY: bench bench-cryptopt clean
