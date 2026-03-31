@@ -102,9 +102,9 @@ Section bls12_G2.
     Let bls12_beta : F PrimeField.M_pos := F.of_Z PrimeField.M_pos (-1).
 
     Instance bls12_Fp2_params : AbstractField.FieldParameters Fp2 :=
-      ext_Fp2_params bls12_beta "bls12_".
+      ltac:(let v := eval cbv [ext_Fp2_params append] in (ext_Fp2_params bls12_beta "bls12_") in exact v).
     Instance bls12_Fp2_rep : AbstractField.FieldRepresentation (F:=Fp2) :=
-      ext_Fp2_rep bls12_beta "bls12_".
+      ltac:(let v := eval cbv [ext_Fp2_rep append] in (ext_Fp2_rep bls12_beta "bls12_") in exact v).
 
     (* ============================================================== *)
     (* Fp2 operation names                                             *)

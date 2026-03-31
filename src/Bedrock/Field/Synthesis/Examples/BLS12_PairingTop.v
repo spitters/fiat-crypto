@@ -103,17 +103,17 @@ Section BLS12_PairingTop.
     Let bls12_xi_im : F PrimeField.M_pos := @F.one PrimeField.M_pos.
 
     Instance bls12_Fp2_params' : AbstractField.FieldParameters Fp2 :=
-      ext_Fp2_params bls12_beta "bls12_".
+      ltac:(let v := eval cbv [ext_Fp2_params append] in (ext_Fp2_params bls12_beta "bls12_") in exact v).
     Instance bls12_Fp2_rep' : AbstractField.FieldRepresentation (F:=Fp2) :=
-      ext_Fp2_rep bls12_beta "bls12_".
+      ltac:(let v := eval cbv [ext_Fp2_rep append] in (ext_Fp2_rep bls12_beta "bls12_") in exact v).
     Instance bls12_Fp6_params' : AbstractField.FieldParameters Fp6 :=
-      ext_Fp6_params bls12_beta bls12_xi_re bls12_xi_im "bls12_".
+      ltac:(let v := eval cbv [ext_Fp6_params append] in (ext_Fp6_params bls12_beta bls12_xi_re bls12_xi_im "bls12_") in exact v).
     Instance bls12_Fp6_rep' : AbstractField.FieldRepresentation (F:=Fp6) :=
-      ext_Fp6_rep bls12_beta bls12_xi_re bls12_xi_im "bls12_".
+      ltac:(let v := eval cbv [ext_Fp6_rep append] in (ext_Fp6_rep bls12_beta bls12_xi_re bls12_xi_im "bls12_") in exact v).
     Instance bls12_Fp12_params' : AbstractField.FieldParameters Fp12 :=
-      ext_Fp12_params bls12_beta bls12_xi_re bls12_xi_im "bls12_".
+      ltac:(let v := eval cbv [ext_Fp12_params append] in (ext_Fp12_params bls12_beta bls12_xi_re bls12_xi_im "bls12_") in exact v).
     Instance bls12_Fp12_rep' : AbstractField.FieldRepresentation (F:=Fp12) :=
-      ext_Fp12_rep bls12_beta bls12_xi_re bls12_xi_im "bls12_".
+      ltac:(let v := eval cbv [ext_Fp12_rep append] in (ext_Fp12_rep bls12_beta bls12_xi_re bls12_xi_im "bls12_") in exact v).
 
     Local Notation FElem_Fp := (@AbstractField.FElem _ _ _ _ _ _ bls12_Fp_rep).
     Local Notation FElem_Fp2 := (@AbstractField.FElem _ bls12_Fp2_params' _ _ _ _ bls12_Fp2_rep').

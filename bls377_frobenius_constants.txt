@@ -1,0 +1,18 @@
+BLS12-377 Frobenius constants for loader functions (Montgomery form, 6x64-bit LE limbs)
+All imaginary parts are zero.
+
+gamma1 (= xi^((p-1)/3), where xi = u, beta = -5):
+  re: 0x5892506da58478da, 0x133366940ac2a74b, 0x9b64a150cdf726cf, 0x5cc426090a9c587e, 0x5cf848adfdcd640c, 0x4702bf3ac02380
+  im: 0, 0, 0, 0, 0, 0
+
+gamma2 (= xi^(2*(p-1)/3) = gamma1^2):
+  re: 0xdacd106da5847973, 0xd8fe2454bac2a79a, 0x1ada4fd6fd832edc, 0xfb9868449d150908, 0xd63eb8aeea32285e, 0x167d6a36f873fd0
+  im: 0, 0, 0, 0, 0, 0
+
+w_frob_c1 (= xi^((p-1)/6), for Fp12 frobenius c1 component):
+  re: 0x6ec47a04a3f7ca9e, 0xa42e0cb968c1fa44, 0x578d5187fbd2bd23, 0x930eeb0ac79dd4bd, 0xa24883de1e09a9ee, 0xdaa7058067d46f
+  im: 0, 0, 0, 0, 0, 0
+
+Verification:
+  gamma1^3 = -1 (mod p) [correct: xi^(p-1) = -1 since xi = u is purely imaginary]
+  w_frob_c1^6 = -1 (mod p) [correct]
