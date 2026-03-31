@@ -164,15 +164,63 @@ It would recognize the `load-store-to-stack; load-from-stack` pattern
 and short-circuit it. LLVM's MemorySSA framework provides the alias
 analysis infrastructure. Estimated: ~500 lines of C++.
 
+### What we tested (2026-03-31)
+
+**Option B (restrict pointers): tested, no effect.**
+Added `uint8_t *restrict` aliases to function parameters via `#define` macros
+and a Python post-processor. GCC generates identical assembly because the
+copies are explicit in the source code — `restrict` prevents the compiler from
+ADDING aliasing assumptions but cannot REMOVE explicit `memcpy` calls.
+
+**`always_inline` + uninitialized stack: tested, no effect.**
+GCC `-O3` already inlines static functions and optimizes stack allocation.
+
+**Asm Fp add/sub: tested, slower.** The generated C add/sub is already optimal
+under GCC `-O3`. Hand-written `__int128` version was slower due to suboptimal
+register allocation.
+
+### Root cause (confirmed)
+
+The copies are **explicit in the bedrock2-generated source code** — they are
+`felem_copy()` calls emitted by bedrock2's code generator to satisfy separation
+logic non-aliasing requirements. No C compiler optimization can remove them
+because they are semantically meaningful from C's perspective.
+
+### Correct fix: CopyElim.v (AST-level transformation)
+
+The fix must happen at the bedrock2 AST level, BEFORE C code generation.
+`CopyElim.v` implements an AST rewriting pass:
+
+```
+Pattern:  stackalloc x N; felem_copy(x, src); body(x)
+Rewrite:  x := src; body(x)
+```
+
+**Safety analysis** (which functions can skip copies):
+
+| Function type | Safe? | Reason |
+|--------------|-------|--------|
+| add, sub, opp | YES | Each sub-call writes to a non-overlapping output slice; input slices are read before any write |
+| felem_copy, conjugate | YES | Same property |
+| mul, square | NO | Karatsuba reads `x.c0 + x.c1` AFTER writing `out.c0` — aliased `out==inx` corrupts the read |
+| inv, frobenius | NO | Complex data flow with cross-component dependencies |
+
+**Verification approach**: Per-function WP proofs. Each optimized function
+is proved directly against its spec. The proof is SIMPLER than the original
+(fewer steps: no stackalloc, no copy, no dealloc). No generic exec simulation
+theorem needed.
+
+Why per-function is better than a generic simulation:
+- Generic simulation requires ~300 lines of induction on `exec` (12 constructors)
+  + memory indistinguishability + compositional read-only property for callees
+- Per-function proofs reuse the existing WP proof structure with fewer steps
+- The allowlist is small and manually verified
+
 ### Recommendation
 
-The most practical path to closing the 2.4x gap:
-
-1. **Option C (post-processing)** for immediate results: ~2-3 days, testable
-2. **Option B (typed pointers)** for long-term: requires ToCString.v changes,
-   but gives GCC full optimization ability
-3. **Option D (LLVM pass)** for production: most robust, reusable across
-   all bedrock2-generated code
+1. **CopyElim.v AST pass** (implemented): wire into extraction, benchmark
+2. **Per-function WP proofs**: prove optimized add/sub/opp satisfy same specs
+3. **Phase 2 (no-copy mul variants)**: create `mul_nocopy` for non-aliased call sites
 
 Expected impact: eliminating copies would reduce Fp12_mul from 5,800 ns to
 ~2,500 ns (the "CryptOpt only" projection), giving a full pairing of ~540 μs
