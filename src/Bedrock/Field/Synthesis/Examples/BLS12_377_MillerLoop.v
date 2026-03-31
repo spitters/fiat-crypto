@@ -35,6 +35,7 @@ Require Import Crypto.Bedrock.Field.FieldExtensions.PairingFieldOps.
 Require Import Crypto.Bedrock.Field.FieldExtensions.WPTactics.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS12_377_Pairing.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS12_CurveInstances.
+Require Crypto.Bedrock.Field.Synthesis.Examples.BLS12_MillerGeneric.
 
 Import BinInt String List.ListNotations.
 
@@ -311,12 +312,9 @@ Section BLS12_377_MillerLoop.
         map.get l "q_x" = Some p_qx /\
         map.get l "q_y" = Some p_qy.
 
-    (* Helper: build a sep by adding a new FElem from a map.split *)
+    (* Helper lemmas -- from generic, specialized to BLS12-377 *)
     Local Lemma sep_from_split {A B : mem -> Prop} {m mOld mNew : mem} :
-      map.split m mOld mNew ->
-      A mOld ->
-      B mNew ->
-      (A ⋆ B) m.
+      map.split m mOld mNew -> A mOld -> B mNew -> (A ⋆ B) m.
     Proof.
       intros [Heq Hd] HA HB. subst m.
       exists mOld, mNew.
@@ -548,96 +546,14 @@ Section BLS12_377_MillerLoop.
       rewrite Zmod_mod. rewrite Z.mod_small by lia. reflexivity.
     Qed.
 
-    Local Ltac snd_from_word_ecancel H :=
-      let H' := fresh "H" in
-      pose proof H as H';
-      ecancel_assumption_impl.
-
-    Local Ltac normalize_pairing_instances := idtac.
-
-    (* Resolve map.get on abstract locals using hypotheses *)
-    Local Ltac resolve_map_get :=
-      match goal with
-      | |- map.get (map.put ?m ?k ?v) ?k' = Some ?e =>
-        first
-        [ unify k k';
-          rewrite map.get_put_same; exact eq_refl
-        | rewrite map.get_put_diff by congruence;
-          resolve_map_get ]
-      | |- map.get ?m ?k = Some ?e =>
-        first
-        [ assumption
-        | match goal with
-          | H : map.get m k = Some _ |- _ => exact H
-          end ]
-      end.
-
-    (* Evaluate a single expression with abstract locals *)
-    Local Ltac eval_expr_abstract :=
-      cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
-           WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet];
-      repeat (first
-        [ exact eq_refl
-        | eexists; split; [resolve_map_get |]
-        | eexists; split; [exact eq_refl |]
-        ]).
-
-    (* Process cmd.seq/set/skip/cond with abstract locals *)
-    Local Ltac miller_straightline :=
-      match goal with
-      | |- WeakestPrecondition.cmd _ (cmd.seq _ _) _ _ _ _ =>
-        unfold1_cmd_goal; cbv beta match delta [cmd_body]
-      | |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post =>
-        unfold1_cmd_goal; cbv beta match delta [cmd_body];
-        letexists; split; [solve [eval_expr_abstract] |]
-      | |- WeakestPrecondition.cmd _ cmd.skip _ _ _ ?post =>
-        unfold1_cmd_goal; cbv beta match delta [cmd_body]
-      | |- WeakestPrecondition.cmd _ (cmd.cond _ _ _) _ _ _ _ =>
-        unfold1_cmd_goal; cbv beta match delta [cmd_body];
-        letexists; split; [solve [eval_expr_abstract] |]
-      end.
-
-    (* Evaluate dexprs with abstract locals *)
-    Local Ltac eval_dexprs_abstract :=
-      cbv [dexprs list_map list_map_body
-           WeakestPrecondition.expr WeakestPrecondition.expr_body
-           WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet];
-      repeat (first
-        [ exact eq_refl
-        | eexists; split; [resolve_map_get |]
-        | eexists; split; [exact eq_refl |]
-        ]).
-
-    (* Solve bounds: try assumption, then try relax_bounds (tight->loose) *)
-    Local Ltac solve_miller_bounds :=
-      first
-      [ eassumption
-      | match goal with
-        | H : ?P ?b1 ?x |- ?P ?b2 ?x => exact H
-        end
-      | match goal with
-        | H : ?bounded ?tight ?x |- ?bounded ?loose ?x =>
-          exact (@AbstractField.relax_bounds _ _ _ _ _ _ _
-            (@DodecicFieldExtensionsSpecs.Fp12_field_representation_ok
-              _ _ _ _ bls377_pf_params bls377_Fp_rep bls377_Fp_rep_ok bls377_beta
-              bls377_xi_re bls377_xi_im fp12_prefix fp6_prefix fp2_prefix) x H)
-        end
-      | match goal with
-        | H : ?bounded ?tight ?x |- ?bounded ?loose ?x =>
-          exact (@AbstractField.relax_bounds _ _ _ _ _ _ _
-            (@QuadraticFieldExtensionsSpecs.Fp2_field_representation_ok
-              _ _ _ _ bls377_pf_params bls377_Fp_rep bls377_Fp_rep_ok bls377_beta fp2_prefix) x H)
-        end
-      | eapply (@AbstractField.relax_bounds _ _ _ _ _ _ _
-          (@DodecicFieldExtensionsSpecs.Fp12_field_representation_ok
-            _ _ _ _ bls377_pf_params bls377_Fp_rep bls377_Fp_rep_ok bls377_beta
-            bls377_xi_re bls377_xi_im fp12_prefix fp6_prefix fp2_prefix)); eassumption
-      | eapply (@AbstractField.relax_bounds _ _ _ _ _ _ _
-          (@QuadraticFieldExtensionsSpecs.Fp2_field_representation_ok
-            _ _ _ _ bls377_pf_params bls377_Fp_rep bls377_Fp_rep_ok bls377_beta fp2_prefix)); eassumption
-      ].
-
-    (* wp_miller_call: process one call in the loop body with abstract locals *)
+    (* Tactics -- aliases to generic versions from BLS12_MillerGeneric *)
+    Local Ltac snd_from_word_ecancel H := BLS12_MillerGeneric.miller_snd_from_word_ecancel H.
+    Local Ltac normalize_pairing_instances := BLS12_MillerGeneric.miller_normalize_pairing_instances.
+    Local Ltac resolve_map_get := BLS12_MillerGeneric.miller_resolve_map_get.
+    Local Ltac eval_expr_abstract := BLS12_MillerGeneric.miller_eval_expr_abstract.
+    Local Ltac miller_straightline := BLS12_MillerGeneric.miller_straightline.
+    Local Ltac eval_dexprs_abstract := BLS12_MillerGeneric.miller_eval_dexprs_abstract.
+    Local Ltac solve_miller_bounds := BLS12_MillerGeneric.miller_solve_bounds.
     Local Ltac wp_miller_call spec_hyp :=
       repeat miller_straightline;
       unfold1_cmd_goal; cbv beta match delta [cmd_body];
@@ -674,7 +590,7 @@ Section BLS12_377_MillerLoop.
         destruct Hrem as [out [Hbound Hsep]]
       end.
 
-    (* Word subtraction converts nat subtraction to Z subtraction *)
+    (* Word subtraction -- from generic *)
     Lemma word_nat_sub1 : forall n : nat, (0 < n)%nat ->
       @word.sub 64 word (word.of_Z (Z.of_nat n)) (word.of_Z 1) =
       word.of_Z (Z.of_nat (n - 1)).

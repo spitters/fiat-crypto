@@ -29,6 +29,7 @@ Require Import Crypto.Bedrock.Field.FieldExtensions.WPTactics.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS12_Pairing.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS12_PairingHelpers.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS12_CurveInstances.
+Require Crypto.Bedrock.Field.Synthesis.Examples.BLS12_MillerGeneric.
 
 Import BinInt String List.ListNotations.
 
@@ -304,15 +305,9 @@ Section BLS12_MillerLoop.
         map.get l "q_x" = Some p_qx /\
         map.get l "q_y" = Some p_qy.
 
-    (* Helper: build a sep by adding a new FElem from a map.split.
-       map.split m mOld mNew gives m = putmany mOld mNew.
-       We build (A ⋆ B) m = exists m1 m2, m = putmany m1 m2 /\ ... /\ A m1 /\ B m2
-       with m1 = mOld and m2 = mNew. *)
+    (* Helper lemma from generic *)
     Local Lemma sep_from_split {A B : mem -> Prop} {m mOld mNew : mem} :
-      map.split m mOld mNew ->
-      A mOld ->
-      B mNew ->
-      (A ⋆ B) m.
+      map.split m mOld mNew -> A mOld -> B mNew -> (A ⋆ B) m.
     Proof.
       intros [Heq Hd] HA HB. subst m.
       exists mOld, mNew.
@@ -320,135 +315,21 @@ Section BLS12_MillerLoop.
       split; assumption.
     Qed.
 
-    (* Normalize BLS12_Pairing instances to MillerLoop instances.
-       After unfolding BLS12_Pairing function bodies, addresses contain
-       BLS12_Pairing.bls12_fp_rep while hypotheses use bls12_Fp_rep.
-       These are definitionally equal but syntactically different, which
-       blocks ecancel's syntactic matching. *)
-    (* For from_word snd calls, the goal's FElem_Fp address uses
-       BLS12_Pairing instances while the hypothesis's address uses
-       BLS12_PairingHelpers instances. Standard ecancel can't unify
-       these syntactically different (but definitionally equal) terms.
-       Use ecancel_assumption_impl which handles conversion. *)
-    Local Ltac snd_from_word_ecancel H :=
-      let H' := fresh "H" in
-      pose proof H as H';
-      ecancel_assumption_impl.
+    (* Aliases to generic tactics *)
+    Local Ltac snd_from_word_ecancel H := BLS12_MillerGeneric.miller_snd_from_word_ecancel H.
+    Local Ltac normalize_pairing_instances := BLS12_MillerGeneric.miller_normalize_pairing_instances.
+    Local Ltac resolve_map_get := BLS12_MillerGeneric.miller_resolve_map_get.
+    Local Ltac eval_expr_abstract := BLS12_MillerGeneric.miller_eval_expr_abstract.
+    Local Ltac miller_straightline := BLS12_MillerGeneric.miller_straightline.
+    Local Ltac eval_dexprs_abstract := BLS12_MillerGeneric.miller_eval_dexprs_abstract.
 
-    (* For fst calls, normalize is a no-op but kept for readability *)
-    Local Ltac normalize_pairing_instances := idtac.
-
-    (* === Tactic 2: wp_miller_step ===
-       Processes one function call in the miller loop body.
-       In the loop body, locals are abstract (from the invariant) so
-       standard straightline/wp_call cannot evaluate variable lookups.
-       This tactic handles that by resolving map.get from hypotheses. *)
-
-    (* Resolve map.get on abstract locals using hypotheses *)
-    Local Ltac resolve_map_get :=
-      match goal with
-      | |- map.get (map.put ?m ?k ?v) ?k' = Some ?e =>
-        first
-        [ (* Same key: use map.get_put_same *)
-          unify k k';
-          rewrite map.get_put_same; exact eq_refl
-        | (* Different key: use map.get_put_diff, prove k' <> k *)
-          rewrite map.get_put_diff by congruence;
-          resolve_map_get ]
-      | |- map.get ?m ?k = Some ?e =>
-        first
-        [ assumption
-        | match goal with
-          | H : map.get m k = Some _ |- _ => exact H
-          end ]
-      end.
-
-    (* Evaluate a single expression with abstract locals *)
-    Local Ltac eval_expr_abstract :=
-      cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
-           WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet];
-      repeat (first
-        [ exact eq_refl
-        | eexists; split; [resolve_map_get |]
-        | eexists; split; [exact eq_refl |]
-        ]).
-
-    (* Process cmd.seq/set/skip/cond with abstract locals.
-       Does NOT fall through to straightline for cmd.call etc.
-       After cmd.set, the continuation has dlet.dlet — caller must
-       handle this (e.g., with unfold dlet.dlet; cbv beta). *)
-    Local Ltac miller_straightline :=
-      match goal with
-      | |- WeakestPrecondition.cmd _ (cmd.seq _ _) _ _ _ _ =>
-        unfold1_cmd_goal; cbv beta match delta [cmd_body]
-      | |- WeakestPrecondition.cmd _ (cmd.set ?s ?e) _ _ _ ?post =>
-        unfold1_cmd_goal; cbv beta match delta [cmd_body];
-        letexists; split; [solve [eval_expr_abstract] |]
-      | |- WeakestPrecondition.cmd _ cmd.skip _ _ _ ?post =>
-        unfold1_cmd_goal; cbv beta match delta [cmd_body]
-      | |- WeakestPrecondition.cmd _ (cmd.cond _ _ _) _ _ _ _ =>
-        unfold1_cmd_goal; cbv beta match delta [cmd_body];
-        letexists; split; [solve [eval_expr_abstract] |]
-      end.
-
-    (* Evaluate dexprs with abstract locals: each expr.var is resolved via
-       map.get hypotheses, possibly through map.put layers *)
-    Local Ltac eval_dexprs_abstract :=
-      cbv [dexprs list_map list_map_body
-           WeakestPrecondition.expr WeakestPrecondition.expr_body
-           WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet];
-      repeat (first
-        [ exact eq_refl
-        | eexists; split; [resolve_map_get |]
-        | eexists; split; [exact eq_refl |]
-        ]).
-
-    (* Solve bounds: try assumption, then try relax_bounds (tight→loose) *)
-    Local Ltac solve_miller_bounds :=
-      first
-      [ eassumption
-      | match goal with
-        | H : ?P ?b1 ?x |- ?P ?b2 ?x => exact H
-        end
-      | (* Try relax_bounds via the Fp12 rep_ok instance *)
-        match goal with
-        | H : ?bounded ?tight ?x |- ?bounded ?loose ?x =>
-          exact (@AbstractField.relax_bounds _ _ _ _ _ _ _
-            (@DodecicFieldExtensionsSpecs.Fp12_field_representation_ok
-              _ _ _ _ bls12_pf_params bls12_Fp_rep bls12_Fp_rep_ok bls12_beta
-              bls12_xi_re bls12_xi_im fp12_prefix fp6_prefix fp2_prefix) x H)
-        end
-      | (* Try relax_bounds via the Fp2 rep_ok instance *)
-        match goal with
-        | H : ?bounded ?tight ?x |- ?bounded ?loose ?x =>
-          exact (@AbstractField.relax_bounds _ _ _ _ _ _ _
-            (@QuadraticFieldExtensionsSpecs.Fp2_field_representation_ok
-              _ _ _ _ bls12_pf_params bls12_Fp_rep bls12_Fp_rep_ok bls12_beta fp2_prefix) x H)
-        end
-      | (* eapply relax_bounds + eassumption for evar goals *)
-        eapply (@AbstractField.relax_bounds _ _ _ _ _ _ _
-          (@DodecicFieldExtensionsSpecs.Fp12_field_representation_ok
-            _ _ _ _ bls12_pf_params bls12_Fp_rep bls12_Fp_rep_ok bls12_beta
-            bls12_xi_re bls12_xi_im fp12_prefix fp6_prefix fp2_prefix)); eassumption
-      | eapply (@AbstractField.relax_bounds _ _ _ _ _ _ _
-          (@QuadraticFieldExtensionsSpecs.Fp2_field_representation_ok
-            _ _ _ _ bls12_pf_params bls12_Fp_rep bls12_Fp_rep_ok bls12_beta fp2_prefix)); eassumption
-      ].
-
-    (* wp_miller_call: process one call in the loop body with abstract locals.
-       1. Process cmd.seq wrappers
-       2. Unfold cmd.call to expose dexprs + Semantics.call
-       3. Evaluate dexprs manually (since locals may be abstract)
-       4. Apply weaken_call + spec
-       5. Destruct postcondition *)
+    (* Bounds and call tactics: use generic versions *)
+    Local Ltac solve_miller_bounds := BLS12_MillerGeneric.miller_solve_bounds.
     Local Ltac wp_miller_call spec_hyp :=
-      (* Step 1: process cmd.seq wrappers *)
+      (* Use generic mcall with local resolve_map_get alias *)
       repeat miller_straightline;
-      (* Step 2: unfold cmd.call → exists args, dexprs /\ call *)
       unfold1_cmd_goal; cbv beta match delta [cmd_body];
-      (* Step 3: provide args and evaluate dexprs *)
       letexists; split; [solve [eval_dexprs_abstract] |];
-      (* Step 4: weaken_call + spec application *)
       eapply Semantics.weaken_call;
       [ let H := fresh "Hcallee" in
         pose proof spec_hyp as H;
@@ -465,9 +346,7 @@ Section BLS12_MillerLoop.
         ]
       | cbv beta; wp_postcall_auto
       ];
-      (* Beta-reduce the continuation after postcall processing *)
       try (unfold dlet.dlet; cbv beta);
-      (* Step 5: destruct postcondition existential *)
       match goal with
       | Hrem : exists _, _ /\ _ /\ _ |- _ =>
         let out := fresh "vout" in
@@ -483,7 +362,7 @@ Section BLS12_MillerLoop.
         destruct Hrem as [out [Hbound Hsep]]
       end.
 
-    (* Word subtraction converts nat subtraction to Z subtraction *)
+    (* Word subtraction -- from generic *)
     Lemma word_nat_sub1 : forall n : nat, (0 < n)%nat ->
       @word.sub 64 word (word.of_Z (Z.of_nat n)) (word.of_Z 1) =
       word.of_Z (Z.of_nat (n - 1)).
