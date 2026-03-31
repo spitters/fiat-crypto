@@ -1006,6 +1006,64 @@ Section BLS12_Pairing.
           cmd.skip
       ].
 
+    (* Cyclotomic squaring loop body — uses Fp6_mul + Fp6_mul_by_v instead
+       of generic Fp12_square. Only valid in the cyclotomic subgroup GΦ₁₂. *)
+    Let fp6_mul_name : string := AbstractField.mul (F:=Fp6).
+    Let fp6_add_name : string := AbstractField.add (F:=Fp6).
+    Let fp6_sub_name : string := AbstractField.sub (F:=Fp6).
+    Let fp6_copy_name : string := AbstractField.felem_copy (F:=Fp6).
+    Let fp6_mul_by_v_name : string := (fp6_prefix ++ "mul_by_v")%string.
+
+    Local Definition cyc_sqr_body (out f : string) : Syntax.cmd.cmd :=
+      (* out = cyc_sqr(f) where f = (c0, c1) in Fp6 × Fp6
+         new_c0 = 1 + 2*v*c1^2,  new_c1 = 2*c0*c1 *)
+      let c0 := expr.var f in
+      let c1 := expr.op bopname.add (expr.var f) (expr.literal (AbstractField.felem_size_in_bytes (F:=Fp6))) in
+      let out_c0 := expr.var out in
+      let out_c1 := expr.op bopname.add (expr.var out) (expr.literal (AbstractField.felem_size_in_bytes (F:=Fp6))) in
+      cmd_seq_list [
+        (* t0 = c1^2 (Fp6 mul) *)
+        cmd.call [] fp6_mul_name [expr.var "cyc_t0"; c1; c1];
+        (* t1 = c0*c1 (Fp6 mul) *)
+        cmd.call [] fp6_mul_name [expr.var "cyc_t1"; c0; c1];
+        (* t0 = mul_by_v(t0) *)
+        cmd.call [] fp6_mul_by_v_name [expr.var "cyc_t0"; expr.var "cyc_t0"];
+        (* out_c0 = 2*t0 *)
+        cmd.call [] fp6_add_name [out_c0; expr.var "cyc_t0"; expr.var "cyc_t0"];
+        (* out_c0 += 1 (add Fp6 identity: just add 1 to first Fp element) *)
+        cmd.call [] (AbstractField.add (F:=Fp)) [out_c0; out_c0; expr.literal 1];
+        (* out_c1 = 2*t1 *)
+        cmd.call [] fp6_add_name [out_c1; expr.var "cyc_t1"; expr.var "cyc_t1"]
+      ].
+
+    (* pow_x with cyclotomic squaring — for use in final exp hard part *)
+    Local Definition pow_x_cyc_loop_body : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        cmd.set "i" (expr.op bopname.sub (expr.var "i") (expr.literal 1));
+        cyc_sqr_body "result" "result";
+        cmd.set "bit" (expr.op bopname.and
+          (expr.op bopname.sru (expr.literal 0xd201000000010000) (expr.var "i"))
+          (expr.literal 1));
+        cmd.cond (expr.var "bit")
+          (cmd.call [] fp12_mul_name
+            [expr.var "result"; expr.var "result"; expr.var "base"])
+          cmd.skip
+      ].
+
+    (* pow_x_half with cyclotomic squaring: exp by |x|/2 = 0x6900800000008000 *)
+    Local Definition pow_x_half_cyc_loop_body : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        cmd.set "i" (expr.op bopname.sub (expr.var "i") (expr.literal 1));
+        cyc_sqr_body "result" "result";
+        cmd.set "bit" (expr.op bopname.and
+          (expr.op bopname.sru (expr.literal 0x6900800000008000) (expr.var "i"))
+          (expr.literal 1));
+        cmd.cond (expr.var "bit")
+          (cmd.call [] fp12_mul_name
+            [expr.var "result"; expr.var "result"; expr.var "base"])
+          cmd.skip
+      ].
+
     Definition bls12_Fp12_pow_x : function_t :=
       ("bls12_Fp12_pow_x",
        (["out"; "base"], []:list String.string,
@@ -1026,14 +1084,62 @@ Section BLS12_Pairing.
     Proof. exact I. Qed.
 
     (* ============================================================== *)
-    (* Final exponentiation hard part (DSD decomposition)             *)
-    (*   Computes f^{(p^4 - p^2 + 1)/r} using the DSD method:       *)
-    (*   t0 = f^x (then conjugate for negative x)                    *)
-    (*   t1 = t0^2, conjugate => f^{-2x}                             *)
-    (*   t2 = pow_x(t0) => f^{-x^2}                                  *)
-    (*   t3 = t2^2 => f^{-2x^2}                                      *)
-    (*   Chain multiplications and Frobenius maps                     *)
-    (* ============================================================== *)
+
+    (* Corrected DSD hard part: Hayashida-Hayasaka-Teruya, eprint 2020/875.
+       Computes f^[3 h3] using inline exp-by-x with cyclotomic squaring.
+       Proved: 3 h3 = 3 + [u^2-1+p^2] [u+1]^2 [p-u] in FinalExpEquiv.v.
+       Uses inline exp-by-x loops, not function calls, to avoid overhead.
+       Each exp-by-x: 63 squarings + about 5 Fp12 multiplications. *)
+
+    (* Helper: inline exp-by-x loop body *)
+    Local Definition dsd_exp_x_loop : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        cmd.set "i" (expr.op bopname.sub (expr.var "i") (expr.literal 1));
+        cmd.call [] fp12_sqr_name  (* TODO: replace with cyc_sqr when bedrock2 function exists *)
+          [expr.var "result"; expr.var "result"];
+        cmd.set "bit" (expr.op bopname.and
+          (expr.op bopname.sru (expr.literal 0xd201000000010000) (expr.var "i"))
+          (expr.literal 1));
+        cmd.cond (expr.var "bit")
+          (cmd.call [] fp12_mul_name
+            [expr.var "result"; expr.var "result"; expr.var "base"])
+          cmd.skip
+      ].
+
+    (* Helper: inline exp-by-x/2 loop body *)
+    Local Definition dsd_exp_x_half_loop : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        cmd.set "i" (expr.op bopname.sub (expr.var "i") (expr.literal 1));
+        cmd.call [] fp12_sqr_name
+          [expr.var "result"; expr.var "result"];
+        cmd.set "bit" (expr.op bopname.and
+          (expr.op bopname.sru (expr.literal 0x6900800000008000) (expr.var "i"))
+          (expr.literal 1));
+        cmd.cond (expr.var "bit")
+          (cmd.call [] fp12_mul_name
+            [expr.var "result"; expr.var "result"; expr.var "base"])
+          cmd.skip
+      ].
+
+    (* Inline exp_x_signed: result = base^{-|x|} = conjugate(base^{|x|}) *)
+    Local Definition dsd_inline_exp_x (out_var base_var : string) : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        cmd.call [] fp12_copy_name [expr.var "result"; expr.var base_var];
+        cmd.call [] fp12_copy_name [expr.var "base"; expr.var base_var];
+        cmd.set "i" (expr.literal 63);
+        cmd.while (expr.var "i") dsd_exp_x_loop;
+        cmd.call [] fp12_conjugate_name [expr.var out_var; expr.var "result"]
+      ].
+
+    (* Inline exp_x_half_signed: result = base^{-|x|/2} *)
+    Local Definition dsd_inline_exp_x_half (out_var base_var : string) : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        cmd.call [] fp12_copy_name [expr.var "result"; expr.var base_var];
+        cmd.call [] fp12_copy_name [expr.var "base"; expr.var base_var];
+        cmd.set "i" (expr.literal 63);
+        cmd.while (expr.var "i") dsd_exp_x_half_loop;
+        cmd.call [] fp12_conjugate_name [expr.var out_var; expr.var "result"]
+      ].
 
     Local Definition final_exp_hard_dsd_body : Syntax.cmd.cmd :=
       cmd_seq_list [
@@ -1042,102 +1148,77 @@ Section BLS12_Pairing.
         cmd.call [] "bls12_load_gamma2" [expr.var "gamma2"];
         cmd.call [] "bls12_load_w_frob_c1" [expr.var "w_frob_c1"];
 
-        (* t0 = f^x, then conjugate (BLS x is negative) *)
-        cmd.call [] "bls12_Fp12_pow_x"
-          [expr.var "t0"; expr.var "f"];
-        cmd.call [] fp12_conjugate_name
-          [expr.var "t0"; expr.var "t0"];
+        (* t0 = f² *)
+        cmd.call [] fp12_sqr_name [expr.var "t0"; expr.var "f"];
 
-        (* t1 = t0^2, conjugate => f^{-2x} *)
-        cmd.call [] fp12_sqr_name
-          [expr.var "t1"; expr.var "t0"];
-        cmd.call [] fp12_conjugate_name
-          [expr.var "t1"; expr.var "t1"];
+        (* t1 = t0^{-|x|/2} = f^{-|x|} *)
+        dsd_inline_exp_x_half "t1" "t0";
 
-        (* t2 = pow_x(t0) => f^{-x^2} *)
-        cmd.call [] "bls12_Fp12_pow_x"
-          [expr.var "t2"; expr.var "t0"];
+        (* t2 = f^{-1} *)
+        cmd.call [] fp12_conjugate_name [expr.var "t2"; expr.var "f"];
 
-        (* t3 = t2^2 => f^{-2x^2} *)
-        cmd.call [] fp12_sqr_name
-          [expr.var "t3"; expr.var "t2"];
+        (* t1 = t1 * t2 = f^{-|x|-1} *)
+        cmd.call [] fp12_mul_name [expr.var "t1"; expr.var "t1"; expr.var "t2"];
 
-        (* t1 = t1 * t2 => f^{-2x - x^2} *)
-        cmd.call [] fp12_mul_name
-          [expr.var "t1"; expr.var "t1"; expr.var "t2"];
+        (* t2 = t1^{-|x|} = f^{|x|²+|x|} *)
+        dsd_inline_exp_x "t2" "t1";
 
-        (* t2 = pow_x(t2) => f^{x^3} *)
-        cmd.call [] "bls12_Fp12_pow_x"
-          [expr.var "t2"; expr.var "t2"];
+        (* t1 = t1^{-1} = f^{|x|+1} *)
+        cmd.call [] fp12_conjugate_name [expr.var "t1"; expr.var "t1"];
 
-        (* t1 = t1 * t2 => f^{x^3 - x^2 - 2x} *)
-        cmd.call [] fp12_mul_name
-          [expr.var "t1"; expr.var "t1"; expr.var "t2"];
+        (* t1 = t1 * t2 = f^{(|x|+1)²} *)
+        cmd.call [] fp12_mul_name [expr.var "t1"; expr.var "t1"; expr.var "t2"];
 
-        (* t1 = conjugate(t1) *)
-        cmd.call [] fp12_conjugate_name
-          [expr.var "t1"; expr.var "t1"];
+        (* t2 = t1^{-|x|} = f^{-|x|(|x|+1)²} *)
+        dsd_inline_exp_x "t2" "t1";
 
-        (* t1 = t1 * f *)
-        cmd.call [] fp12_mul_name
-          [expr.var "t1"; expr.var "t1"; expr.var "f"];
-
-        (* t1 = conjugate(t1) *)
-        cmd.call [] fp12_conjugate_name
-          [expr.var "t1"; expr.var "t1"];
-
-        (* t0 = conjugate(f) — reuse t0 as temp for conj(f) *)
-        cmd.call [] fp12_conjugate_name
-          [expr.var "t0"; expr.var "f"];
-
-        (* t1 = t1 * conj(f) *)
-        cmd.call [] fp12_mul_name
-          [expr.var "t1"; expr.var "t1"; expr.var "t0"];
-
-        (* t2 = pow_x(t2) => f^{-x^4} *)
-        cmd.call [] "bls12_Fp12_pow_x"
-          [expr.var "t2"; expr.var "t2"];
-
-        (* t0 = t2 * t3 — reuse t0 as accumulator *)
-        cmd.call [] fp12_mul_name
-          [expr.var "t0"; expr.var "t2"; expr.var "t3"];
-
-        (* t0 = t0 * t1 *)
-        cmd.call [] fp12_mul_name
-          [expr.var "t0"; expr.var "t0"; expr.var "t1"];
-
-        (* Frobenius maps: t1 = f^p, t2 = f^{p^2}, t3 = f^{p^3} *)
+        (* t1 = Frob(t1) = f^{p(|x|+1)²} *)
         cmd.call [] fp12_frobenius_name
-          [expr.var "t1"; expr.var "f";
-           expr.var "gamma1"; expr.var "gamma2"; expr.var "w_frob_c1"];
-        cmd.call [] fp12_frobenius_name
-          [expr.var "t2"; expr.var "t1";
-           expr.var "gamma1"; expr.var "gamma2"; expr.var "w_frob_c1"];
-        cmd.call [] fp12_frobenius_name
-          [expr.var "t3"; expr.var "t2";
+          [expr.var "t1"; expr.var "t1";
            expr.var "gamma1"; expr.var "gamma2"; expr.var "w_frob_c1"];
 
-        (* result = t0 * frob1 * frob2 * frob3 *)
-        cmd.call [] fp12_mul_name
-          [expr.var "t0"; expr.var "t0"; expr.var "t1"];
-        cmd.call [] fp12_mul_name
-          [expr.var "t0"; expr.var "t0"; expr.var "t2"];
-        cmd.call [] fp12_mul_name
-          [expr.var "t0"; expr.var "t0"; expr.var "t3"];
+        (* t1 = t1 * t2 = f^{(|x|+1)²(p-|x|)} *)
+        cmd.call [] fp12_mul_name [expr.var "t1"; expr.var "t1"; expr.var "t2"];
 
-        (* Copy to output *)
-        cmd.call [] fp12_copy_name
-          [expr.var "out"; expr.var "t0"]
+        (* t3 = f * t0 = f³ *)
+        cmd.call [] fp12_mul_name [expr.var "t3"; expr.var "f"; expr.var "t0"];
+
+        (* t0 = t1^{-|x|} *)
+        dsd_inline_exp_x "t0" "t1";
+
+        (* t2 = t0^{-|x|} *)
+        dsd_inline_exp_x "t2" "t0";
+
+        (* t0 = Frob²(t1) — needs gamma1_p2, gamma2_p2, w_frob_p2_c1 *)
+        cmd.call [] fp12_frobenius_p2_name
+          [expr.var "t0"; expr.var "t1";
+           expr.var "gamma1_p2"; expr.var "gamma2_p2";
+           expr.var "w_frob_p2_c1"];
+
+        (* t1 = t1^{-1} *)
+        cmd.call [] fp12_conjugate_name [expr.var "t1"; expr.var "t1"];
+
+        (* t1 = t1 * t2 *)
+        cmd.call [] fp12_mul_name [expr.var "t1"; expr.var "t1"; expr.var "t2"];
+
+        (* t1 = t1 * t0 *)
+        cmd.call [] fp12_mul_name [expr.var "t1"; expr.var "t1"; expr.var "t0"];
+
+        (* out = t3 * t1 = f³ · f^{...} = f^{3·h3} *)
+        cmd.call [] fp12_mul_name [expr.var "out"; expr.var "t3"; expr.var "t1"]
       ].
 
+    (* DSD now needs frobenius_p2 constants too *)
     Definition bls12_final_exp_hard_dsd : function_t :=
       ("bls12_final_exp_hard_dsd",
-       (["out"; "f"], []:list String.string,
+       (["out"; "f"; "gamma1_p2"; "gamma2_p2"; "w_frob_p2_c1"], []:list String.string,
         bedrock_func_body:(
           stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as t0;
           stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as t1;
           stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as t2;
           stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as t3;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as result;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as base;
           stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as gamma1;
           stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as gamma2;
           stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as w_frob_c1;
@@ -1386,9 +1467,10 @@ Section BLS12_Pairing.
       ].
 
     (* Full final exponentiation:
-       Easy part 1: result = conj(f) * inv(f) = f^{p^6-1}
-       Easy part 2: result = frob_p2(result) * result = result^{p^2+1}
-       Hard part:   result = result^{h3} *)
+
+       Easy part 1: result = conj(f) x inv(f) = f^[p^6-1]
+       Easy part 2: result = frob_p2(result) x result = result^[p^2+1]
+       Hard part:   result = DSD(result) = result^[3 h3] *)
     Local Definition final_exp_full_body : Syntax.cmd.cmd :=
       cmd_seq_list [
         (* Easy part 1: f^{p^6-1} *)
@@ -1405,17 +1487,11 @@ Section BLS12_Pairing.
            expr.var "w_frob_p2_c1"];
         cmd.call [] fp12_mul_name
           [expr.var "result"; expr.var "tmp"; expr.var "result"];
-        (* Hard part: result^{h3} via square-and-multiply *)
-        cmd.call [] fp12_copy_name
-          [expr.var "base"; expr.var "result"];
-        fp12_set_one "result";
-        h3_store_limbs;
-        cmd.set "started" (expr.literal 0);
-        cmd.set "i" (expr.literal 1280);
-        cmd.while (expr.var "i") h3_loop_body;
-        (* Copy to output *)
-        cmd.call [] fp12_copy_name
-          [expr.var "out"; expr.var "result"]
+        (* Hard part: DSD = result^{3*h3} *)
+        cmd.call [] "bls12_final_exp_hard_dsd"
+          [expr.var "out"; expr.var "result";
+           expr.var "gamma1_p2"; expr.var "gamma2_p2";
+           expr.var "w_frob_p2_c1"]
       ].
 
     Definition bls12_final_exp : function_t :=
@@ -1425,8 +1501,6 @@ Section BLS12_Pairing.
         bedrock_func_body:(
           stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as result;
           stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as tmp;
-          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as base;
-          stackalloc 160 as h3;
           coq:(final_exp_full_body)
         ))).
 
@@ -1444,11 +1518,6 @@ Section BLS12_Pairing.
     (* ============================================================== *)
 
     (* Fp6-level function name helpers *)
-    Let fp6_mul_name : string := AbstractField.mul (F:=Fp6).
-    Let fp6_add_name : string := AbstractField.add (F:=Fp6).
-    Let fp6_sub_name : string := AbstractField.sub (F:=Fp6).
-    Let fp6_copy_name : string := AbstractField.felem_copy (F:=Fp6).
-    Let fp6_mul_by_v_name : string := (fp6_prefix ++ "mul_by_v")%string.
     Let fp6_mul_fp2_name : string := (fp6_prefix ++ "mul_fp2")%string.
 
     (* Fp12_mul_by_024: sparse multiplication of Fp12 by a line evaluation.
