@@ -2528,6 +2528,36 @@ Section Fp12.
       coq:(cmd.call [] (AbstractField.sub (F:=Fp6)) [expr_fp12_c1 (expr.var "out"); expr.var "t"; expr.var "v1"])
     ))).
 
+  (* No-alias Fp12_mul: skips input copies, requires out != inx /\ out != iny.
+     The Karatsuba algorithm reads all inputs before writing to out,
+     so non-aliasing is sufficient for correctness. Saves 2 Fp12 copies. *)
+  Definition Fp12_mul_nocopy : function_t :=
+    ((AbstractField.mul (F:=Fp12) ++ "_nocopy")%string,
+     (["out"; "inx"; "iny"], []:list String.string, bedrock_func_body:(
+      stackalloc (AbstractField.felem_size_in_bytes (F:=Fp6)) as v0;
+      stackalloc (AbstractField.felem_size_in_bytes (F:=Fp6)) as v1;
+      stackalloc (AbstractField.felem_size_in_bytes (F:=Fp6)) as t;
+      stackalloc (AbstractField.felem_size_in_bytes (F:=Fp6)) as u;
+      (* v0 = a0*b0 *)
+      coq:(cmd.call [] (AbstractField.mul (F:=Fp6)) [expr.var "v0"; expr_fp12_c0 (expr.var "inx"); expr_fp12_c0 (expr.var "iny")]);
+      (* v1 = a1*b1 *)
+      coq:(cmd.call [] (AbstractField.mul (F:=Fp6)) [expr.var "v1"; expr_fp12_c1 (expr.var "inx"); expr_fp12_c1 (expr.var "iny")]);
+      (* t = a0+a1 *)
+      coq:(cmd.call [] (AbstractField.add (F:=Fp6)) [expr.var "t"; expr_fp12_c0 (expr.var "inx"); expr_fp12_c1 (expr.var "inx")]);
+      (* u = b0+b1 *)
+      coq:(cmd.call [] (AbstractField.add (F:=Fp6)) [expr.var "u"; expr_fp12_c0 (expr.var "iny"); expr_fp12_c1 (expr.var "iny")]);
+      (* t = (a0+a1)(b0+b1) *)
+      coq:(cmd.call [] (AbstractField.mul (F:=Fp6)) [expr.var "t"; expr.var "t"; expr.var "u"]);
+      (* u = mul_by_v(v1) *)
+      coq:(cmd.call [] fp6_mul_by_v_name [expr.var "u"; expr.var "v1"]);
+      (* out.c0 = v0 + mul_by_v(v1) *)
+      coq:(cmd.call [] (AbstractField.add (F:=Fp6)) [expr_fp12_c0 (expr.var "out"); expr.var "v0"; expr.var "u"]);
+      (* t = t - v0 *)
+      coq:(cmd.call [] (AbstractField.sub (F:=Fp6)) [expr.var "t"; expr.var "t"; expr.var "v0"]);
+      (* out.c1 = t - v1 *)
+      coq:(cmd.call [] (AbstractField.sub (F:=Fp6)) [expr_fp12_c1 (expr.var "out"); expr.var "t"; expr.var "v1"])
+    ))).
+
   Instance spec_of_Fp12_mul : spec_of (AbstractField.mul (F:=Fp12)) :=
     AbstractField.binop_spec AbstractField.bin_mul (F:=Fp12).
 
