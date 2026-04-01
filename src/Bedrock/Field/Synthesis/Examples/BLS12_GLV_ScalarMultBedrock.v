@@ -35,6 +35,7 @@ Require Import Crypto.Bedrock.Group.CurveAdd.CondMoveGroup.
 Require Import Crypto.Bedrock.Group.CurveAdd.CurveAdd.
 Require Import bedrock2.Loops.
 Require Import bedrock2.NotationsCustomEntry.
+Require Import Crypto.Bedrock.Field.FieldExtensions.WPTactics.
 Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope.
 Local Open Scope Z_scope.
@@ -587,174 +588,241 @@ Section GLV_Shamir_Generic.
     apply anybytes_to_scalar in Hany_cond2 as [c2_init Hsc_cond2].
     apply anybytes_to_scalar in Hany_iter as [iter_init Hsc_iter].
 
-    (* === Phase 3+4+5+6: store_zero init, while loop, post-loop ===
+    (* === Phase 3: Process store_zero initialization ===
 
-       After 6 stackallocs, the goal is a WP for:
-         cmd.seq (cmd.call "store_zero" [outx;outy;outz])
+       The goal is a WP for:
+         cmd.seq (cmd.call "store_zero" [outx; outy; outz])
            (cmd.seq (cmd.store iter 0) (cmd.while ...))
-       wrapped in 6 stack dealloc continuations.
+       followed by 6 stack deallocations.
 
-       Phase 3: Process store_zero(outx,outy,outz) + store(iter,0).
-       Phase 4: Apply Loops.while_localsmap with glv_loop_inv.
-       Phase 5: Loop body (11 calls per iteration × 129 iterations).
-       Phase 6: Post-loop stack deallocation + final postcondition.
+       The memory mComb_iter contains:
+       - Original inputs (FElem tight for out/p/phi, Bignum for k1/k2, R)
+         embedded in the map.split chain from stackallocs
+       - Stack FElems (FElem None for auxx/auxy/auxz)
+       - Stack scalars (scalar for cond1/cond2/iter)
 
-       The proof strategy follows BLS12_MillerLoop.v:
-       - Phase 3: straightline for cmd.seq, manual args+dexprs for the call,
-         weaken_call + HStoreZero, then straightline for the store.
-       - Phase 4: eapply Loops.while_localsmap with measure=129,
-         invariant=glv_loop_inv. Prove well_founded, initial invariant,
-         and the combined body+post-loop goal.
-       - Phase 5 (loop body): For each of 11 calls per iteration,
-         use gcall (unfold cmd.seq, expose cmd.call, eval dexprs,
-         weaken_call + spec, destruct postcondition). Then re-establish
-         the loop invariant with measure vi-1.
-       - Phase 6 (post-loop): 6 stack deallocations (reverse order:
-         iter, cond2, cond1, auxz, auxy, auxx). Each deallocation:
-         split sep to isolate stack buffer, convert FElem→anybytes
-         or scalar→anybytes, provide split witness. Then final
-         postcondition: existentials for output values + sep.
+       We process the store_zero call:
+       1. cmd.seq → expose the call
+       2. dexprs for arguments [outx; outy; outz]
+       3. weaken_call with HStoreZero
+       4. Precondition: need FElem None, have FElem (Some tight_bounds)
+          → use drop_bounds_FElem to weaken
+       5. Postcondition: FElem tight with Fzero/Fone/Fzero (identity)
 
-       === Detailed Phase 5 structure (per iteration) ===
+       Then process store(iter, 0) via straightline.
 
-       Given invariant at measure vi (where vi = glv_iterations - iter):
-       1. Evaluate branch condition: load(iter) < 129
-       2. TRUE branch (vi > 0):
-          a. cmd.store iter (iter+1)     -- increment counter
-          b. shift_scalar(cond1, pk1)    -- extract k1 low bit
-          c. shift_scalar(cond2, pk2)    -- extract k2 low bit
-          d. store_zero(auxx,auxy,auxz)  -- zero aux point
-          e. group_cmov_alt(aux,aux,P,cond1) -- aux = cond1 ? P : O
-          f. curve_add(out,aux,out)      -- out += (cond1 ? P : O)
-          g. store_zero(auxx,auxy,auxz)  -- zero aux point
-          h. group_cmov_alt(aux,aux,phi,cond2) -- aux = cond2 ? phi : O
-          i. curve_add(out,aux,out)      -- out += (cond2 ? phi : O)
-          j. curve_add(P,P,P)            -- double P
-          k. curve_add(phi,phi,phi)      -- double phi
-          Then re-establish invariant at measure vi-1.
-       3. FALSE branch (vi = 0):
-          Post-loop: 6 deallocs + postcondition.
+       Then apply Loops.while_localsmap with glv_loop_inv.
 
-       === Key arithmetic for invariant restoration ===
+       === Phase 4: while_localsmap application ===
+       Apply with:
+       - measure v0 := 129 (nat)
+       - lt := Nat.lt, well_founded := lt_wf
+       - invariant := glv_loop_inv with initial P/phi/k1/k2 values
 
-       After iteration, with iter_new = iter + 1:
-       - k1_new = k1_old >> 1, so k1_new = k1_init >> iter_new
-       - k2_new = k2_old >> 1, so k2_new = k2_init >> iter_new
-       - bit1 = k1_old mod 2 = (k1_init >> iter) mod 2
-                              = Z.testbit k1_init iter
-       - out_new = curve_add (curve_add out_old (cond1 ? P_old : O))
-                             (cond2 ? phi_old : O)
-         which equals curve_add
-           (scmul_glv (k1_init mod 2^iter_new) P_init)
-           (scmul_glv (k2_init mod 2^iter_new) phi_init)
-         by decomposing k_init mod 2^(iter+1) = 2*(k_init mod 2^iter) + bit
-         and using scmul_glv properties.
-       - P_new = curve_add P_old P_old = scmul_glv (2^iter_new) P_init
-       - phi_new = curve_add phi_old phi_old = scmul_glv (2^iter_new) phi_init
+       Initial invariant (v0=129, iter=0):
+       - k1/k2 unchanged (shiftr by 0 = identity)
+       - out = identity = curve_add (scmul 0 P) (scmul 0 phi)
+       - P = P_init = scmul (2^0) P_init
+       - phi = phi_init = scmul (2^0) phi_init
 
-       All of this is mechanical Z arithmetic + scmul_glv unfolding. *)
+       === Phase 5: Loop body (11 function calls/iteration) ===
+       For measure v, the body processes:
+       a. store iter = iter + 1
+       b. shift_scalar(cond1, pk1): extract k1's low bit, shift k1
+       c. shift_scalar(cond2, pk2): extract k2's low bit, shift k2
+       d. store_zero(aux) + group_cmov_alt(aux,aux,P,cond1):
+          aux = cond1 ? P : O
+       e. curve_add(out, aux, out): out += aux
+       f. store_zero(aux) + group_cmov_alt(aux,aux,phi,cond2):
+          aux = cond2 ? phi : O
+       g. curve_add(out, aux, out): out += aux
+       h. curve_add(P, P, P): P = 2*P
+       i. curve_add(phi, phi, phi): phi = 2*phi
 
-    (* === Phase 3: Process store_zero + store(iter,0) ===
+       Each call: glv_straightline + unfold cmd.call + dexprs_abstract
+       + weaken_call + sep manipulation. (~300 lines total)
 
-       Pattern (following MillerLoop.v):
-       1. repeat straightline — processes cmd.seq wrappers
-       2. straightline_call — processes the store_zero call
-          (resolves dexprs, finds spec_of_store_zero via HStoreZero,
-           applies it, ecancel_assumption handles FElem bounds)
-       3. repeat straightline — processes store(iter,0) and any remaining seq
+       Invariant preservation: Z arithmetic for scalar decomposition
+       (k_init mod 2^(iter+1) decomposition) + scmul_glv properties.
 
-       Note: straightline_call requires spec_of "store_zero" to be
-       findable as a typeclass instance in the context. HStoreZero
-       provides this. The precondition (FElem None) is resolved from
-       FElem (Some tight_bounds) via drop_bounds_FElem in ecancel_impl. *)
+       === Phase 6: Post-loop ===
+       After 129 iterations: out = [k1]P + [k2]phi.
+       6 stack deallocations (FElem→anybytes, scalar→anybytes).
+       Final postcondition: existentials + sep.
+       (~100 lines following MillerLoop.v lines 1701-1800) *)
 
-    (* === Phase 4: Apply Loops.while_localsmap ===
+    (* === Tactic: gcall processes one call in the GLV loop body === *)
+    (* Similar to mcall in BLS12_MillerLoop.v *)
+    Local Ltac gcall spec :=
+      (* Peel cmd.seq if present *)
+      try glv_straightline;
+      unfold1_cmd_goal; cbv beta match delta [cmd_body]; (* cmd.call *)
+      letexists; split; [solve [eval_dexprs_abstract] |]; (* args+dexprs *)
+      (* Apply spec via weaken_call *)
+      eapply Semantics.weaken_call;
+      [ eapply spec; ecancel_assumption
+      | cbv beta; intros ? ? ? ?; subst;
+        cbv [map.putmany_of_list_zip];
+        eexists; split; [exact eq_refl |]
+      ].
 
-       eapply Loops.while_localsmap with:
-       - v0 := 129 (initial measure = glv_iterations)
-       - lt := Nat.lt, Hwf := lt_wf
-       - invariant := glv_loop_inv pOutx...pk2 a_auxx...a_iter
-                        Px Py Pz Phix Phiy Phiz
-                        (eval k1_words) (eval k2_words) R tr
+    (* === Phase 3: Process store_zero call + store iter=0 === *)
+    (* Process let/d and peel cmd.seq for the store_zero call *)
+    cbv [dlet.dlet]. set (l4 := map.put l3 "iter" a_iter).
+    unfold1_cmd_goal; cbv beta match delta [cmd_body].
+    (* Provide args for store_zero *)
+    exists [pOutx; pOuty; pOutz]. split.
+    { cbv [dexprs list_map list_map_body WeakestPrecondition.expr WeakestPrecondition.expr_body WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet].
+      repeat (first [exact eq_refl | eexists; split; [subst l4 l3 l2 l1 l0 l; resolve_map_get |]]). }
+    (* Call store_zero: needs FElem None, we have FElem (Some tight_bounds).
+       ecancel_assumption_impl from WPTactics handles bounds dropping. *)
+    eapply Semantics.weaken_call.
+    1: { eapply HStoreZero.
+         unfold FElem, CompilationAbstract.FElem in |- *.
+         ecancel_assumption_impl. }
+    cbv beta. intros ? ? ? [? [? ?]]. subst.
+    cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
-       Subgoal 1 (well_founded): exact lt_wf.
-       Subgoal 2 (initial invariant at v0=129):
-         Existentials: Out=(Fzero,Fone,Fzero), P/phi/aux/k/cond/iter from context.
-         Z.shiftr k 0 = k, k mod 2^0 = 0, scmul_glv 0 = identity,
-         2^0 = 1, scmul_glv 1 P = P. Sep from post-store_zero state.
-       Subgoal 3: combined body + post-loop (see Phase 5/6). *)
+    (* store iter = 0: process cmd.seq + cmd.store without over-processing *)
+    straightline. straightline. straightline. straightline. straightline.
 
-    (* === Phase 5: Loop body (inside while_localsmap body goal) ===
+    (* === Phase 4: Apply Loops.while_localsmap === *)
 
-       Given: invariant vi ti mi li (with vi > 0 in TRUE branch).
-       Destruct invariant into components.
-       Provide branch value: word.b2w (word.ltu iw_i (word.of_Z 129)).
-       Evaluate branch expression (load "iter" from memory, compare with 129).
+    eapply Loops.while_localsmap
+      with (v0 := 129%nat)
+           (lt := Nat.lt)
+           (invariant := glv_loop_inv
+                    pOutx pOuty pOutz pPx pPy pPz pPhix pPhiy pPhiz
+                    pk1 pk2 a_auxx a_auxy a_auxz a_cond1 a_cond2 a_iter
+                    Px Py Pz Phix Phiy Phiz
+                    (eval glv_scalar_words k1_words) (eval glv_scalar_words k2_words)
+                    R tr).
 
-       TRUE branch: process 11 calls per iteration.
-       Define local tactic gcall (like mcall in MillerLoop.v):
-         try glv_straightline;                         (* peel cmd.seq *)
-         unfold1_cmd_goal; cbv beta match delta [cmd_body]; (* expose call *)
-         letexists; split; [solve [eval_dexprs_abstract] |]; (* args+dexprs *)
-         eapply Semantics.weaken_call;
-         [ eapply spec; ecancel_assumption             (* call spec *)
-         | cbv beta; intros ? ? ? ?; subst;
-           cbv [map.putmany_of_list_zip];
-           eexists; split; [exact eq_refl |] ].        (* postcond *)
+    (* Well-foundedness *)
+    { exact lt_wf. }
 
-       Call sequence:
-       1. cmd.store iter (load(iter)+1)  -- manual straightline
-       2. gcall HShiftScalar             -- shift_scalar(cond1, pk1)
-       3. gcall HShiftScalar             -- shift_scalar(cond2, pk2)
-       4. gcall HStoreZero               -- store_zero(aux)
-       5. gcall HCmovAlt                 -- group_cmov_alt(aux,aux,P,cond1)
-       6. gcall HCurveAdd                -- curve_add(out,aux,out)
-       7. gcall HStoreZero               -- store_zero(aux)
-       8. gcall HCmovAlt                 -- group_cmov_alt(aux,aux,phi,cond2)
-       9. gcall HCurveAdd                -- curve_add(out,aux,out)
-       10. gcall HCurveAdd               -- curve_add(P,P,P)
-       11. gcall HCurveAdd               -- curve_add(phi,phi,phi)
+    (* Initial invariant (v0 = 129, iter = 0) *)
+    { unfold glv_loop_inv.
+      split; [reflexivity |].
+      (* After store_zero: outx=Fzero, outy=Fone, outz=Fzero (identity).
+         After store iter=0: iter_word = word.of_Z 0.
+         k1/k2 unchanged, P/phi unchanged, aux/cond unchanged.
 
-       Then re-establish invariant at (vi - 1):
-       exists (vi - 1). split; [| lia].
-       unfold glv_loop_inv. split; [reflexivity |].
-       Provide existentials. Prove conjuncts:
-       - Scalar: Z.shiftr arithmetic
-       - Accumulator: scmul_glv decomposition
-       - Point doubling: scmul_glv 2*n = curve_add (scmul n) (scmul n)
-       - Sep: ecancel_assumption
-       - Locals: resolve_map_get for each variable *)
+         Provide existential witnesses: the current values of all fields.
+         Identity point: (Fzero, Fone, Fzero)
+         P unchanged: (Px, Py, Pz)
+         phi unchanged: (Phix, Phiy, Phiz)
+         aux: initial values from P_from_bytes
+         k1/k2: unchanged from input
+         cond1/cond2: initial from anybytes_to_scalar
+         iter_word: word.of_Z 0 (from the store we just did)
 
-    (* === Phase 6: Post-loop (FALSE branch, vi = 0) ===
+         Scalar invariants at iter=0:
+         - Z.shiftr k1_init 0 = k1_init = eval k1_words  (OK)
+         - Z.shiftr k2_init 0 = k2_init = eval k2_words  (OK)
+         - k1_init mod 2^0 = 0, so scmul_glv 0 P = identity  (OK)
+         - k2_init mod 2^0 = 0, so scmul_glv 0 phi = identity  (OK)
+         - curve_add identity identity = identity  (need id properties)
+         - 2^0 = 1, scmul_glv 1 P = curve_add P identity = P  (OK)
 
-       6 stack deallocations in reverse order.
-       Each deallocation (following MillerLoop.v lines 1735-1790):
+         The sep and locals follow from the current state after
+         store_zero + store iter. *)
+      admit. }
 
-       (* --- Dealloc level N: name (type) --- *)
-       eassert (H : (_ * FElem/scalar addr val) m).
-       { pose proof Hsep as H'. ecancel_assumption. }
-       destruct H as [mRest [mStack [[Heq Hd] [Hrest Hfelem]]]].
-       exists mRest, mStack.
-       split. { exact (FElem_to_bytes addr val mStack Hfelem).
-                -- or: exact (scalar_to_anybytes ...). }
-       split. { split; [exact Heq | exact Hd]. }
+    (* Loop body + post-loop: Loops.while_localsmap generates 2 subgoals:
+       1. Loop body: forall vi, invariant vi -> exists br,
+            expr ... br /\
+            (br <> 0 -> body; exists vi', invariant vi' /\ vi' < vi) /\
+            (br = 0  -> postcondition)
+       2. (already handled by well_founded + initial invariant above)
 
-       Dealloc order: iter, cond2, cond1, auxz, auxy, auxx.
+       Actually, while_localsmap generates 3 subgoals:
+       a. well_founded (done above)
+       b. initial invariant (done above)
+       c. forall v t m l, invariant v t m l ->
+            exists br, expr ... br /\
+            (br <> 0 -> loop body WP) /\
+            (br = 0  -> post-loop WP)
 
-       Final postcondition:
-       cbv [list_map list_map_body].
-       split. { exact eq_refl. }  (* rets = [] *)
-       split. { exact eq_refl. }  (* tr = tr' *)
-       exists Outx_i, Outy_i, Outz_i, Px_i, Py_i, Pz_i,
-              Phix_i, Phiy_i, Phiz_i, k1w_i, k2w_i.
-       split.
-       { (* Output = curve_add(scmul k1 P)(scmul k2 phi) *)
-         (* From Hout_i with vi=0: iter=129, so
-            k_init mod 2^129 = k_init for k < 2^129. *)
-         exact Hout_i. (* after simplifying 129-0=129 *) }
-       ecancel_assumption. *)
+       So we have ONE subgoal here combining body and post-loop. *)
+    { intros vi ti mi li Hinv.
+      unfold glv_loop_inv in Hinv.
+      destruct Hinv as [Htr_i Hinv_body].
+      destruct Hinv_body as [Outx_i [Outy_i [Outz_i [Px_i [Py_i [Pz_i
+        [Phix_i [Phiy_i [Phiz_i [Auxx_i [Auxy_i [Auxz_i
+        [k1w_i [k2w_i [c1_i [c2_i [iw_i
+        Hinv_conj]]]]]]]]]]]]]]]]].
+      subst ti.
 
-    admit.
+      (* Destruct all conjuncts from the invariant *)
+      destruct Hinv_conj as
+        [Hk1_i [Hk2_i [Hout_i [Hp_i [Hphi_i
+        [Hsep_i
+        [Hl_outx [Hl_outy [Hl_outz
+        [Hl_px [Hl_py [Hl_pz
+        [Hl_phix [Hl_phiy [Hl_phiz
+        [Hl_pk1 [Hl_pk2
+        [Hl_auxx [Hl_auxy [Hl_auxz
+        [Hl_cond1 [Hl_cond2 [Hl_iter
+        [Hiter_val Hv_eq]]]]]]]]]]]]]]]]]]]]]]]].
+
+      (* Evaluate branch condition:
+         expr.op bopname.ltu
+           (expr.load access_size.word (expr.var "iter"))
+           (expr.literal glv_iterations)
+         This loads the iter counter from memory, compares with 129.
+         Result is word.b2w (word.ltu iter_word (word.of_Z 129)). *)
+
+      (* The branch value is computed from memory (load from a_iter).
+         We need to provide the value and show the expression evaluates to it.
+         From Hsep_i: (scalar a_iter iw_i ⋆ ...) mi
+         From Hiter_val: word.unsigned iw_i = 129 - Z.of_nat vi *)
+
+      (* Provide branch value: word encoding of (iter < 129) *)
+      exists (word.b2w (word.ltu iw_i (word.of_Z glv_iterations))).
+      split.
+      { (* Evaluate branch expression *)
+        admit. }
+
+      split.
+      { (* TRUE branch: iter < 129, i.e. vi > 0 *)
+        intro Hne.
+
+        (* Process store: iter = iter + 1 *)
+        glv_straightline.  (* cmd.seq *)
+        (* The store writes iter+1 to the iter location.
+           This is cmd.store, processed by straightline. *)
+        admit. }
+
+      { (* FALSE branch: iter >= 129, i.e. vi = 0 *)
+        intro Hcond.
+        (* The while condition is false: NOT (iter < 129), so iter >= 129.
+           From Hiter_val: word.unsigned iw_i = 129 - Z.of_nat vi.
+           From Hcond: word.unsigned (word.b2w (word.ltu ...)) = 0.
+           This means NOT (iw_i < 129), so iw_i >= 129.
+           Combined with iter = 129 - Z.of_nat vi, we get vi = 0.
+
+           Post-loop goal: WP for 6 stack deallocations, then postcondition.
+           After the while loop, there's no more code in the function body
+           (the while is the last statement before the stack deallocs).
+
+           The stack deallocs are automatic from the stackalloc construct:
+           they require providing anybytes for each stack buffer.
+
+           We need to convert:
+           - FElem None a_auxx/y/z → anybytes (via FElem_to_bytes)
+           - scalar a_cond1/2 → anybytes (via scalar_to_anybytes)
+           - scalar a_iter → anybytes (via scalar_to_anybytes)
+
+           Then provide the final postcondition existentials. *)
+
+        (* vi = 0 means iter = 129, all bits processed *)
+
+        (* --- Dealloc level 1: iter (word-sized scalar → anybytes) --- *)
+        (* The goal requires: exists mRest mStack,
+             anybytes a_iter (bytes_per_word) mStack /\
+             map.split m mRest mStack /\ <rest on mRest> *)
+        admit. } }
   Admitted.
 
 End GLV_Shamir_Generic.
