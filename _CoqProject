@@ -1,13 +1,4 @@
 -R src Crypto
--Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/coqprime/src/Coqprime Coqprime
--Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/deps/coqutil/src/coqutil coqutil
--Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/src/Rupicola Rupicola 
--Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/bedrock2/src/bedrock2 bedrock2
--Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/bedrock2/src/bedrock2Examples bedrock2Examples
--Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/compiler/src/compiler compiler
--Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/deps/riscv-coq/src/riscv riscv
--Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rewriter/src/Rewriter Rewriter
--I /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rewriter/src/Rewriter/Util/plugins
 -arg -w -arg +implicit-core-hint-db,+implicits-in-term,+non-reversible-notation,+deprecated-intros-until-0,+deprecated-focus,+unused-intro-pattern,+variable-collision,+unexpected-implicit-declaration,+omega-is-deprecated,+deprecated-instantiate-syntax,+non-recursive,+undeclared-scope,+deprecated-hint-rewrite-without-locality,+deprecated-hint-without-locality,+deprecated-instance-without-locality,+deprecated-typeclasses-transparency-without-locality,+fragile-hint-constr,-deprecated-since-9.0,-deprecated-since-8.20,-deprecated-from-Coq
 -arg -native-compiler -arg ondemand
 src/Everything.v
@@ -201,6 +192,8 @@ src/Bedrock/Field/Synthesis/Examples/BLS12_377_FinalExpDSD.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_377_FinalExpH3.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_377_FinalExpHardDSD.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_377_Fp12Feval.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_377_Fp2Feval.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_377_Fp6Feval.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_377_MillerLoop.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_377_Pairing.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_377_PairingFeval.v
@@ -319,6 +312,7 @@ src/Bedrock/P256/Coord.v
 src/Bedrock/P256/Coord32.v
 src/Bedrock/P256/Jacobian.v
 src/Bedrock/P256/JacobianAffine.v
+src/Bedrock/P256/MontConsts.v
 src/Bedrock/P256/Platform.v
 src/Bedrock/P256/ProgramLogic_compat.v
 src/Bedrock/P256/Repr.v
@@ -431,6 +425,7 @@ src/Spec/MontgomeryCurve.v
 src/Spec/MxDH.v
 src/Spec/SHA256_axiom.v
 src/Spec/WeierstrassCurve.v
+src/Spec/BLS12Pairing/BLSSignature.v
 src/Spec/BLS12Pairing/Bilinearity.v
 src/Spec/BLS12Pairing/FinalExpEquiv.v
 src/Spec/BLS12Pairing/Fp12.v
