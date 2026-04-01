@@ -447,7 +447,6 @@ Section GLV_Shamir_Generic.
 
   Opaque felem_size_in_bytes.
   Opaque Memory.bytes_per_word.
-  Opaque Z.of_nat.
   Opaque glv_scalar_words.
   Opaque glv_iterations.
 
@@ -512,6 +511,8 @@ Section GLV_Shamir_Generic.
         "shift_scalar"  -- literal string
         group_cmov_alt  -- section variable
         curve_add_name  -- section variable *)
+
+  Context (Hcaname : curve_add_name = "curve_add").
 
   Lemma glv_shamir_ok :
     forall functions
@@ -655,6 +656,31 @@ Section GLV_Shamir_Generic.
     (* Modeled on WPTactics.wp_call + BLS12_377 MillerLoop mcall.
        Handles binop (curve_add), custom fnspec (store_zero, cmov_alt),
        and shift_scalar specs. Avoids repeat straightline. *)
+    (* Custom postcall: beta-reduce before matching (fixes abstract locals) *)
+    Local Ltac glv_postcall :=
+      let t := fresh "t" in let m := fresh "m" in let rets := fresh "rets" in
+      let H := fresh "Hpost" in
+      intros t m rets H;
+      cbv beta in H;
+      lazymatch type of H with
+      | ?A /\ ?B =>
+        let Hrets := fresh "Hrets" in let Hrest := fresh "Hrest" in
+        destruct H as [Hrets Hrest];
+        subst rets;
+        lazymatch type of Hrest with
+        | ?C /\ ?D =>
+          let Htr := fresh "Htr" in let Hrem := fresh "Hrem" in
+          destruct Hrest as [Htr Hrem];
+          first [ symmetry in Htr; subst t | subst t | idtac ];
+          cbv [map.putmany_of_list_zip];
+          (try (eexists; split; [ exact eq_refl | ]))
+        | _ =>
+          first [ subst t | idtac ];
+          cbv [map.putmany_of_list_zip];
+          (try (eexists; split; [ exact eq_refl | ]))
+        end
+      end.
+
     Local Ltac gcall spec :=
       try glv_straightline;
       unfold1_cmd_goal; cbv beta match delta [cmd_body];
@@ -665,17 +691,26 @@ Section GLV_Shamir_Generic.
         [ wp_binop_precond solve_bounds_auto
         | wp_unop_precond solve_bounds_auto
         | split; ecancel_assumption_with_copy
+        | ecancel_assumption_with_copy
         | repeat (first
             [ solve_bounds_auto
             | ecancel_assumption_with_copy
             | split ])
         ]
-      | wp_postcall_auto ];
+      | glv_postcall ];
+      (* Destruct postcondition existentials *)
+      repeat match goal with
+      | H : exists _, _ |- _ => destruct H
+      end;
+      repeat match goal with
+      | H : _ /\ _ |- _ =>
+          lazymatch type of H with
+          | _ = _ /\ _ => destruct H
+          | _ /\ _ => destruct H
+          end
+      end;
       try match goal with
-      | H : exists _, _ /\ _ /\ _ |- _ =>
-          destruct H as [?vout [?Hfe [?Hb ?Hs]]]; try clear Hfe
-      | H : exists _, _ /\ _ |- _ =>
-          destruct H as [?vout [?Hb ?Hs]]
+      | H : ?tr = ?t |- _ => first [ subst t | subst tr | idtac ]
       end.
 
     (* === Phase 3: Process store_zero call + store iter=0 === *)
@@ -744,9 +779,24 @@ Section GLV_Shamir_Generic.
       repeat (first [exact eq_refl | eexists; split; [subst l4 l3 l2 l1 l0 l; resolve_map_get |]]). }
     eapply Semantics.weaken_call.
     1: { eapply HStoreZero. ecancel_assumption_impl. }
-    wp_postcall_auto.
-    (* store iter = 0: process the DEXPR + store *)
-    repeat straightline.
+    (* Manual postcall processing (wp_postcall_auto can't match this shape) *)
+    intros t'0 m'0 rets0 [Hrets0 [Htr0 Hsep0]].
+    subst rets0. symmetry in Htr0. subst t'0.
+    cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+    (* store iter = 0: resolve DEXPR + memory store manually *)
+    unfold1_cmd_goal; cbv beta match delta [cmd_body].
+    letexists. split.
+    { cbv [WeakestPrecondition.dexpr WeakestPrecondition.expr
+           WeakestPrecondition.expr_body WeakestPrecondition.get dlet.dlet].
+      eexists. split; [subst l4; rewrite map.get_put_same; exact eq_refl
+                       | exact eq_refl]. }
+    letexists. split.
+    { cbv [WeakestPrecondition.dexpr WeakestPrecondition.expr
+           WeakestPrecondition.expr_body WeakestPrecondition.literal dlet.dlet].
+      exact eq_refl. }
+    eapply store_word_of_sep.
+    { pose proof Hsep0 as H'. ecancel_assumption. }
+    intros m_store Hsep_store.
 
     (* === Phase 4: Apply Loops.while_localsmap === *)
 
@@ -796,25 +846,21 @@ Section GLV_Shamir_Generic.
       cbv [glv_iterations]. cbv beta.
       (* Scalar: Z.shiftr k 0 = k *)
       rewrite !Z.shiftr_0_r.
-      (* Accumulator: scmul_glv 0 = identity, curve_add id id = id *)
-      change (Z.to_nat (eval glv_scalar_words k1_words mod 2 ^ 0))
-        with 0%nat.
-      change (Z.to_nat (eval glv_scalar_words k2_words mod 2 ^ 0))
-        with 0%nat.
-      simpl scmul_glv.
+      (* Accumulator: k mod 1 = 0, scmul_glv 0 = identity *)
+      rewrite !Z.mod_1_r. simpl scmul_glv.
       rewrite curve_add_id_l.
-      (* Points: 2^0 = 1, scmul_glv 1 P = curve_add P identity = P *)
-      change (Z.to_nat (2 ^ 0)) with 1%nat.
-      simpl scmul_glv. rewrite curve_add_id_r. rewrite curve_add_id_r.
+      (* Points: scmul_glv 1 P = curve_add P identity = P *)
+      rewrite !curve_add_id_r.
+      subst a v.
       repeat split; try reflexivity.
-      (* Sep *)
-      all: try ecancel_assumption.
+      (* Sep: change Compilation2.FElem to FElem for ecancel matching *)
+      all: try (change Compilation2.FElem with FElem in Hsep_store;
+                ecancel_assumption).
       (* Locals *)
       all: try (subst l4 l3 l2 l1 l0 l; resolve_map_get).
       (* iter word value *)
-      all: try (rewrite word.unsigned_of_Z; cbv; reflexivity).
-      (* measure *)
-      all: try reflexivity. }
+      all: try (change (Z.of_nat 129) with 129%Z;
+                rewrite word.unsigned_of_Z; cbv; reflexivity). }
 
     (* Loop body + post-loop: Loops.while_localsmap generates 2 subgoals:
        1. Loop body: forall vi, invariant vi -> exists br,
@@ -875,14 +921,11 @@ Section GLV_Shamir_Generic.
              WeakestPrecondition.get WeakestPrecondition.load dlet.dlet].
         rewrite Hl_iter.
         (* Need to show: load from (scalar a_iter iw_i) yields iw_i *)
+        eexists. split. { exact eq_refl. }
         eexists. split.
-        { (* Memory load from scalar *)
-          eapply load_word_of_sep.
-          (* scalar a_iter iw_i is in Hsep_i *)
-          ecancel_assumption. }
-        cbv [Semantics.interp_binop literal].
-        eexists. split; [exact eq_refl |].
-        exact eq_refl. }
+        { eapply load_word_of_sep. ecancel_assumption. }
+        cbv [Semantics.interp_binop literal dlet.dlet word.b2w Z.b2z].
+        destruct (word.ltu iw_i (word.of_Z glv_iterations)); exact eq_refl. }
 
       split.
       { (* TRUE branch: iter < 129, i.e. vi > 0 *)
@@ -890,33 +933,43 @@ Section GLV_Shamir_Generic.
 
         (* Process store: iter = iter + 1 *)
         glv_straightline.  (* cmd.seq — peel to expose store + rest *)
-        (* cmd.store iter (iter+1): straightline handles this *)
-        straightline. straightline. straightline. straightline.
+        (* cmd.store iter (iter+1): manual resolution for abstract locals *)
         straightline. straightline.
+        exists a_iter. split.
+        { cbv [WeakestPrecondition.dexpr WeakestPrecondition.expr
+               WeakestPrecondition.expr_body WeakestPrecondition.get dlet.dlet].
+          eexists. split; [exact Hl_iter | exact eq_refl]. }
+        (* Evaluate load(iter) + 1, then store *)
+        eexists. split.
+        { (* DEXPR: load(iter) + 1 *)
+          eexists. split. { exact Hl_iter. }
+          eexists. split. { eapply load_word_of_sep. ecancel_assumption. }
+          cbv [Semantics.interp_binop].
+          exact eq_refl. }
+        eapply store_word_of_sep. { ecancel_assumption. }
+        intros m_iter Hsep_iter.
 
-        (* === 11 function calls in the loop body === *)
+        (* === Loop body: 10 function calls + invariant restoration === *)
+
         (* Call 1: shift_scalar(cond1, pk1) *)
         gcall HShiftScalar.
         (* Call 2: shift_scalar(cond2, pk2) *)
         gcall HShiftScalar.
-        (* Call 3: store_zero(auxx, auxy, auxz) *)
+        (* Call 3: store_zero(aux) *)
         gcall HStoreZero.
-        (* Call 4: group_cmov_alt(aux, aux, P, cond1) *)
+        (* Call 4: cmov_alt(aux, aux, P, cond1) + bounds proof *)
         gcall HCmovAlt.
-        (* Call 5: curve_add(out, aux, out) *)
-        gcall HCurveAdd.
-        (* Call 6: store_zero(auxx, auxy, auxz) *)
-        gcall HStoreZero.
-        (* Call 7: group_cmov_alt(aux, aux, phi, cond2) *)
-        gcall HCmovAlt.
-        (* Call 8: curve_add(out, aux, out) *)
-        gcall HCurveAdd.
-        (* Call 9: curve_add(P, P, P) — double P *)
-        gcall HCurveAdd.
-        (* Call 10: curve_add(phi, phi, phi) — double phi *)
-        gcall HCurveAdd.
+        1: (unfold ZRange.is_bounded_by_bool; simpl;
+            rewrite Bool.andb_true_iff; split; apply Z.leb_le;
+            rewrite <- H1;
+            pose proof (Z.mod_pos_bound
+              (eval glv_scalar_words k1w_i) 2 ltac:(lia)); lia).
 
-        (* === Invariant restoration at measure vi-1 === *)
+        (* Calls 5-10 use curve_add with aliased output pointers.
+           spec_of_ladderstep requires all 9 FElem in a single sep,
+           which is unsatisfiable when input and output pointers alias.
+           Needs spec_of_curve_add_alt (split-sep spec) instead.
+           Invariant restoration needs algebraic lemmas about scmul_glv. *)
         admit. }
 
       { (* FALSE branch: iter >= 129, i.e. vi = 0 *)
@@ -944,10 +997,75 @@ Section GLV_Shamir_Generic.
         (* vi = 0 means iter = 129, all bits processed *)
 
         (* --- Dealloc level 1: iter (word-sized scalar → anybytes) --- *)
-        (* The goal requires: exists mRest mStack,
-             anybytes a_iter (bytes_per_word) mStack /\
-             map.split m mRest mStack /\ <rest on mRest> *)
-        admit. } }
+        eassert (Hiter_sep : (_ ⋆ scalar a_iter _) mi).
+        { pose proof Hsep_i as H'. ecancel_assumption. }
+        destruct Hiter_sep as [m_rest_iter [m_stk_iter [[Heq_iter' Hd_iter'] [Hrest_iter Hstk_iter]]]].
+        eapply scalar_to_anybytes in Hstk_iter.
+        exists m_rest_iter, m_stk_iter.
+        split. { exact Hstk_iter. }
+        split. { split; [exact Heq_iter' | exact Hd_iter']. }
+
+        (* --- Dealloc level 2: cond2 (word-sized scalar → anybytes) --- *)
+        eassert (Hcond2_sep : (_ ⋆ scalar a_cond2 _) m_rest_iter).
+        { pose proof Hrest_iter as H'. ecancel_assumption. }
+        destruct Hcond2_sep as [m_rest_cond2 [m_stk_cond2 [[Heq_cond2' Hd_cond2'] [Hrest_cond2 Hstk_cond2]]]].
+        eapply scalar_to_anybytes in Hstk_cond2.
+        exists m_rest_cond2, m_stk_cond2.
+        split. { exact Hstk_cond2. }
+        split. { split; [exact Heq_cond2' | exact Hd_cond2']. }
+
+        (* --- Dealloc level 3: cond1 (word-sized scalar → anybytes) --- *)
+        eassert (Hcond1_sep : (_ ⋆ scalar a_cond1 _) m_rest_cond2).
+        { pose proof Hrest_cond2 as H'. ecancel_assumption. }
+        destruct Hcond1_sep as [m_rest_cond1 [m_stk_cond1 [[Heq_cond1' Hd_cond1'] [Hrest_cond1 Hstk_cond1]]]].
+        eapply scalar_to_anybytes in Hstk_cond1.
+        exists m_rest_cond1, m_stk_cond1.
+        split. { exact Hstk_cond1. }
+        split. { split; [exact Heq_cond1' | exact Hd_cond1']. }
+
+        (* --- Dealloc level 4: auxz (felem-sized FElem None → anybytes) --- *)
+        eassert (Hauxz_sep : (_ ⋆ FElem None a_auxz _) m_rest_cond1).
+        { change Compilation2.FElem with FElem in Hrest_cond1.
+          pose proof Hrest_cond1 as H'. ecancel_assumption. }
+        destruct Hauxz_sep as [m_rest_auxz [m_stk_auxz [[Heq_auxz' Hd_auxz'] [Hrest_auxz Hstk_auxz]]]].
+        exists m_rest_auxz, m_stk_auxz.
+        split. { exact (P_to_bytes a_auxz _ m_stk_auxz Hstk_auxz). }
+        split. { split; [exact Heq_auxz' | exact Hd_auxz']. }
+
+        (* --- Dealloc level 5: auxy (felem-sized FElem None → anybytes) --- *)
+        eassert (Hauxy_sep : (_ ⋆ FElem None a_auxy _) m_rest_auxz).
+        { change Compilation2.FElem with FElem in Hrest_auxz.
+          pose proof Hrest_auxz as H'. ecancel_assumption. }
+        destruct Hauxy_sep as [m_rest_auxy [m_stk_auxy [[Heq_auxy' Hd_auxy'] [Hrest_auxy Hstk_auxy]]]].
+        exists m_rest_auxy, m_stk_auxy.
+        split. { exact (P_to_bytes a_auxy _ m_stk_auxy Hstk_auxy). }
+        split. { split; [exact Heq_auxy' | exact Hd_auxy']. }
+
+        (* --- Dealloc level 6: auxx (felem-sized FElem None → anybytes) --- *)
+        eassert (Hauxx_sep : (_ ⋆ FElem None a_auxx _) m_rest_auxy).
+        { change Compilation2.FElem with FElem in Hrest_auxy.
+          pose proof Hrest_auxy as H'. ecancel_assumption. }
+        destruct Hauxx_sep as [m_rest_auxx [m_stk_auxx' [[Heq_auxx' Hd_auxx'] [Hrest_auxx Hstk_auxx]]]].
+        exists m_rest_auxx, m_stk_auxx'.
+        split. { exact (P_to_bytes a_auxx _ m_stk_auxx' Hstk_auxx). }
+        split. { split; [exact Heq_auxx' | exact Hd_auxx']. }
+
+        (* --- Final postcondition --- *)
+        cbv [list_map list_map_body].
+        split. { exact eq_refl. }
+        split. { exact eq_refl. }
+        (* Provide existential witnesses for output values *)
+        exists Outx_i, Outy_i, Outz_i,
+               Px_i, Py_i, Pz_i,
+               Phix_i, Phiy_i, Phiz_i.
+        exists k1w_i, k2w_i.
+        split.
+        { (* Accumulator equation: out = [k1]P + [k2]phi(P) *)
+          (* At vi=0, iter=129, all bits processed *)
+          admit. }
+        (* Sep: the remaining memory satisfies the postcondition *)
+        change Compilation2.FElem with FElem in Hrest_auxx.
+        ecancel_assumption. } }
   Admitted.
 
 End GLV_Shamir_Generic.
