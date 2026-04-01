@@ -3,6 +3,7 @@
    Compile with: rocq c -Q src Crypto -native-compiler no -time src/Bedrock/P256/Repr.v *)
 
 From Crypto.Bedrock.P256 Require Import Specs.
+From Crypto.Bedrock.P256 Require Import MontConsts.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.p256_prime.
 Require Import Crypto.Bedrock.Specs.Field.
 Require Import Crypto.Bedrock.Field.Interface.Representation.
@@ -176,17 +177,19 @@ Qed.
 (* coord_feval, coord_bounded, FElem_to_coord *)
 (* ================================================================ *)
 
-(* Helper: partition validity for Montgomery bridge proofs *)
+(* Helper: partition validity for Montgomery bridge proofs.
+   Constants precomputed in MontConsts.v (native_compute, 3s)
+   instead of vm_compute here (37 min). *)
 Local Ltac assert_mont_params :=
   let r' := fresh "r'" in
   let m' := fresh "m'" in
-  set (r' := @WordByWordMontgomery.r' 64 p256_field_parameters);
-  set (m' := WordByWordMontgomery.m' m 64);
-  assert (Hr'_correct : (2 ^ 64 * r') mod m = 1) by (subst r'; apply Z.eqb_eq; vm_compute; reflexivity);
-  assert (Hm'_correct : (m * m') mod 2 ^ 64 = (-1) mod 2 ^ 64) by (subst m'; apply Z.eqb_eq; vm_compute; reflexivity);
-  assert (Hm_big : m < (2 ^ 64) ^ Z.of_nat 4) by (apply Z.ltb_lt; vm_compute; reflexivity);
-  assert (Hm_small : 1 < m) by (apply Z.ltb_lt; vm_compute; reflexivity);
-  assert (Hr4 : (r' ^ 4 * 2^256) mod m = 1) by (subst r'; apply Z.eqb_eq; vm_compute; reflexivity).
+  set (r' := MontConsts.p256_r');
+  set (m' := MontConsts.p256_m');
+  assert (Hr'_correct : (2 ^ 64 * r') mod m = 1) by (subst r'; exact MontConsts.p256_r'_correct);
+  assert (Hm'_correct : (m * m') mod 2 ^ 64 = (-1) mod 2 ^ 64) by (subst m'; exact MontConsts.p256_m'_correct);
+  assert (Hm_big : m < (2 ^ 64) ^ Z.of_nat 4) by exact MontConsts.p256_m_big;
+  assert (Hm_small : 1 < m) by exact MontConsts.p256_m_small;
+  assert (Hr4 : (r' ^ 4 * 2^256) mod m = 1) by (subst r'; exact MontConsts.p256_r'4).
 
 Local Ltac prove_partition_valid z Hz :=
   pose proof (@uwprops 64 ltac:(lia)) as Huw;
