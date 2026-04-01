@@ -68,9 +68,25 @@
 
 **Estimated savings**: ~500 lines per new cubic layer
 
-### Phase 3: Automated Feval Chain Generation (future)
-The 8 feval files per curve (Fp2/Fp6/Fp12/Pairing x2) follow a mechanical pattern.
-A tactic or Ltac2 metaprogram could emit feval lemmas from a tower description.
+### Phase 3: Generic Feval Identities ✅ DONE
+**Goal**: Reusable algebraic identities that every curve's feval chain needs.
+
+**Files created**:
+- `GenericQuadraticFeval.v` (109 lines) — Quadratic extension identities:
+  `qe_mul_self_alt`, `qe_karatsuba_cross_term`, `qe_mul_comm`,
+  `qe_sub_sub_eq_sub_add`, `qe_add_sub_eq_sub_add`
+- `GenericCubicFeval.v` (150 lines) — Cubic extension identities:
+  `ce_mul_self_eq_sqr`, `ce_karatsuba_cross_term`, `ce_mul_comm`,
+  `ce_sub_sub_eq_sub_add`, `ce_add_sub_eq_sub_add`
+
+**Parameterized over**: any base field with stdlib `ring_theory`.
+Cubic feval also requires `mul_by_nr_add` (linearity of mul_by_nonresidue).
+
+**Per-curve feval files now only need**:
+- Specific beta/xi instantiation (~10 lines)
+- Bridge to curve-specific pairing spec (~30 lines)
+- Rewrite database export (~5 lines)
+- **Total: ~50 lines per layer** (down from ~200)
 
 ### Phase 4: Per-Curve Instantiation for BLS24-509
 With generic modules, the new code needed is:
