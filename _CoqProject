@@ -1,6 +1,15 @@
 -R src Crypto
--arg -native-compiler -arg no
--arg -w -arg -deprecated-since-9.0,-deprecated-since-8.20,-deprecated-from-Coq
+-Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/coqprime/src/Coqprime Coqprime
+-Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/deps/coqutil/src/coqutil coqutil
+-Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/src/Rupicola Rupicola 
+-Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/bedrock2/src/bedrock2 bedrock2
+-Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/bedrock2/src/bedrock2Examples bedrock2Examples
+-Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/compiler/src/compiler compiler
+-Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rupicola/bedrock2/deps/riscv-coq/src/riscv riscv
+-Q /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rewriter/src/Rewriter Rewriter
+-I /home/au528660/Claude/BLS/AUCurves/fiat-crypto/rewriter/src/Rewriter/Util/plugins
+-arg -w -arg +implicit-core-hint-db,+implicits-in-term,+non-reversible-notation,+deprecated-intros-until-0,+deprecated-focus,+unused-intro-pattern,+variable-collision,+unexpected-implicit-declaration,+omega-is-deprecated,+deprecated-instantiate-syntax,+non-recursive,+undeclared-scope,+deprecated-hint-rewrite-without-locality,+deprecated-hint-without-locality,+deprecated-instance-without-locality,+deprecated-typeclasses-transparency-without-locality,+fragile-hint-constr,-deprecated-since-9.0,-deprecated-since-8.20,-deprecated-from-Coq
+-arg -native-compiler -arg ondemand
 src/Everything.v
 src/Bedrock/Everything.v
 src/BoundsPipeline.v
@@ -147,11 +156,16 @@ src/Bedrock/Field/Common/Arrays/MakeListLengths.v
 src/Bedrock/Field/Common/Arrays/MaxBounds.v
 src/Bedrock/Field/Common/Names/MakeNames.v
 src/Bedrock/Field/Common/Names/VarnameGenerator.v
+src/Bedrock/Field/FieldExtensions/Compilation2_Fp2.v
+src/Bedrock/Field/FieldExtensions/Compilation2_Fp2_test.v
+src/Bedrock/Field/FieldExtensions/CopyElim.v
+src/Bedrock/Field/FieldExtensions/CopyElimProofs.v
 src/Bedrock/Field/FieldExtensions/CubicFieldExtensions.v
 src/Bedrock/Field/FieldExtensions/CubicFieldExtensionsSpecs.v
 src/Bedrock/Field/FieldExtensions/DodecicFieldExtensions.v
 src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsInv.v
 src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsMul.v
+src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsMulNocopy.v
 src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsSpecs.v
 src/Bedrock/Field/FieldExtensions/DodecicFieldExtensionsSqr.v
 src/Bedrock/Field/FieldExtensions/PairingFieldOps.v
@@ -163,6 +177,7 @@ src/Bedrock/Field/FieldExtensions/SepFromPutmany.v
 src/Bedrock/Field/FieldExtensions/SepFromPutmany_test.v
 src/Bedrock/Field/FieldExtensions/SepFromPutmany_test2.v
 src/Bedrock/Field/FieldExtensions/SepFromPutmany_test3.v
+src/Bedrock/Field/FieldExtensions/ToCStringTyped.v
 src/Bedrock/Field/FieldExtensions/WPFp2Auto.v
 src/Bedrock/Field/FieldExtensions/WPFp2Tactics.v
 src/Bedrock/Field/FieldExtensions/WPTactics.v
@@ -185,15 +200,22 @@ src/Bedrock/Field/Synthesis/Examples/BLS12_377_Extract.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_377_FinalExpDSD.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_377_FinalExpH3.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_377_FinalExpHardDSD.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_377_Fp12Feval.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_377_MillerLoop.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_377_Pairing.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_377_PairingFeval.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_377_PairingHelpers.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_377_PairingTop.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_377_PowU.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_AlgebraicSpecs.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_CurveInstances.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_Endomorphism.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_Extract.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_FinalExp.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_FinalExpH3.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_Fp12Feval.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_Fp2Feval.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_Fp6Feval.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_FpInv.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_FpInv_proof.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_FpInv_test.v
@@ -208,6 +230,7 @@ src/Bedrock/Field/Synthesis/Examples/BLS12_Legendre.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_MillerGeneric.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_MillerLoop.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_Pairing.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_PairingFeval.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_PairingHelpers.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_PairingTop.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_PowGeneric.v
@@ -402,10 +425,13 @@ src/Rewriter/PerfTesting/Core.v
 src/Rewriter/PerfTesting/StandaloneOCamlMain.v
 src/Spec/CompleteEdwardsCurve.v
 src/Spec/Curve25519.v
+src/Spec/HashToCurve.v
 src/Spec/ModularArithmetic.v
 src/Spec/MontgomeryCurve.v
 src/Spec/MxDH.v
+src/Spec/SHA256_axiom.v
 src/Spec/WeierstrassCurve.v
+src/Spec/BLS12Pairing/Bilinearity.v
 src/Spec/BLS12Pairing/FinalExpEquiv.v
 src/Spec/BLS12Pairing/Fp12.v
 src/Spec/BLS12Pairing/Fp6.v
@@ -754,4 +780,3 @@ src/Util/ZUtil/Tactics/PullPush/Modulo.v
 src/Util/ZUtil/ZSimplify/Autogenerated.v
 src/Util/ZUtil/ZSimplify/Core.v
 src/Util/ZUtil/ZSimplify/Simple.v
-src/Bedrock/Field/Synthesis/Examples/BLS12_CurveInstances.v
