@@ -826,8 +826,21 @@ Section GLV_Shamir_Generic.
       (* Provide branch value: word encoding of (iter < 129) *)
       exists (word.b2w (word.ltu iw_i (word.of_Z glv_iterations))).
       split.
-      { (* Evaluate branch expression *)
-        admit. }
+      { (* Evaluate branch expression:
+           expr.op bopname.ltu (expr.load access_size.word (expr.var "iter")) (expr.literal glv_iterations)
+           The load reads iw_i from scalar a_iter, then compares with 129. *)
+        cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
+             WeakestPrecondition.get WeakestPrecondition.load dlet.dlet].
+        rewrite Hl_iter.
+        (* Need to show: load from (scalar a_iter iw_i) yields iw_i *)
+        eexists. split.
+        { (* Memory load from scalar *)
+          eapply load_word_of_sep.
+          (* scalar a_iter iw_i is in Hsep_i *)
+          ecancel_assumption. }
+        cbv [Semantics.interp_binop literal].
+        eexists. split; [exact eq_refl |].
+        exact eq_refl. }
 
       split.
       { (* TRUE branch: iter < 129, i.e. vi > 0 *)
