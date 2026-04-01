@@ -113,6 +113,7 @@ Section GLV_Shamir_Generic.
   Context {curve_add_id_r : forall x y z, curve_add (x, y, z) (Fzero, Fone, Fzero) = (x, y, z)}.
   Context {curve_add_id_l : forall x y z, curve_add (Fzero, Fone, Fzero) (x, y, z) = (x, y, z)}.
   Context {curve_add_assoc : forall P Q R, curve_add P (curve_add Q R) = curve_add (curve_add P Q) R}.
+  Context {curve_add_comm : forall P Q, curve_add P Q = curve_add Q P}.
 
   (* Connection: the abstract curve_add equals the bedrock2 ladderstep.
      Uses let-destruction to bridge P2.prod and Datatypes.prod. *)

@@ -145,4 +145,38 @@ Section GLV_Algebra.
     rewrite Zmod_odd. destruct (Z.odd _); reflexivity.
   Qed.
 
+  (** Combined invariant step: packages scalar shift, accumulator, and doubling.
+      Given invariant at [iter], produces invariant at [iter+1]. *)
+  Lemma glv_inv_step : forall k1_init k2_init iter P_init Phi_init
+    (k1_eval k2_eval : Z) (Out curP curPhi : F * F * F),
+    0 <= k1_init -> 0 <= k2_init -> 0 <= iter ->
+    k1_eval = Z.shiftr k1_init iter ->
+    k2_eval = Z.shiftr k2_init iter ->
+    Out = curve_add (scmul (Z.to_nat (k1_init mod 2 ^ iter)) P_init)
+                    (scmul (Z.to_nat (k2_init mod 2 ^ iter)) Phi_init) ->
+    curP = scmul (Z.to_nat (2 ^ iter)) P_init ->
+    curPhi = scmul (Z.to_nat (2 ^ iter)) Phi_init ->
+    (* Scalar shift *)
+    k1_eval / 2 = Z.shiftr k1_init (iter + 1)
+    /\ k2_eval / 2 = Z.shiftr k2_init (iter + 1)
+    (* Accumulator update *)
+    /\ (let b1 := Z.b2z (Z.testbit k1_init iter) in
+        let b2 := Z.b2z (Z.testbit k2_init iter) in
+        curve_add (curve_add Out (scmul (Z.to_nat b1) curP))
+                  (scmul (Z.to_nat b2) curPhi)
+        = curve_add (scmul (Z.to_nat (k1_init mod 2 ^ (iter + 1))) P_init)
+                    (scmul (Z.to_nat (k2_init mod 2 ^ (iter + 1))) Phi_init))
+    (* Point doubling *)
+    /\ curve_add curP curP = scmul (Z.to_nat (2 ^ (iter + 1))) P_init
+    /\ curve_add curPhi curPhi = scmul (Z.to_nat (2 ^ (iter + 1))) Phi_init.
+  Proof.
+    intros * Hk1 Hk2 Hi Hk1e Hk2e Hout HcurP HcurPhi.
+    subst. repeat split.
+    - symmetry. apply Z_shiftr_step; lia.
+    - symmetry. apply Z_shiftr_step; lia.
+    - apply glv_loop_step; lia.
+    - symmetry. apply scmul_pow2_succ; lia.
+    - symmetry. apply scmul_pow2_succ; lia.
+  Qed.
+
 End GLV_Algebra.
