@@ -1001,11 +1001,70 @@ Section GLV_Shamir_Generic.
             pose proof (Z.mod_pos_bound
               (eval glv_scalar_words k1w_i) 2 ltac:(lia)); lia).
 
-        (* Calls 5-10 use curve_add with aliased output pointers.
-           spec_of_ladderstep requires all 9 FElem in a single sep,
-           which is unsatisfiable when input and output pointers alias.
-           Needs spec_of_curve_add_alt (split-sep spec) instead.
-           Invariant restoration needs algebraic lemmas about scmul_glv. *)
+        (* === Calls 5-10: aliased curve_add + store_zero + cmov_alt === *)
+        (* Helper: solve store_zero FElem None precondition from FElem tight.
+           After gcall HStoreZero, the side goal is (FElem None ... ⋆ ...) m.
+           We have a hypothesis with FElem (Some tight_bounds) on the same m.
+           Use impl1 + cancel + ecancel_step_by_implication to drop bounds. *)
+        Local Ltac solve_store_zero_pre_impl :=
+          (* Destruct curve_add let-bindings in hypotheses *)
+          repeat match goal with
+          | H : context[curve_add (?a, ?b, ?c) (?d, ?e, ?ff)] |- _ =>
+            destruct (curve_add (a, b, c) (d, e, ff)) as [[? ?] ?] eqn:? in H
+          end;
+          (* Find a sep hypothesis on the same memory and use impl1 *)
+          match goal with
+          | Hrem : (_ ⋆ _) ?m |- (_ ⋆ _) ?m =>
+            refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m Hrem);
+            cancel;
+            repeat ecancel_step_by_implication;
+            try (cbn [seps]; apply impl1_refl)
+          end.
+
+        (* Call 5: curve_add(out, aux, out) — out += cond1 ? P : id *)
+        gcall HCurveAddInplace.
+
+        (* Call 6: store_zero(aux) — reset aux to identity *)
+        gcall HStoreZero.
+        1: solve_store_zero_pre_impl.
+
+        (* Call 7: cmov_alt(aux, aux, phi, cond2) — aux = cond2 ? phi : id *)
+        gcall HCmovAlt.
+        1: (unfold ZRange.is_bounded_by_bool; simpl;
+            rewrite Bool.andb_true_iff; split; apply Z.leb_le;
+            match goal with
+            | H : _ mod 2 = word.unsigned _ |- _ => rewrite <- H
+            end;
+            pose proof (Z.mod_pos_bound
+              (eval glv_scalar_words k2w_i) 2 ltac:(lia)); lia).
+
+        (* Call 8: curve_add(out, aux, out) — out += cond2 ? phi : id *)
+        gcall HCurveAddInplace.
+
+        (* Call 9: curve_add(P, P, P) — P = 2P (in-place doubling) *)
+        gcall HCurveAddDouble.
+
+        (* Call 10: curve_add(phi, phi, phi) — phi = 2*phi (in-place doubling) *)
+        gcall HCurveAddDouble.
+
+        (* === Loop invariant restoration === *)
+        (* Provide the decreasing variant: vi - 1 < vi *)
+        exists (vi - 1).
+        unfold Markers.split.
+        split.
+        2: { lia. }
+
+        (* Provide the loop invariant for vi - 1 *)
+        unfold glv_loop_inv.
+        split. { reflexivity. }
+
+        (* Destruct curve_add results from calls 5 and 8 *)
+        repeat match goal with
+        | H : context[let '(_, _, _) := curve_add _ _ in _] |- _ =>
+          destruct (curve_add _ _) as [[? ?] ?] eqn:? in H
+        end.
+
+        (* Provide existential witnesses for the next iteration *)
         admit. }
 
       { (* FALSE branch: iter >= 129, i.e. vi = 0 *)
