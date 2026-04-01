@@ -651,20 +651,32 @@ Section GLV_Shamir_Generic.
        Final postcondition: existentials + sep.
        (~100 lines following MillerLoop.v lines 1701-1800) *)
 
-    (* === Tactic: gcall processes one call in the GLV loop body === *)
-    (* Similar to mcall in BLS12_MillerLoop.v *)
+    (* === Tactic: gcall processes one function call end-to-end === *)
+    (* Modeled on WPTactics.wp_call + BLS12_377 MillerLoop mcall.
+       Handles binop (curve_add), custom fnspec (store_zero, cmov_alt),
+       and shift_scalar specs. Avoids repeat straightline. *)
     Local Ltac gcall spec :=
-      (* Peel cmd.seq if present *)
       try glv_straightline;
-      unfold1_cmd_goal; cbv beta match delta [cmd_body]; (* cmd.call *)
-      letexists; split; [solve [eval_dexprs_abstract] |]; (* args+dexprs *)
-      (* Apply spec via weaken_call *)
+      unfold1_cmd_goal; cbv beta match delta [cmd_body];
+      letexists; split; [solve [eval_dexprs_abstract] |];
       eapply Semantics.weaken_call;
-      [ eapply spec; ecancel_assumption
-      | cbv beta; intros ? ? ? ?; subst;
-        cbv [map.putmany_of_list_zip];
-        eexists; split; [exact eq_refl |]
-      ].
+      [ let H := fresh "Hcall" in pose proof spec as H; eapply H;
+        first
+        [ wp_binop_precond solve_bounds_auto
+        | wp_unop_precond solve_bounds_auto
+        | split; ecancel_assumption_with_copy
+        | repeat (first
+            [ solve_bounds_auto
+            | ecancel_assumption_with_copy
+            | split ])
+        ]
+      | wp_postcall_auto ];
+      try match goal with
+      | H : exists _, _ /\ _ /\ _ |- _ =>
+          destruct H as [?vout [?Hfe [?Hb ?Hs]]]; try clear Hfe
+      | H : exists _, _ /\ _ |- _ =>
+          destruct H as [?vout [?Hb ?Hs]]
+      end.
 
     (* === Phase 3: Process store_zero call + store iter=0 === *)
     (* Process let/d and peel cmd.seq for the store_zero call *)
@@ -735,7 +747,32 @@ Section GLV_Shamir_Generic.
 
          The sep and locals follow from the current state after
          store_zero + store iter. *)
-      admit. }
+      (* Witnesses: identity output, unchanged P/phi/aux/k/cond, iter=0 *)
+      exists Fzero, Fone, Fzero, Px, Py, Pz, Phix, Phiy, Phiz,
+             Auxx_init, Auxy_init, Auxz_init,
+             k1_words, k2_words, c1_init, c2_init, (word.of_Z 0).
+      cbv [glv_iterations]. cbv beta.
+      (* Scalar: Z.shiftr k 0 = k *)
+      rewrite !Z.shiftr_0_r.
+      (* Accumulator: scmul_glv 0 = identity, curve_add id id = id *)
+      change (Z.to_nat (eval glv_scalar_words k1_words mod 2 ^ 0))
+        with 0%nat.
+      change (Z.to_nat (eval glv_scalar_words k2_words mod 2 ^ 0))
+        with 0%nat.
+      simpl scmul_glv.
+      rewrite curve_add_id_l.
+      (* Points: 2^0 = 1, scmul_glv 1 P = curve_add P identity = P *)
+      change (Z.to_nat (2 ^ 0)) with 1%nat.
+      simpl scmul_glv. rewrite curve_add_id_r. rewrite curve_add_id_r.
+      repeat split; try reflexivity.
+      (* Sep *)
+      all: try ecancel_assumption.
+      (* Locals *)
+      all: try (subst l4 l3 l2 l1 l0 l; resolve_map_get).
+      (* iter word value *)
+      all: try (rewrite word.unsigned_of_Z; cbv; reflexivity).
+      (* measure *)
+      all: try reflexivity. }
 
     (* Loop body + post-loop: Loops.while_localsmap generates 2 subgoals:
        1. Loop body: forall vi, invariant vi -> exists br,
