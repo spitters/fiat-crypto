@@ -211,7 +211,63 @@ Section Fp2.
   Lemma invp2_generic_norm : forall a0 a1,
     invp2 (a0, a1) = (a0 *p F.inv (normp2 (a0, a1)),
                        F.opp a1 *p F.inv (normp2 (a0, a1))).
-  Proof. admit. Admitted.
+  Proof.
+    (* Helper tactic for norm ≠ 0 side condition *)
+    assert (norm_nz : forall a0 a1 : F p, a0 <> F.zero ->
+      (a0 *p a0 -p (β *p a1) *p a1) <> F.zero).
+    { intros a0' a1' Hane' Hnorm'.
+      destruct (F.to_Z a1' =? 0) eqn:Ha1'.
+      - apply Z.eqb_eq in Ha1'.
+        assert (Ha1z : a1' = F.zero)
+          by (eapply (f_equal (fun y => F.of_Z p y)) in Ha1'; rewrite F.of_Z_to_Z in Ha1'; exact Ha1').
+        subst a1'. assert (Hsq : (a0' *p a0') = F.zero) by (rewrite <- Hnorm'; ring).
+        exact (ZpZ_integral_domain a0' a0' Hane' Hane' Hsq).
+      - apply Z.eqb_neq in Ha1'.
+        assert (Ha1ne : a1' <> F.zero)
+          by (intro Heq; subst a1'; apply Ha1'; rewrite F.to_Z_0; reflexivity).
+        apply beta_is_non_res. exists (a0' /p a1'). field_simplify; [| exact Ha1ne].
+        apply (f_equal (fun z => F.add z ((β *p a1') *p a1'))) in Hnorm'.
+        replace (a0' *p a0' -p (β *p a1') *p a1' +p (β *p a1') *p a1') with (a0' *p a0') in Hnorm' by field.
+        replace (F.zero +p (β *p a1') *p a1') with ((β *p a1') *p a1') in Hnorm' by field.
+        rewrite Hnorm'. field. exact Ha1ne. }
+    intros a0 a1.
+    destruct (F.to_Z a0 =? 0) eqn:Ha.
+    - (* a0 = 0 *)
+      apply Z.eqb_eq in Ha.
+      assert (Ha0 : a0 = F.zero) by (apply F.eq_to_Z_iff; rewrite F.to_Z_0; exact Ha).
+      subst a0.
+      replace (invp2 (F.zero, a1)) with (@F.zero p, @F.inv p (a1 *p β))
+        by (unfold invp2; simpl fst; rewrite Z.eqb_refl; reflexivity).
+      unfold normp2. cbv [fst snd].
+      destruct (F.eq_dec a1 F.zero) as [Ha1z | Ha1nz].
+      + subst a1.
+        replace (0 *p β) with (@F.zero p) by ring.
+        replace (0 *p 0 -p (β *p 0) *p 0) with (@F.zero p) by ring.
+        rewrite !(F.inv_0 p). reflexivity.
+      + apply Fp2irr.
+        * field.
+          intro H.
+          pose proof (ZpZ_integral_domain β a1 Quad_nres_not_zero Ha1nz) as Hba.
+          pose proof (ZpZ_integral_domain (β *p a1) a1 Hba Ha1nz) as Hba2.
+          apply Hba2. replace ((β *p a1) *p a1) with (F.opp (F.opp ((β *p a1) *p a1))) by ring.
+          rewrite H. ring.
+        * field. split; [| split; assumption].
+          intro H.
+          pose proof (ZpZ_integral_domain β a1 Quad_nres_not_zero Ha1nz) as Hba.
+          pose proof (ZpZ_integral_domain (β *p a1) a1 Hba Ha1nz) as Hba2.
+          apply Hba2. replace ((β *p a1) *p a1) with (F.opp (F.opp ((β *p a1) *p a1))) by ring.
+          rewrite H. ring.
+    - (* a0 ≠ 0 *)
+      apply Z.eqb_neq in Ha.
+      assert (Hane : a0 <> F.zero) by (intro Heq; subst a0; apply Ha; rewrite F.to_Z_0; reflexivity).
+      unfold invp2. simpl fst.
+      replace (F.to_Z a0 =? 0) with false by (symmetry; apply Z.eqb_neq; exact Ha).
+      simpl snd at 1.
+      unfold normp2. cbv [fst snd].
+      apply Fp2irr.
+      + field. split; [exact (norm_nz a0 a1 Hane) | exact Hane].
+      + field. split; [exact (norm_nz a0 a1 Hane) | exact Hane].
+  Qed.
 
   (* Former invp2_plus_norm for β = -1 is a special case where normp2 = a0² + a1². *)
 
