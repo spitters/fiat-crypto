@@ -114,6 +114,12 @@ Section GLV_Shamir_Generic.
   Context {curve_add_id_l : forall x y z, curve_add (Fzero, Fone, Fzero) (x, y, z) = (x, y, z)}.
   Context {curve_add_assoc : forall P Q R, curve_add P (curve_add Q R) = curve_add (curve_add P Q) R}.
 
+  (* Connection: the abstract curve_add equals the bedrock2 ladderstep.
+     Uses let-destruction to bridge P2.prod and Datatypes.prod. *)
+  Context {curve_add_ladderstep : forall X1 X2 Y1 Y2 Z1 Z2 : F,
+    let r := @ladderstep_gallina _ three_b_val X1 X2 Y1 Y2 Z1 Z2 in
+    curve_add (X1, Y1, Z1) (X2, Y2, Z2) = (P2.car r, P2.car (P2.cdr r), P2.cdr (P2.cdr r))}.
+
   (* Gallina scalar multiplication via repeated addition *)
   Fixpoint scmul_glv (n : nat) (P : F * F * F) : F * F * F :=
     match n with
@@ -528,7 +534,33 @@ Section GLV_Shamir_Generic.
          group_cmov_alt functions)
       (HCurveAdd : @CurveAdd.spec_of_ladderstep
          _ _ _ _ _ _ field_parameters field_representation
-         three_b functions),
+         three_b functions)
+      (* Aliased curve_add: input1 = output (sound: ladderstep reads before writing) *)
+      (HCurveAddInplace : forall pXo pX2 pYo pY2 pZo pZ2
+         (X Y Z X2' Y2' Z2' : F) R0 tr0 m0,
+         (FElem (Some tight_bounds) pXo X ⋆ FElem (Some tight_bounds) pYo Y
+          ⋆ FElem (Some tight_bounds) pZo Z ⋆ FElem (Some tight_bounds) pX2 X2'
+          ⋆ FElem (Some tight_bounds) pY2 Y2' ⋆ FElem (Some tight_bounds) pZ2 Z2'
+          ⋆ R0) m0 ->
+         WeakestPrecondition.call functions curve_add_name tr0 m0
+           [pXo; pX2; pYo; pY2; pZo; pZ2; pXo; pYo; pZo]
+           (fun tr' m' rets => rets = [] /\ (tr0 = tr' /\
+              let '(Xo', Yo', Zo') := curve_add (X, Y, Z) (X2', Y2', Z2') in
+              (FElem (Some tight_bounds) pXo Xo' ⋆ FElem (Some tight_bounds) pYo Yo'
+               ⋆ FElem (Some tight_bounds) pZo Zo' ⋆ FElem (Some tight_bounds) pX2 X2'
+               ⋆ FElem (Some tight_bounds) pY2 Y2' ⋆ FElem (Some tight_bounds) pZ2 Z2'
+               ⋆ R0) m')))
+      (* Aliased curve_add: all same (in-place doubling) *)
+      (HCurveAddDouble : forall pX pY pZ
+         (X Y Z : F) R0 tr0 m0,
+         (FElem (Some tight_bounds) pX X ⋆ FElem (Some tight_bounds) pY Y
+          ⋆ FElem (Some tight_bounds) pZ Z ⋆ R0) m0 ->
+         WeakestPrecondition.call functions curve_add_name tr0 m0
+           [pX; pX; pY; pY; pZ; pZ; pX; pY; pZ]
+           (fun tr' m' rets => rets = [] /\ (tr0 = tr' /\
+              let '(Xo, Yo, Zo) := curve_add (X, Y, Z) (X, Y, Z) in
+              (FElem (Some tight_bounds) pX Xo ⋆ FElem (Some tight_bounds) pY Yo
+               ⋆ FElem (Some tight_bounds) pZ Zo ⋆ R0) m'))),
     spec_of_glv_shamir functions.
   Proof.
     intros.
@@ -1064,11 +1096,28 @@ Section GLV_Shamir_Generic.
                Phix_i, Phiy_i, Phiz_i.
         exists k1w_i, k2w_i.
         split.
-        { (* Accumulator equation: out = [k1]P + [k2]phi(P)
-             Requires vi=0 (from branch condition) + Z.mod_small.
-             The vi=0 derivation needs word.b2w unfolding which has
-             typeclass issues — to be resolved. *)
-          admit. }
+        { (* Accumulator equation: out = [k1]P + [k2]phi(P) *)
+          (* Step 1: derive vi = 0 from the false branch condition *)
+          rewrite (@word.unsigned_b2w _ _ word_ok) in Hcond.
+          assert (Hltu_false : word.ltu iw_i (word.of_Z glv_iterations) = false).
+          { destruct (word.ltu iw_i (word.of_Z glv_iterations));
+            [cbn in Hcond; lia | reflexivity]. }
+          pose proof (@word.unsigned_ltu _ _ word_ok iw_i (word.of_Z glv_iterations)) as Hltu_eq.
+          rewrite Hltu_false in Hltu_eq. symmetry in Hltu_eq.
+          apply Z.ltb_ge in Hltu_eq.
+          rewrite Hiter_val, word.unsigned_of_Z in Hltu_eq.
+          cbv [glv_iterations] in Hltu_eq.
+          unfold word.wrap in Hltu_eq.
+          destruct (width_cases) as [Hw|Hw]; rewrite Hw in Hltu_eq;
+            (change (129 mod 2 ^ 32) with 129 in Hltu_eq
+             || change (129 mod 2 ^ 64) with 129 in Hltu_eq);
+            assert (Hvi0 : vi = 0%nat) by (pose proof Znat.Nat2Z.is_nonneg vi; lia);
+            subst vi;
+            change (Z.of_nat 0) with 0 in Hout_i;
+            change (129 - 0) with 129 in Hout_i;
+            cbv [glv_iterations] in *;
+            rewrite !Z.mod_small in Hout_i by lia;
+            exact Hout_i. }
         (* Sep: the remaining memory satisfies the postcondition *)
         change Compilation2.FElem with FElem in Hrest_auxx.
         ecancel_assumption. } }
