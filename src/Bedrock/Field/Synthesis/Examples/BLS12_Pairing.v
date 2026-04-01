@@ -12,7 +12,10 @@
       hard part (square-and-multiply with 1268-bit h3 exponent)
     - Top-level pairing chaining Miller loop + final exponentiation
 
-    WP proofs are stubs (exact I) — the function bodies are real.
+    WP correctness proofs are in separate files:
+    - BLS12_PowX.v: bls12_Fp12_pow_x_ok
+    - BLS12_FinalExp.v: bls12_final_exp_ok
+    - BLS12_MillerLoop.v: bls12_miller_loop_ok
 *)
 
 From Stdlib Require Import Strings.String.
@@ -47,11 +50,7 @@ Local Open Scope string_scope.
 Local Open Scope Z_scope.
 Local Open Scope list_scope.
 
-(* Compatibility shim *)
 Local Notation function_t := (String.string * (list String.string * list String.string * Syntax.cmd.cmd))%type.
-Local Definition program_logic_goal_for (_ : function_t) (P : Prop) := P.
-Local Notation "program_logic_goal_for_function! proc" :=
-  (program_logic_goal_for proc True) (at level 10, only parsing).
 
 Section BLS12_Pairing.
 
@@ -733,8 +732,7 @@ Section BLS12_Pairing.
            [expr_fp_snd (expr.var "out"); expr_fp_snd (expr.var "x"); expr.var "s"])
        ))).
 
-    Lemma bls12_Fp2_mul_fp_ok : program_logic_goal_for_function! bls12_Fp2_mul_fp.
-    Proof. exact I. Qed.
+    (* WP proof: see BLS12_PairingHelpers.v *)
 
     (* ============================================================== *)
     (* make_line: construct line evaluation as Fp12                    *)
@@ -789,8 +787,7 @@ Section BLS12_Pairing.
          ])
        ))).
 
-    Lemma bls12_make_line_ok : program_logic_goal_for_function! bls12_make_line.
-    Proof. exact I. Qed.
+    (* WP proof: see BLS12_MillerLoop.v *)
 
     (* ============================================================== *)
     (* Frobenius constant loaders for BLS12-381                        *)
@@ -840,9 +837,7 @@ Section BLS12_Pairing.
           0xddb3a93be6f89688 0xba69c6076a0f77ea
           0x5f19672fdf76ce51 0x0000000000000000)).
 
-    Lemma bls12_load_gamma1_p2_ok :
-      program_logic_goal_for_function! bls12_load_gamma1_p2.
-    Proof. exact I. Qed.
+    (* WP proof: see BLS12_FinalExp.v *)
 
     (* γ₂^{p²} = ξ^{2(p²-1)/3} *)
     Definition bls12_load_gamma2_p2 : function_t :=
@@ -853,9 +848,7 @@ Section BLS12_Pairing.
           0x897d29650fb85f9b 0xaa0d857d89759ad4
           0xec02408663d4de85 0x1a0111ea397fe699)).
 
-    Lemma bls12_load_gamma2_p2_ok :
-      program_logic_goal_for_function! bls12_load_gamma2_p2.
-    Proof. exact I. Qed.
+    (* WP proof: see BLS12_FinalExp.v *)
 
     (* w^{p²} coefficient = ξ^{(p²-1)/6} *)
     Definition bls12_load_w_frob_p2_c1 : function_t :=
@@ -866,9 +859,7 @@ Section BLS12_Pairing.
           0xddb3a93be6f89688 0xba69c6076a0f77ea
           0x5f19672fdf76ce51 0x0000000000000000)).
 
-    Lemma bls12_load_w_frob_p2_c1_ok :
-      program_logic_goal_for_function! bls12_load_w_frob_p2_c1.
-    Proof. exact I. Qed.
+    (* WP proof: see BLS12_FinalExp.v *)
 
     (* ============================================================== *)
     (* Frobenius p constant loaders (for DSD final exponentiation)    *)
@@ -915,9 +906,7 @@ Section BLS12_Pairing.
           0x587042afd3851b95 0x8eb60ebe01bacb9e
           0x03f97d6e83d050d2 0x18f0206554638741)).
 
-    Lemma bls12_load_gamma1_ok :
-      program_logic_goal_for_function! bls12_load_gamma1.
-    Proof. exact I. Qed.
+    (* WP proof: see BLS12_FinalExp.v *)
 
     (* γ₂ = ξ^{2(p-1)/3} — purely real *)
     Definition bls12_load_gamma2 : function_t :=
@@ -928,9 +917,7 @@ Section BLS12_Pairing.
           0x50880866309b7e2c 0xa20d1b8c7e881024
           0x14e4f04fe2db9068 0x14e56d3f1564853a)).
 
-    Lemma bls12_load_gamma2_ok :
-      program_logic_goal_for_function! bls12_load_gamma2.
-    Proof. exact I. Qed.
+    (* WP proof: see BLS12_FinalExp.v *)
 
     (* w^p coefficient = ξ^{(p-1)/6} — both components nonzero *)
     Definition bls12_load_w_frob_c1 : function_t :=
@@ -944,9 +931,7 @@ Section BLS12_Pairing.
           0xcf4895d42599d394 0xc11b9cba40a8e8d0
           0x2e3813cbe5a0de89 0x110eefda88847faf)).
 
-    Lemma bls12_load_w_frob_c1_ok :
-      program_logic_goal_for_function! bls12_load_w_frob_c1.
-    Proof. exact I. Qed.
+    (* WP proof: see BLS12_FinalExp.v *)
 
     (* w^{p³} coefficient = ξ^{(p³-1)/6} — both components nonzero *)
     Definition bls12_load_w_frob_p3_c1 : function_t :=
@@ -960,9 +945,7 @@ Section BLS12_Pairing.
           0x2f088dd86b4ebef1 0xd1ca2087da74d4a7
           0x2da2596696cebc1d 0x0e2b7eedbbfd87d2)).
 
-    Lemma bls12_load_w_frob_p3_c1_ok :
-      program_logic_goal_for_function! bls12_load_w_frob_p3_c1.
-    Proof. exact I. Qed.
+    (* WP proof: see BLS12_FinalExp.v *)
 
     (* ============================================================== *)
     (* Helper: set an Fp12 element to the multiplicative identity      *)
@@ -1079,9 +1062,7 @@ Section BLS12_Pairing.
           ])
         ))).
 
-    Lemma bls12_Fp12_pow_x_ok :
-      program_logic_goal_for_function! bls12_Fp12_pow_x.
-    Proof. exact I. Qed.
+    (* WP proof: see BLS12_PowX.v *)
 
     (* ============================================================== *)
 
@@ -1225,9 +1206,7 @@ Section BLS12_Pairing.
           coq:(final_exp_hard_dsd_body)
         ))).
 
-    Lemma bls12_final_exp_hard_dsd_ok :
-      program_logic_goal_for_function! bls12_final_exp_hard_dsd.
-    Proof. exact I. Qed.
+    (* WP proof: see BLS12_FinalExp.v *)
 
     (* ============================================================== *)
     (* Miller loop (real body — processes 63 bits of BLS parameter)    *)
@@ -1357,8 +1336,7 @@ Section BLS12_Pairing.
           coq:(miller_loop_full_body)
         ))).
 
-    Lemma bls12_miller_loop_ok : program_logic_goal_for_function! bls12_miller_loop.
-    Proof. exact I. Qed.
+    (* WP proof: see BLS12_MillerLoop.v *)
 
     (* ============================================================== *)
     (* Final exponentiation                                            *)
@@ -1504,8 +1482,7 @@ Section BLS12_Pairing.
           coq:(final_exp_full_body)
         ))).
 
-    Lemma bls12_final_exp_ok : program_logic_goal_for_function! bls12_final_exp.
-    Proof. exact I. Qed.
+    (* WP proof: see BLS12_FinalExp.v *)
 
     (* ============================================================== *)
     (* Projective Miller loop (inversion-free)                         *)
@@ -1581,9 +1558,7 @@ Section BLS12_Pairing.
           coq:(mul_by_024_body)
         ))).
 
-    Lemma bls12_Fp12_mul_by_024_ok :
-      program_logic_goal_for_function! bls12_Fp12_mul_by_024.
-    Proof. exact I. Qed.
+    (* WP proof: see BLS12_MillerLoop.v *)
 
     (* Projective Miller loop: inline Jacobian doubling + mixed addition.
        Eliminates all Fp2_inv calls.  T = (T_X : T_Y : T_Z) in Jacobian,
@@ -1856,9 +1831,7 @@ Section BLS12_Pairing.
           coq:(proj_miller_full_body)
         ))).
 
-    Lemma bls12_miller_loop_proj_ok :
-      program_logic_goal_for_function! bls12_miller_loop_proj.
-    Proof. exact I. Qed.
+    (* WP proof: see BLS12_MillerLoop.v *)
 
     (* ============================================================== *)
     (* Top-level pairing: e(P, Q) = final_exp(miller_loop(P, Q))      *)
@@ -1892,8 +1865,7 @@ Section BLS12_Pairing.
           coq:(pairing_full_body)
         ))).
 
-    Lemma bls12_pairing_ok : program_logic_goal_for_function! bls12_pairing.
-    Proof. exact I. Qed.
+    (* WP proof: see BLS12_PairingTop.v *)
 
     (* ============================================================== *)
     (* Collected function lists                                        *)
