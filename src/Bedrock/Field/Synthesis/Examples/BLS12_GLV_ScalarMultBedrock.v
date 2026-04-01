@@ -312,7 +312,9 @@ Section GLV_Shamir_Generic.
       / (Outx Outy Outz Px Py Pz Phix Phiy Phiz : F)
         (k1_words k2_words : list word) R,
       { requires tr mem :=
-          (FElem (Some tight_bounds) pOutx Outx
+          0 <= eval glv_scalar_words k1_words < 2 ^ glv_iterations
+          /\ 0 <= eval glv_scalar_words k2_words < 2 ^ glv_iterations
+          /\ (FElem (Some tight_bounds) pOutx Outx
            * FElem (Some tight_bounds) pOuty Outy
            * FElem (Some tight_bounds) pOutz Outz
            * FElem (Some tight_bounds) pPx Px
@@ -533,7 +535,7 @@ Section GLV_Shamir_Generic.
     unfold spec_of_glv_shamir.
     intros pOutx pOuty pOutz pPx pPy pPz pPhix pPhiy pPhiz pk1 pk2
            Outx Outy Outz Px Py Pz Phix Phiy Phiz
-           k1_words k2_words R tr mem0 Hsep.
+           k1_words k2_words R tr mem0 [Hk1_bound [Hk2_bound Hsep]].
 
     (* === Phase 1: Function entry === *)
     eapply WeakestPreconditionProperties.start_func;
@@ -961,7 +963,9 @@ Section GLV_Shamir_Generic.
         gcall HCmovAlt.
         1: (unfold ZRange.is_bounded_by_bool; simpl;
             rewrite Bool.andb_true_iff; split; apply Z.leb_le;
-            rewrite <- H1;
+            match goal with
+            | H : _ mod 2 = word.unsigned _ |- _ => rewrite <- H
+            end;
             pose proof (Z.mod_pos_bound
               (eval glv_scalar_words k1w_i) 2 ltac:(lia)); lia).
 
@@ -1060,8 +1064,10 @@ Section GLV_Shamir_Generic.
                Phix_i, Phiy_i, Phiz_i.
         exists k1w_i, k2w_i.
         split.
-        { (* Accumulator equation: out = [k1]P + [k2]phi(P) *)
-          (* At vi=0, iter=129, all bits processed *)
+        { (* Accumulator equation: out = [k1]P + [k2]phi(P)
+             Requires vi=0 (from branch condition) + Z.mod_small.
+             The vi=0 derivation needs word.b2w unfolding which has
+             typeclass issues — to be resolved. *)
           admit. }
         (* Sep: the remaining memory satisfies the postcondition *)
         change Compilation2.FElem with FElem in Hrest_auxx.
