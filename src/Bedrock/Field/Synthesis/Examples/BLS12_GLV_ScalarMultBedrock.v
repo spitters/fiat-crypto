@@ -682,24 +682,68 @@ Section GLV_Shamir_Generic.
     (* Process let/d and peel cmd.seq for the store_zero call *)
     cbv [dlet.dlet]. set (l4 := map.put l3 "iter" a_iter).
     unfold1_cmd_goal; cbv beta match delta [cmd_body].
-    (* Provide args for store_zero *)
+    (* Call store_zero. The sep is fragmented across map.split chains.
+       Reassemble into a single sep on mComb_iter, then use ecancel_assumption_impl
+       which handles FElem (Some tight) -> FElem None via drop_bounds_FElem hint. *)
+    destruct Hsplit_auxx as [Heq_auxx Hd_auxx].
+    destruct Hsplit_auxy as [Heq_auxy Hd_auxy].
+    destruct Hsplit_auxz as [Heq_auxz Hd_auxz].
+    destruct Hsplit_cond1 as [Heq_cond1 Hd_cond1].
+    destruct Hsplit_cond2 as [Heq_cond2 Hd_cond2].
+    destruct Hsplit_iter as [Heq_iter Hd_iter].
+    subst mComb_iter mComb_cond2 mComb_cond1 mComb_auxz mComb_auxy mComb_auxx.
+    (* Build combined sep using sep_from_put/sep witnesses *)
+    assert (HsepAll :
+      (FElem (Some tight_bounds) pOutx Outx
+       ⋆ FElem (Some tight_bounds) pOuty Outy
+       ⋆ FElem (Some tight_bounds) pOutz Outz
+       ⋆ FElem (Some tight_bounds) pPx Px
+       ⋆ FElem (Some tight_bounds) pPy Py
+       ⋆ FElem (Some tight_bounds) pPz Pz
+       ⋆ FElem (Some tight_bounds) pPhix Phix
+       ⋆ FElem (Some tight_bounds) pPhiy Phiy
+       ⋆ FElem (Some tight_bounds) pPhiz Phiz
+       ⋆ Bignum glv_scalar_words pk1 k1_words
+       ⋆ Bignum glv_scalar_words pk2 k2_words
+       ⋆ R
+       ⋆ Compilation2.FElem None a_auxx Auxx_init
+       ⋆ Compilation2.FElem None a_auxy Auxy_init
+       ⋆ Compilation2.FElem None a_auxz Auxz_init
+       ⋆ scalar a_cond1 c1_init
+       ⋆ scalar a_cond2 c2_init
+       ⋆ scalar a_iter iter_init)
+      (map.putmany (map.putmany (map.putmany (map.putmany (map.putmany (map.putmany mem0 mStack_auxx) mStack_auxy) mStack_auxz) mStack_cond1) mStack_cond2) mStack_iter)).
+    { (* Each putmany step: (P * Q)(putmany m1 m2) from P m1 and Q m2 and disjoint m1 m2 *)
+      (* iter *)
+      exists (map.putmany (map.putmany (map.putmany (map.putmany (map.putmany mem0 mStack_auxx) mStack_auxy) mStack_auxz) mStack_cond1) mStack_cond2), mStack_iter.
+      split. { split; [reflexivity | exact Hd_iter]. }
+      split; [| exact Hsc_iter].
+      (* cond2 *)
+      exists (map.putmany (map.putmany (map.putmany (map.putmany mem0 mStack_auxx) mStack_auxy) mStack_auxz) mStack_cond1), mStack_cond2.
+      split. { split; [reflexivity | exact Hd_cond2]. }
+      split; [| exact Hsc_cond2].
+      (* cond1 *)
+      exists (map.putmany (map.putmany (map.putmany mem0 mStack_auxx) mStack_auxy) mStack_auxz), mStack_cond1.
+      split. { split; [reflexivity | exact Hd_cond1]. }
+      split; [| exact Hsc_cond1].
+      (* auxz *)
+      exists (map.putmany (map.putmany mem0 mStack_auxx) mStack_auxy), mStack_auxz.
+      split. { split; [reflexivity | exact Hd_auxz]. }
+      split; [| exact Hfe_auxz].
+      (* auxy *)
+      exists (map.putmany mem0 mStack_auxx), mStack_auxy.
+      split. { split; [reflexivity | exact Hd_auxy]. }
+      split; [| exact Hfe_auxy].
+      (* auxx *)
+      exists mem0, mStack_auxx.
+      split. { split; [reflexivity | exact Hd_auxx]. }
+      split; [ecancel_assumption | exact Hfe_auxx]. }
+
     exists [pOutx; pOuty; pOutz]. split.
     { cbv [dexprs list_map list_map_body WeakestPrecondition.expr WeakestPrecondition.expr_body WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet].
       repeat (first [exact eq_refl | eexists; split; [subst l4 l3 l2 l1 l0 l; resolve_map_get |]]). }
-    (* Call store_zero: needs FElem None, we have FElem (Some tight_bounds).
-       Provide explicit R frame and use weaken_call. *)
     eapply Semantics.weaken_call.
-    1: { unfold StoreZero.spec_of_store_zero in HStoreZero.
-         apply (HStoreZero pOutx pOuty pOutz Outx Outy Outz
-           (fun m => (FElem (Some tight_bounds) pPx Px ⋆ FElem (Some tight_bounds) pPy Py
-            ⋆ FElem (Some tight_bounds) pPz Pz ⋆ FElem (Some tight_bounds) pPhix Phix
-            ⋆ FElem (Some tight_bounds) pPhiy Phiy ⋆ FElem (Some tight_bounds) pPhiz Phiz
-            ⋆ Bignum glv_scalar_words pk1 k1_words ⋆ Bignum glv_scalar_words pk2 k2_words
-            ⋆ R ⋆ Compilation2.FElem None a_auxx Auxx_init
-            ⋆ Compilation2.FElem None a_auxy Auxy_init ⋆ Compilation2.FElem None a_auxz Auxz_init
-            ⋆ scalar a_cond1 c1_init ⋆ scalar a_cond2 c2_init ⋆ scalar a_iter iter_init) m)
-           tr mComb_iter).
-         admit. (* sep: combine Hsep + stack maps + drop bounds *) }
+    1: { eapply HStoreZero. ecancel_assumption_impl. }
     cbv beta. intros ? ? ? [? [? ?]]. subst.
     cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
