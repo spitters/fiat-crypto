@@ -744,11 +744,9 @@ Section GLV_Shamir_Generic.
       repeat (first [exact eq_refl | eexists; split; [subst l4 l3 l2 l1 l0 l; resolve_map_get |]]). }
     eapply Semantics.weaken_call.
     1: { eapply HStoreZero. ecancel_assumption_impl. }
-    cbv beta. intros ? ? ? [? [? ?]]. subst.
-    cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
-
-    (* store iter = 0: peel cmd.seq, then process store *)
-    straightline. straightline.
+    wp_postcall_auto.
+    (* store iter = 0: process the DEXPR + store *)
+    repeat straightline.
 
     (* === Phase 4: Apply Loops.while_localsmap === *)
 
@@ -891,9 +889,34 @@ Section GLV_Shamir_Generic.
         intro Hne.
 
         (* Process store: iter = iter + 1 *)
-        glv_straightline.  (* cmd.seq *)
-        (* The store writes iter+1 to the iter location.
-           This is cmd.store, processed by straightline. *)
+        glv_straightline.  (* cmd.seq — peel to expose store + rest *)
+        (* cmd.store iter (iter+1): straightline handles this *)
+        straightline. straightline. straightline. straightline.
+        straightline. straightline.
+
+        (* === 11 function calls in the loop body === *)
+        (* Call 1: shift_scalar(cond1, pk1) *)
+        gcall HShiftScalar.
+        (* Call 2: shift_scalar(cond2, pk2) *)
+        gcall HShiftScalar.
+        (* Call 3: store_zero(auxx, auxy, auxz) *)
+        gcall HStoreZero.
+        (* Call 4: group_cmov_alt(aux, aux, P, cond1) *)
+        gcall HCmovAlt.
+        (* Call 5: curve_add(out, aux, out) *)
+        gcall HCurveAdd.
+        (* Call 6: store_zero(auxx, auxy, auxz) *)
+        gcall HStoreZero.
+        (* Call 7: group_cmov_alt(aux, aux, phi, cond2) *)
+        gcall HCmovAlt.
+        (* Call 8: curve_add(out, aux, out) *)
+        gcall HCurveAdd.
+        (* Call 9: curve_add(P, P, P) — double P *)
+        gcall HCurveAdd.
+        (* Call 10: curve_add(phi, phi, phi) — double phi *)
+        gcall HCurveAdd.
+
+        (* === Invariant restoration at measure vi-1 === *)
         admit. }
 
       { (* FALSE branch: iter >= 129, i.e. vi = 0 *)
