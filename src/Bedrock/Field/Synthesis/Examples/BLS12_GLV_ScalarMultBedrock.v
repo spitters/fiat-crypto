@@ -675,16 +675,24 @@ Section GLV_Shamir_Generic.
     { cbv [dexprs list_map list_map_body WeakestPrecondition.expr WeakestPrecondition.expr_body WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet].
       repeat (first [exact eq_refl | eexists; split; [subst l4 l3 l2 l1 l0 l; resolve_map_get |]]). }
     (* Call store_zero: needs FElem None, we have FElem (Some tight_bounds).
-       ecancel_assumption_impl from WPTactics handles bounds dropping. *)
+       Provide explicit R frame and use weaken_call. *)
     eapply Semantics.weaken_call.
-    1: { eapply HStoreZero.
-         unfold FElem, CompilationAbstract.FElem in |- *.
-         ecancel_assumption_impl. }
+    1: { unfold StoreZero.spec_of_store_zero in HStoreZero.
+         apply (HStoreZero pOutx pOuty pOutz Outx Outy Outz
+           (fun m => (FElem (Some tight_bounds) pPx Px ⋆ FElem (Some tight_bounds) pPy Py
+            ⋆ FElem (Some tight_bounds) pPz Pz ⋆ FElem (Some tight_bounds) pPhix Phix
+            ⋆ FElem (Some tight_bounds) pPhiy Phiy ⋆ FElem (Some tight_bounds) pPhiz Phiz
+            ⋆ Bignum glv_scalar_words pk1 k1_words ⋆ Bignum glv_scalar_words pk2 k2_words
+            ⋆ R ⋆ Compilation2.FElem None a_auxx Auxx_init
+            ⋆ Compilation2.FElem None a_auxy Auxy_init ⋆ Compilation2.FElem None a_auxz Auxz_init
+            ⋆ scalar a_cond1 c1_init ⋆ scalar a_cond2 c2_init ⋆ scalar a_iter iter_init) m)
+           tr mComb_iter).
+         admit. (* sep: combine Hsep + stack maps + drop bounds *) }
     cbv beta. intros ? ? ? [? [? ?]]. subst.
     cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
-    (* store iter = 0: process cmd.seq + cmd.store without over-processing *)
-    straightline. straightline. straightline. straightline. straightline.
+    (* store iter = 0: peel cmd.seq, then process store *)
+    straightline. straightline.
 
     (* === Phase 4: Apply Loops.while_localsmap === *)
 
