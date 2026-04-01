@@ -297,23 +297,24 @@ Section Compile.
       <{ pred (nlet_eq [out_var] v k) }>.
   Proof using ext_spec_ok locals_ok mem_ok word_ok field_representation_ok.
     intro v; intros ? ? ? ? ? ? ? ? ? ? ? ?
-           Hspec ? ? ? Hcont;
-    repeat straightline';
-    unfold AFElem in *; sepsimpl;
+           Hspec Hget_out Hmem Hget_x Hcont.
+    repeat straightline'.
+    unfold AFElem in *; sepsimpl.
     repeat match goal with
     | H : AbstractField.feval _ = ?x |- _ => is_var x; subst x
-    end;
+    end.
     try match goal with v' := _ : F |- _ => subst v' end.
     eapply Semantics.weaken_call.
     { eapply Hspec; split; [ | ecancel_assumption ]; ecancel_assumption. }
-    intros ? ? ? [? [? ?]]; subst;
+    intros ? ? ? [? [? ?]]; subst.
     cbv [map.putmany_of_list_zip]; eexists; split; [exact eq_refl |].
     apply Hcont.
-    (* TODO: copy postcondition reconstruction *)
     extract_ex1_and_emp_in_goal.
     all: try ecancel_assumption.
     all: eauto.
-  Admitted.
+    split; [ecancel_assumption |].
+    split; (split; [reflexivity | assumption]).
+  Qed.
 
 End Compile.
 
