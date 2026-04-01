@@ -5694,6 +5694,8 @@ Section Fp6.
       Fp6_opp;
       Fp6_mul;
       Fp6_sqr;
-      Fp6_inv ].
+      Fp6_inv;
+      Fp6_add_nocopy;
+      Fp6_sub_nocopy ].
 
 End Fp6.

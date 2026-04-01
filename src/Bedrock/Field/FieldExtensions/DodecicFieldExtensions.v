@@ -3868,6 +3868,9 @@ Section Fp12.
       Fp12_conjugate;
       Fp12_mul;
       Fp12_sqr;
-      Fp12_inv ].
+      Fp12_inv;
+      Fp12_add_nocopy;
+      Fp12_sub_nocopy;
+      Fp12_mul_nocopy ].
 
 End Fp12.
