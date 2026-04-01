@@ -68,10 +68,76 @@ Section Fp2Generic.
 
   Definition divp2 (x1 x2 : Fp2) : Fp2 := mulp2 x1 (invp2 x2).
 
-  (* The field theory proof requires showing norm ≠ 0,
-     which follows from beta being a QNR. *)
+  (* Helper: product of nonzero elements is nonzero in Fp (integral domain) *)
+  Local Lemma F_mul_nonzero (a b : F p) : a <> F.zero -> b <> F.zero -> (a *p b) <> F.zero.
+  Proof.
+    intros Ha Hb Hab. apply Ha.
+    assert (H : a = @F.div p (a *p b) b) by (field; exact Hb).
+    rewrite H, Hab. field; exact Hb.
+  Qed.
+
+  (* Helper: square root doesn't exist for QNR *)
+  Local Lemma norm_nonzero (a b : F p) :
+    (a <> F.zero \/ b <> F.zero) ->
+    (a *p a -p beta *p b *p b) <> F.zero.
+  Proof.
+    intros Hne Hnorm.
+    apply beta_is_QNR.
+    (* From a² - β·b² = 0 deduce a² = β·b² *)
+    assert (Heq : (a *p a) = (beta *p b *p b)).
+    { assert (H := Hnorm).
+      apply (f_equal (fun x => x +p (beta *p b *p b))) in H.
+      replace (a *p a -p beta *p b *p b +p (beta *p b *p b)) with (a *p a) in H by field.
+      replace (F.zero +p (beta *p b *p b)) with (beta *p b *p b) in H by field.
+      exact H. }
+    destruct (F.eq_dec b F.zero) as [Hb0 | Hbne].
+    - (* b = 0: then a² = 0, so a = 0 *)
+      subst b. exfalso.
+      assert (Ha2 : (a *p a) = F.zero) by (rewrite Heq; field).
+      (* a² = 0 in Fp implies a = 0: use integral domain property *)
+      assert (Ha : a = F.zero).
+      { destruct (F.eq_dec a F.zero) as [|Ha]; [assumption|].
+        exfalso. apply (F_mul_nonzero a a Ha Ha). exact Ha2. }
+      destruct Hne; contradiction.
+    - (* b ≠ 0: then (a/b)² = β *)
+      exists (@F.div p a b).
+      replace (@F.div p a b *p @F.div p a b) with (@F.div p (a *p a) (b *p b)) by (field; exact Hbne).
+      rewrite Heq. field. exact Hbne.
+  Qed.
+
   Lemma FFp2 : field_theory zerop2 onep2 addp2 mulp2
     subp2 oppp2 divp2 invp2 (@eq (F p * F p)).
-  Proof. admit. Admitted.
+  Proof.
+    constructor.
+    - exact RFp2.
+    - intros H.
+      assert (H0 : fst onep2 = fst zerop2) by (rewrite H; reflexivity).
+      simpl in H0. apply F.eq_to_Z_iff in H0.
+      rewrite (@F.to_Z_1 p p_odd), (@F.to_Z_0 p) in H0. lia.
+    - intros. reflexivity.
+    - intros [a b] Hne.
+      unfold mulp2, onep2.
+      destruct (F.to_Z a =? 0) eqn:Ha.
+      + apply Z.eqb_eq in Ha.
+        assert (Ha0 : a = F.zero) by (apply F.eq_to_Z_iff; rewrite (@F.to_Z_0 p); exact Ha).
+        subst a.
+        assert (Hbne : b <> F.zero) by (intro Hb; apply Hne; subst b; reflexivity).
+        replace (invp2 (F.zero, b)) with (@F.zero p, @F.inv p (b *p beta))
+          by (unfold invp2; simpl fst; rewrite Z.eqb_refl; reflexivity).
+        cbv [fst snd]. apply Fp2irr.
+        * field. split; assumption.
+        * field. split; assumption.
+      + apply Z.eqb_neq in Ha.
+        assert (Hane : a <> F.zero) by (intro Heq; subst a; rewrite (@F.to_Z_0 p) in Ha; exact (Ha eq_refl)).
+        set (norm := a *p a -p beta *p b *p b).
+        assert (Hnorm : norm <> F.zero) by (apply norm_nonzero; left; exact Hane).
+        replace (invp2 (a, b)) with (a /p norm, @F.opp p (b /p norm))
+          by (unfold invp2; simpl fst;
+              replace (F.to_Z a =? 0) with false by (symmetry; apply Z.eqb_neq; exact Ha);
+              reflexivity).
+        cbv [fst snd]. apply Fp2irr.
+        * unfold norm. field. apply norm_nonzero. left. exact Hane.
+        * unfold norm. field. apply norm_nonzero. left. exact Hane.
+  Qed.
 
 End Fp2Generic.
