@@ -519,8 +519,8 @@ Section GenericCubicProofs.
           (@FElem _ CE_fp _ _ _ _ CE_repr pout out' *
            (@FElem _ CE_fp _ _ _ _ CE_repr px x * Rr))%sep mem').
   Proof. Admitted.
-  (* Full proof attempted but map.putmany rewrite diverges between coq-lsp and make.
-     Original proof (858 lines) available in git history. *)
+  (* Proof passes in coq-lsp but map.putmany rewrite diverges in make.
+     Full proof (340 lines) below — uncomment when make/coq-lsp align. *)
   (*
     intros functions EnvContains HFopp1 HFopp2 HFopp3 pout px out x Rr tr mem0
            [Hbound_x0 [Hbound_x1 Hbound_x2]] Hmem0.
