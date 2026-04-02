@@ -1066,7 +1066,7 @@ Section GLV_Shamir_Generic.
         end.
 
         (* Provide existential witnesses for the next iteration *)
-        admit. }
+        match goal with |- ?G => fail 1 "GOAL:" G end. }
 
       { (* FALSE branch: iter >= 129, i.e. vi = 0 *)
         intro Hcond.
@@ -1181,7 +1181,7 @@ Section GLV_Shamir_Generic.
         (* Sep: the remaining memory satisfies the postcondition *)
         change Compilation2.FElem with FElem in Hrest_auxx.
         ecancel_assumption. } }
-  Admitted.
+  Qed.
 
 End GLV_Shamir_Generic.
 
