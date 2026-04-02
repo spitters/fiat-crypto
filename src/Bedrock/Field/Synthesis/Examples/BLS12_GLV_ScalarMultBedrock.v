@@ -725,11 +725,17 @@ Section GLV_Shamir_Generic.
         first
         [ wp_binop_precond solve_bounds_auto
         | wp_unop_precond solve_bounds_auto
-        | split; ecancel_assumption_with_copy
-        | ecancel_assumption_with_copy
+        | split; ecancel_assumption
+        | ecancel_assumption
+        | match goal with
+          | Hrem : (_ ⋆ _) ?m |- (_ ⋆ _) ?m =>
+            refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m Hrem);
+            cancel; repeat ecancel_step_by_implication;
+            try (cbn [seps]; apply impl1_refl)
+          end
         | repeat (first
             [ solve_bounds_auto
-            | ecancel_assumption_with_copy
+            | ecancel_assumption
             | split ])
         ]
       | glv_postcall ];
@@ -986,12 +992,72 @@ Section GLV_Shamir_Generic.
 
         (* === Loop body: 10 function calls + invariant restoration === *)
 
+        (* Memory optimization: clear all stale stackalloc/init hypotheses.
+           After the while loop setup, only the loop invariant's sep (Hsep_i
+           destructed into Hk1_i..Hv_eq) and the iter store (Hsep_iter → m_iter)
+           matter. Everything from Phase 1-3 is dead weight. *)
+        (* Aggressive cleanup: keep only what the 10 gcalls need. *)
+        clear - functions HStoreZero HShiftScalar HCmovAlt
+                HCurveAddInplace HCurveAddDouble
+                pOutx pOuty pOutz pPx pPy pPz pPhix pPhiy pPhiz pk1 pk2
+                a_auxx a_auxy a_auxz a_cond1 a_cond2 a_iter
+                vi li
+                Outx_i Outy_i Outz_i Px_i Py_i Pz_i
+                Phix_i Phiy_i Phiz_i
+                Auxx_i Auxy_i Auxz_i k1w_i k2w_i c1_i c2_i iw_i
+                Hk1_i Hk2_i Hout_i Hp_i Hphi_i
+                Hl_outx Hl_outy Hl_outz Hl_px Hl_py Hl_pz
+                Hl_phix Hl_phiy Hl_phiz Hl_pk1 Hl_pk2
+                Hl_auxx Hl_auxy Hl_auxz Hl_cond1 Hl_cond2 Hl_iter
+                Hiter_val Hv_eq Hne
+                m_iter Hsep_iter
+                Px Py Pz Phix Phiy Phiz R tr.
+
+        (* Memory optimization: clear stale sep hypotheses after each call.
+           Each gcall produces a fresh sep on new memory; old seps are dead weight. *)
+        Local Ltac clear_stale_seps :=
+          lazymatch goal with
+          | |- WeakestPrecondition.cmd _ _ _ ?mcur _ _ =>
+            repeat match goal with
+            | H : _ ?m |- _ =>
+              lazymatch type of H with
+              | context[Separation.sep] =>
+                lazymatch m with mcur => fail | _ => clear H end
+              | context[FElem] =>
+                lazymatch m with mcur => fail | _ => clear H end
+              end
+            end
+          | _ => idtac
+          end.
+
+        (* Helper: solve store_zero FElem None precondition from FElem tight.
+           Must destruct curve_add let-bindings first so sep unifies. *)
+        Local Ltac solve_store_zero_pre_impl :=
+          (* Destruct curve_add let-bindings in hypotheses only *)
+          repeat match goal with
+          | H : context[curve_add (?a, ?b, ?c) (?d, ?e, ?ff)] |- _ =>
+            destruct (curve_add (a, b, c) (d, e, ff)) as [[? ?] ?] eqn:? in H
+          end;
+          match goal with
+          | Hrem : (_ ⋆ _) ?m |- (_ ⋆ _) ?m =>
+            refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m Hrem);
+            cancel;
+            repeat ecancel_step_by_implication;
+            try (cbn [seps]; apply impl1_refl)
+          end.
+
+        Local Ltac gcall_clean spec :=
+          gcall spec;
+          try lazymatch goal with
+          | |- WeakestPrecondition.cmd _ _ _ _ _ _ => clear_stale_seps
+          end.
+
         (* Call 1: shift_scalar(cond1, pk1) *)
-        gcall HShiftScalar.
+        gcall_clean HShiftScalar.
         (* Call 2: shift_scalar(cond2, pk2) *)
-        gcall HShiftScalar.
+        gcall_clean HShiftScalar.
         (* Call 3: store_zero(aux) *)
-        gcall HStoreZero.
+        gcall_clean HStoreZero.
         (* Call 4: cmov_alt(aux, aux, P, cond1) + bounds proof *)
         gcall HCmovAlt.
         1: (unfold ZRange.is_bounded_by_bool; simpl;
@@ -1001,33 +1067,15 @@ Section GLV_Shamir_Generic.
             end;
             pose proof (Z.mod_pos_bound
               (eval glv_scalar_words k1w_i) 2 ltac:(lia)); lia).
-
-        (* === Calls 5-10: aliased curve_add + store_zero + cmov_alt === *)
-        (* Helper: solve store_zero FElem None precondition from FElem tight.
-           After gcall HStoreZero, the side goal is (FElem None ... ⋆ ...) m.
-           We have a hypothesis with FElem (Some tight_bounds) on the same m.
-           Use impl1 + cancel + ecancel_step_by_implication to drop bounds. *)
-        Local Ltac solve_store_zero_pre_impl :=
-          (* Destruct curve_add let-bindings in hypotheses *)
-          repeat match goal with
-          | H : context[curve_add (?a, ?b, ?c) (?d, ?e, ?ff)] |- _ =>
-            destruct (curve_add (a, b, c) (d, e, ff)) as [[? ?] ?] eqn:? in H
-          end;
-          (* Find a sep hypothesis on the same memory and use impl1 *)
-          match goal with
-          | Hrem : (_ ⋆ _) ?m |- (_ ⋆ _) ?m =>
-            refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m Hrem);
-            cancel;
-            repeat ecancel_step_by_implication;
-            try (cbn [seps]; apply impl1_refl)
-          end.
+        clear_stale_seps.
 
         (* Call 5: curve_add(out, aux, out) — out += cond1 ? P : id *)
-        gcall HCurveAddInplace.
+        gcall_clean HCurveAddInplace.
 
         (* Call 6: store_zero(aux) — reset aux to identity *)
         gcall HStoreZero.
         1: solve_store_zero_pre_impl.
+        clear_stale_seps.
 
         (* Call 7: cmov_alt(aux, aux, phi, cond2) — aux = cond2 ? phi : id *)
         gcall HCmovAlt.
@@ -1038,32 +1086,25 @@ Section GLV_Shamir_Generic.
             end;
             pose proof (Z.mod_pos_bound
               (eval glv_scalar_words k2w_i) 2 ltac:(lia)); lia).
+        clear_stale_seps.
 
         (* Call 8: curve_add(out, aux, out) — out += cond2 ? phi : id *)
-        gcall HCurveAddInplace.
+        gcall_clean HCurveAddInplace.
 
         (* Call 9: curve_add(P, P, P) — P = 2P (in-place doubling) *)
-        gcall HCurveAddDouble.
+        gcall_clean HCurveAddDouble.
 
         (* Call 10: curve_add(phi, phi, phi) — phi = 2*phi (in-place doubling) *)
-        gcall HCurveAddDouble.
+        gcall_clean HCurveAddDouble.
 
         (* === Loop invariant restoration === *)
-        (* Provide the decreasing variant: vi - 1 < vi *)
         exists (vi - 1).
         unfold Markers.split.
         split.
         2: { lia. }
 
-        (* Provide the loop invariant for vi - 1 *)
         unfold glv_loop_inv.
         split. { reflexivity. }
-
-        (* Destruct curve_add results from calls 5 and 8 *)
-        repeat match goal with
-        | H : context[let '(_, _, _) := curve_add _ _ in _] |- _ =>
-          destruct (curve_add _ _) as [[? ?] ?] eqn:? in H
-        end.
 
         (* Provide existential witnesses for the next iteration *)
         admit. }
