@@ -180,3 +180,43 @@ Section GLV_Algebra.
   Qed.
 
 End GLV_Algebra.
+
+(** ** Nat/Z iteration arithmetic *)
+
+Lemma vi_iter_step : forall vi : nat, forall glv_iterations : Z,
+  (vi > 0)%nat ->
+  (vi <= Z.to_nat glv_iterations)%nat ->
+  glv_iterations = 129 ->
+  let iter := glv_iterations - Z.of_nat vi in
+  let iter' := glv_iterations - Z.of_nat (vi - 1) in
+  iter' = iter + 1
+  /\ (vi - 1)%nat = Z.to_nat (glv_iterations - iter')
+  /\ 0 <= iter.
+Proof.
+  intros vi gl Hgt Hle Hgl. subst gl.
+  split. { lia. }
+  replace (129 - (129 - Z.of_nat (vi - 1))) with (Z.of_nat (vi - 1)) by lia.
+  rewrite Nat2Z.id. split; [reflexivity|]. lia.
+Qed.
+
+(** Shift_scalar postcondition implies eval / 2 = next shiftr *)
+Lemma shiftr_from_div2 : forall k_eval k_init iter,
+  0 <= iter ->
+  k_eval = Z.shiftr k_init iter ->
+  k_eval / 2 = Z.shiftr k_init (iter + 1).
+Proof.
+  intros * Hi Hk. subst k_eval.
+  rewrite !Z.shiftr_div_pow2 by lia.
+  rewrite Z.pow_add_r by lia. change (2 ^ 1) with 2.
+  apply Z.div_div; lia.
+Qed.
+
+(** Shift_scalar bit matches testbit *)
+Lemma shift_scalar_bit : forall k_eval k_init iter,
+  0 <= k_init -> 0 <= iter ->
+  k_eval = Z.shiftr k_init iter ->
+  k_eval mod 2 = Z.b2z (Z.testbit k_init iter).
+Proof.
+  intros. subst. unfold Z.b2z. rewrite Z.testbit_odd.
+  rewrite Zmod_odd. destruct (Z.odd _); reflexivity.
+Qed.
