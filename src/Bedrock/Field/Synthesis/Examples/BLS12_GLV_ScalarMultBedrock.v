@@ -725,17 +725,11 @@ Section GLV_Shamir_Generic.
         first
         [ wp_binop_precond solve_bounds_auto
         | wp_unop_precond solve_bounds_auto
-        | split; ecancel_assumption
-        | ecancel_assumption
-        | match goal with
-          | Hrem : (_ ⋆ _) ?m |- (_ ⋆ _) ?m =>
-            refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m Hrem);
-            cancel; repeat ecancel_step_by_implication;
-            try (cbn [seps]; apply impl1_refl)
-          end
+        | split; ecancel_assumption_with_copy
+        | ecancel_assumption_with_copy
         | repeat (first
             [ solve_bounds_auto
-            | ecancel_assumption
+            | ecancel_assumption_with_copy
             | split ])
         ]
       | glv_postcall ];
@@ -990,6 +984,30 @@ Section GLV_Shamir_Generic.
         eapply store_word_of_sep. { ecancel_assumption. }
         intros m_iter Hsep_iter.
 
+        (* Flatten right-associated sep from store_word_of_sep.
+           Build a flat sep hypothesis via ecancel from Hsep_i + the iter store. *)
+        assert (Hsep_flat :
+          (FElem (Some tight_bounds) pOutx Outx_i
+           ⋆ FElem (Some tight_bounds) pOuty Outy_i
+           ⋆ FElem (Some tight_bounds) pOutz Outz_i
+           ⋆ FElem (Some tight_bounds) pPx Px_i
+           ⋆ FElem (Some tight_bounds) pPy Py_i
+           ⋆ FElem (Some tight_bounds) pPz Pz_i
+           ⋆ FElem (Some tight_bounds) pPhix Phix_i
+           ⋆ FElem (Some tight_bounds) pPhiy Phiy_i
+           ⋆ FElem (Some tight_bounds) pPhiz Phiz_i
+           ⋆ FElem None a_auxx Auxx_i
+           ⋆ FElem None a_auxy Auxy_i
+           ⋆ FElem None a_auxz Auxz_i
+           ⋆ Bignum glv_scalar_words pk1 k1w_i
+           ⋆ Bignum glv_scalar_words pk2 k2w_i
+           ⋆ scalar a_cond1 c1_i
+           ⋆ scalar a_cond2 c2_i
+           ⋆ scalar a_iter (word.add iw_i (word.of_Z 1))
+           ⋆ R) m_iter).
+        { pose proof Hsep_iter as H'. ecancel_assumption. }
+        clear Hsep_iter. rename Hsep_flat into Hsep_iter.
+
         (* === Loop body: 10 function calls + invariant restoration === *)
 
         (* Memory optimization: clear all stale stackalloc/init hypotheses.
@@ -1046,10 +1064,20 @@ Section GLV_Shamir_Generic.
             try (cbn [seps]; apply impl1_refl)
           end.
 
+        (* Flatten right-associated sep hypotheses to left-associated *)
+        Local Ltac flatten_seps :=
+          repeat match goal with
+          | H : (_ ⋆ _) ?m |- _ =>
+            lazymatch type of H with
+            | Separation.sep _ (Separation.sep _ _) _ =>
+              apply sep_assoc in H
+            end
+          end.
+
         Local Ltac gcall_clean spec :=
           gcall spec;
           try lazymatch goal with
-          | |- WeakestPrecondition.cmd _ _ _ _ _ _ => clear_stale_seps
+          | |- WeakestPrecondition.cmd _ _ _ _ _ _ => flatten_seps
           end.
 
         (* Call 1: shift_scalar(cond1, pk1) *)
