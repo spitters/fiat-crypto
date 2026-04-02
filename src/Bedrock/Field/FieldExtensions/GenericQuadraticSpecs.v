@@ -81,8 +81,10 @@ Section GenericQuadraticExtension.
 
   Local Notation base_size := (@felem_size_in_words _ base_fp _ _ _ _ base_repr).
 
+  (* Canonical decomposition functions — imported by GenericSplitJoin and proofs *)
   Definition qe_fst_felem (l : list word) : list word := firstn base_size l.
   Definition qe_snd_felem (l : list word) : list word := skipn base_size l.
+  Definition qe_offset_word : word := word.of_Z (Memory.bytes_per_word width * Z.of_nat base_size).
 
   Definition qe_fst_felem_bytes (l : list byte) : list byte :=
     firstn (Z.to_nat (@felem_size_in_bytes _ base_fp _ _ _ _ base_repr)) l.

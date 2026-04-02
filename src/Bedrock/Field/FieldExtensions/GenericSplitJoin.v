@@ -133,9 +133,9 @@ Section QuadraticSplitJoin.
     (Memory.bytes_per_word width * Z.of_nat base_size).
   Local Notation base_offset_word := (word.of_Z base_offset).
 
-  (* Local decomposition — avoids cross-section typeclass resolution *)
-  Local Definition qe_fst (l : list word) := firstn base_size l.
-  Local Definition qe_snd (l : list word) := skipn base_size l.
+  (* Use canonical decomposition from GenericQuadraticSpecs *)
+  Local Notation qe_fst := (qe_fst_felem (base_repr:=base_repr)).
+  Local Notation qe_snd := (qe_snd_felem (base_repr:=base_repr)).
 
   Lemma qe_list_decomp : forall l, qe_fst l ++ qe_snd l = l.
   Proof. intros. unfold qe_fst, qe_snd. apply firstn_skipn_app. Qed.
