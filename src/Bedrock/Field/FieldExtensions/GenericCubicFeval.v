@@ -63,11 +63,48 @@ Section CubicFeval.
     intros [[a0 a1] a2] [[b0 b1] b2].
     unfold ce_mul, ce_add, ce_sub, ce_build, ce_c0, ce_c1, ce_c2;
       simpl fst; simpl snd.
-    (* These require ring + mul_by_nr distribution — TODO *)
-  Admitted.
+    f_equal; [f_equal |].
+    - (* c0 *)
+      repeat rewrite <- mul_by_nr_sub. repeat rewrite <- mul_by_nr_add.
+      assert (HK : forall x y : F,
+        Fsub (Fsub (Fmul (Fadd x y) (Fadd x y)) (Fmul x x)) (Fmul y y) =
+        Fadd (Fmul x y) (Fmul x y)) by (intros; ring).
+      rewrite !HK. rewrite !mul_by_nr_add.
+      assert (HE : forall x1 x2 y1 y2,
+        mul_by_nr (Fmul (Fadd x1 x2) (Fadd y1 y2)) =
+        Fadd (Fadd (mul_by_nr (Fmul x1 y1)) (mul_by_nr (Fmul x1 y2)))
+             (Fadd (mul_by_nr (Fmul x2 y1)) (mul_by_nr (Fmul x2 y2)))).
+      { intros. replace (Fmul (Fadd x1 x2) (Fadd y1 y2))
+          with (Fadd (Fadd (Fmul x1 y1) (Fmul x1 y2)) (Fadd (Fmul x2 y1) (Fmul x2 y2))) by ring.
+        rewrite !mul_by_nr_add. reflexivity. }
+      rewrite !HE. clear HK HE.
+      (* Also simplify RHS Karatsuba cross-term *)
+      assert (HK2 : forall x1 x2 y1 y2 : F,
+        Fsub (Fsub (Fmul (Fadd x1 x2) (Fadd y1 y2)) (Fmul x1 y1)) (Fmul x2 y2) =
+        Fadd (Fmul x1 y2) (Fmul x2 y1)) by (intros; ring).
+      rewrite !HK2. rewrite !mul_by_nr_add. clear HK2.
+      (* Normalize commutativity: Fmul b1 a2 → Fmul a2 b1 *)
+      replace (Fmul b1 a2) with (Fmul a2 b1) by ring.
+      (* Now generalize all mul_by_nr(Fmul x y) — same terms on both sides *)
+      repeat match goal with
+      | |- context [mul_by_nr (Fmul ?p ?q)] =>
+          generalize (mul_by_nr (Fmul p q)); let v := fresh "nr" in intro v
+      end.
+      ring.
+    - (* c1: same mul_by_nr + ring structure *)
+      admit.
+    - (* c2: no mul_by_nr *) ring.
+  Admitted. (* c1 component needs the same mul_by_nr distribution technique *)
 
   Lemma ce_mul_comm : forall x y : CE,
     ce_mul mul_by_nr x y = ce_mul mul_by_nr y x.
-  Admitted. (* TODO: ring can't handle opaque mul_by_nr terms *)
+  Proof.
+    intros [[x0 x1] x2] [[y0 y1] y2].
+    unfold ce_mul, ce_build, ce_c0, ce_c1, ce_c2; simpl fst; simpl snd.
+    f_equal; [f_equal |].
+    - f_equal. { ring. } f_equal. ring.
+    - f_equal. { f_equal; ring. } f_equal. ring.
+    - f_equal. { f_equal; ring. } ring.
+  Qed.
 
 End CubicFeval.
