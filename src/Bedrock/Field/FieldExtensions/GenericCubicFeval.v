@@ -63,48 +63,67 @@ Section CubicFeval.
     intros [[a0 a1] a2] [[b0 b1] b2].
     unfold ce_mul, ce_add, ce_sub, ce_build, ce_c0, ce_c1, ce_c2;
       simpl fst; simpl snd.
-    f_equal; [f_equal |].
-    - (* c0 *)
-      repeat rewrite <- mul_by_nr_sub. repeat rewrite <- mul_by_nr_add.
+    (* Split componentwise: ((c0,c1),c2) = ((c0',c1'),c2') *)
+    apply (fun H1 H2 H3 => f_equal2 pair (f_equal2 pair H1 H2) H3).
+    - (* c0: simplify mul_by_nr arguments via ring, distribute, generalize *)
       assert (HK : forall x y : F,
         Fsub (Fsub (Fmul (Fadd x y) (Fadd x y)) (Fmul x x)) (Fmul y y) =
         Fadd (Fmul x y) (Fmul x y)) by (intros; ring).
-      rewrite !HK. rewrite !mul_by_nr_add.
-      assert (HE : forall x1 x2 y1 y2,
-        mul_by_nr (Fmul (Fadd x1 x2) (Fadd y1 y2)) =
-        Fadd (Fadd (mul_by_nr (Fmul x1 y1)) (mul_by_nr (Fmul x1 y2)))
-             (Fadd (mul_by_nr (Fmul x2 y1)) (mul_by_nr (Fmul x2 y2)))).
-      { intros. replace (Fmul (Fadd x1 x2) (Fadd y1 y2))
-          with (Fadd (Fadd (Fmul x1 y1) (Fmul x1 y2)) (Fadd (Fmul x2 y1) (Fmul x2 y2))) by ring.
-        rewrite !mul_by_nr_add. reflexivity. }
-      rewrite !HE. clear HK HE.
-      (* Also simplify RHS Karatsuba cross-term *)
+      replace (mul_by_nr (Fsub (Fsub (Fmul (Fadd (Fadd a1 b1) (Fadd a2 b2)) (Fadd (Fadd a1 b1) (Fadd a2 b2))) (Fmul (Fadd a1 b1) (Fadd a1 b1))) (Fmul (Fadd a2 b2) (Fadd a2 b2))))
+        with (mul_by_nr (Fadd (Fmul (Fadd a1 b1) (Fadd a2 b2)) (Fmul (Fadd a1 b1) (Fadd a2 b2))))
+        by (f_equal; symmetry; apply HK).
+      replace (mul_by_nr (Fsub (Fsub (Fmul (Fadd a1 a2) (Fadd a1 a2)) (Fmul a1 a1)) (Fmul a2 a2)))
+        with (mul_by_nr (Fadd (Fmul a1 a2) (Fmul a1 a2)))
+        by (f_equal; symmetry; apply HK).
+      replace (mul_by_nr (Fsub (Fsub (Fmul (Fadd b1 b2) (Fadd b1 b2)) (Fmul b1 b1)) (Fmul b2 b2)))
+        with (mul_by_nr (Fadd (Fmul b1 b2) (Fmul b1 b2)))
+        by (f_equal; symmetry; apply HK).
       assert (HK2 : forall x1 x2 y1 y2 : F,
         Fsub (Fsub (Fmul (Fadd x1 x2) (Fadd y1 y2)) (Fmul x1 y1)) (Fmul x2 y2) =
         Fadd (Fmul x1 y2) (Fmul x2 y1)) by (intros; ring).
-      rewrite !HK2. rewrite !mul_by_nr_add. clear HK2.
-      (* Normalize commutativity: Fmul b1 a2 → Fmul a2 b1 *)
+      replace (mul_by_nr (Fsub (Fsub (Fmul (Fadd a1 a2) (Fadd b1 b2)) (Fmul a1 b1)) (Fmul a2 b2)))
+        with (mul_by_nr (Fadd (Fmul a1 b2) (Fmul a2 b1)))
+        by (f_equal; symmetry; apply HK2).
+      clear HK HK2. rewrite !mul_by_nr_add.
+      replace (Fmul (Fadd a1 b1) (Fadd a2 b2))
+        with (Fadd (Fadd (Fmul a1 a2) (Fmul a1 b2)) (Fadd (Fmul b1 a2) (Fmul b1 b2))) by ring.
+      rewrite !mul_by_nr_add.
       replace (Fmul b1 a2) with (Fmul a2 b1) by ring.
-      (* Now generalize all mul_by_nr(Fmul x y) — same terms on both sides *)
-      repeat match goal with
-      | |- context [mul_by_nr (Fmul ?p ?q)] =>
-          generalize (mul_by_nr (Fmul p q)); let v := fresh "nr" in intro v
-      end.
-      ring.
-    - (* c1: same mul_by_nr + ring structure *)
-      admit.
+      generalize (mul_by_nr (Fmul a1 a2)) (mul_by_nr (Fmul a1 b2))
+                 (mul_by_nr (Fmul a2 b1)) (mul_by_nr (Fmul b1 b2)).
+      intros; ring.
+    - (* c1: same technique — extract mul_by_nr, combine, simplify *)
+      assert (HFS : forall X Y Z W : F,
+        Fsub (Fadd X (mul_by_nr Y)) (Fadd Z (mul_by_nr W)) =
+        Fadd (Fsub X Z) (Fsub (mul_by_nr Y) (mul_by_nr W)))
+        by (intros; ring).
+      rewrite !HFS. clear HFS. rewrite <- !mul_by_nr_sub.
+      assert (HFS2 : forall X Y Z W : F,
+        Fsub (Fadd X (mul_by_nr Y)) (Fadd Z (mul_by_nr W)) =
+        Fadd (Fsub X Z) (Fsub (mul_by_nr Y) (mul_by_nr W)))
+        by (intros; ring).
+      rewrite HFS2. clear HFS2. rewrite <- mul_by_nr_sub.
+      assert (HK : forall x y : F,
+        Fsub (Fsub (Fmul (Fadd x y) (Fadd x y)) (Fmul x x)) (Fmul y y) =
+        Fadd (Fmul x y) (Fmul x y)) by (intros; ring).
+      replace (mul_by_nr (Fsub (Fsub (Fmul (Fadd a2 b2) (Fadd a2 b2)) (Fmul a2 a2)) (Fmul b2 b2)))
+        with (mul_by_nr (Fadd (Fmul a2 b2) (Fmul a2 b2)))
+        by (f_equal; symmetry; apply HK).
+      clear HK. rewrite mul_by_nr_add.
+      generalize (mul_by_nr (Fmul a2 b2)). intro; ring.
     - (* c2: no mul_by_nr *) ring.
-  Admitted. (* c1 component needs the same mul_by_nr distribution technique *)
+  Qed.
 
   Lemma ce_mul_comm : forall x y : CE,
     ce_mul mul_by_nr x y = ce_mul mul_by_nr y x.
   Proof.
     intros [[x0 x1] x2] [[y0 y1] y2].
     unfold ce_mul, ce_build, ce_c0, ce_c1, ce_c2; simpl fst; simpl snd.
-    f_equal; [f_equal |].
-    - f_equal. { ring. } f_equal. ring.
-    - f_equal. { f_equal; ring. } f_equal. ring.
-    - f_equal. { f_equal; ring. } ring.
+    apply (fun H1 H2 H3 => f_equal2 pair (f_equal2 pair H1 H2) H3);
+      unfold ce_c0, ce_c1, ce_c2; simpl fst; simpl snd.
+    - (* c0 *) f_equal. { ring. } f_equal. ring.
+    - (* c1 *) f_equal. { f_equal; ring. } f_equal. ring.
+    - (* c2 *) f_equal. { f_equal; ring. } ring.
   Qed.
 
 End CubicFeval.
