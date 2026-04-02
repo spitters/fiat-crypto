@@ -40,13 +40,13 @@ Section GenericCubicExt.
   Variable prefix : string.
   Hypothesis eq_dec_base : forall x y : BaseField, {x = y} + {x <> y}.
 
-  (* Import generic specs *)
-  Local Instance CE_fp := CE_field_parameters mul_by_nr_model prefix eq_dec_base
-    (base_fp := base_fp).
-  Local Instance CE_repr := CE_field_representation mul_by_nr_model
-    (base_fp := base_fp) (base_repr := base_repr).
-
   Local Notation CE := (BaseField * BaseField * BaseField)%type.
+
+  (* Import generic specs *)
+  Local Instance CE_fp : FieldParameters CE :=
+    CE_field_parameters mul_by_nr_model prefix eq_dec_base.
+  Local Instance CE_repr : @FieldRepresentation CE CE_fp width BW word mem :=
+    CE_field_representation mul_by_nr_model prefix eq_dec_base.
 
   (* ================================================================ *)
   (* Field names                                                       *)

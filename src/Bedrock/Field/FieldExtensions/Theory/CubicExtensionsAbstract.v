@@ -1,27 +1,17 @@
 (** * Generic cubic extension F[v]/(v³ - nr) for any field F.
     Elements are triples (c0, c1, c2) representing c0 + c1·v + c2·v².
 
-    Parameterized by base field operations and a `mul_by_nonresidue`
-    function (multiplication by nr in the base field).
+    Parameterized by FieldParameters and a `mul_by_nr` function. *)
 
-    Used by GenericCubicSpecs.v to build FieldParameters/FieldRepresentation
-    for arbitrary base fields (Fp2→Fp6, Fp8→Fp24, etc.). *)
+Require Import Crypto.Bedrock.Specs.AbstractField.
 
 Section CubicExtAbstract.
-  Context {F : Type}.
-  Variable Fzero Fone : F.
-  Variable Fopp : F -> F.
-  Variable Finv : F -> F.
-  Variable Fadd Fsub Fmul : F -> F -> F.
-  Variable Fdiv : F -> F -> F.
+  Context {F : Type} {fp : FieldParameters F}.
 
-  (** mul_by_nr(x) = nr · x in the base field.
-      For Fp6 = Fp2[v]/(v³ - ξ), this is fp2_mul_xi. *)
   Variable mul_by_nr : F -> F.
 
   Local Notation CE := (F * F * F)%type.
 
-  (* Projections — note (F * F * F) = ((F * F) * F). *)
   Definition ce_c0 (x : CE) : F := fst (fst x).
   Definition ce_c1 (x : CE) : F := snd (fst x).
   Definition ce_c2 (x : CE) : F := snd x.
@@ -43,14 +33,10 @@ Section CubicExtAbstract.
   Definition ce_opp (a : CE) : CE :=
     ce_build (Fopp (ce_c0 a)) (Fopp (ce_c1 a)) (Fopp (ce_c2 a)).
 
-  (** Multiply by v in the extension: v·(c0 + c1·v + c2·v²) = nr·c2 + c0·v + c1·v². *)
   Definition ce_mul_by_v (a : CE) : CE :=
     ce_build (mul_by_nr (ce_c2 a)) (ce_c0 a) (ce_c1 a).
 
-  (** Cubic extension multiplication (Karatsuba-like).
-      c0 = a0·b0 + nr·((a1+a2)(b1+b2) - a1·b1 - a2·b2)
-      c1 = (a0+a1)(b0+b1) - a0·b0 - a1·b1 + nr·(a2·b2)
-      c2 = (a0+a2)(b0+b2) - a0·b0 - a2·b2 + a1·b1 *)
+  (** Cubic Karatsuba multiplication. *)
   Definition ce_mul (a b : CE) : CE :=
     let a0 := ce_c0 a in let a1 := ce_c1 a in let a2 := ce_c2 a in
     let b0 := ce_c0 b in let b1 := ce_c1 b in let b2 := ce_c2 b in
@@ -65,11 +51,7 @@ Section CubicExtAbstract.
     let c2 := Fadd t2 a1b1 in
     ce_build c0 c1 c2.
 
-  (** Cubic extension squaring (Chung-Hasan SQR3).
-      s0 = a0²,  s1 = 2·a0·a1,  s2 = (a0-a1+a2)²,
-      s3 = 2·a1·a2,  s4 = a2²
-      c0 = s0 + nr·s3,  c1 = s1 + nr·s4,
-      c2 = s1 + s2 + s3 - s0 - s4 *)
+  (** Chung-Hasan SQR3 squaring. *)
   Definition ce_sqr (a : CE) : CE :=
     let a0 := ce_c0 a in let a1 := ce_c1 a in let a2 := ce_c2 a in
     let s0 := Fmul a0 a0 in
@@ -84,12 +66,7 @@ Section CubicExtAbstract.
     let c2 := Fsub (Fsub (Fadd (Fadd s1 s2) s3) s0) s4 in
     ce_build c0 c1 c2.
 
-  (** Cubic extension inverse.
-      A = a0² - nr·(a1·a2)
-      B = nr·(a2²) - a0·a1
-      C = a1² - a0·a2
-      FF = a0·A + nr·(a2·B + a1·C)
-      result = (A/FF, B/FF, C/FF) *)
+  (** Cubic extension inverse. *)
   Definition ce_inv (a : CE) : CE :=
     let a0 := ce_c0 a in let a1 := ce_c1 a in let a2 := ce_c2 a in
     let c0_sq := Fmul a0 a0 in
@@ -107,8 +84,7 @@ Section CubicExtAbstract.
 
   Definition ce_div (a b : CE) : CE := ce_mul a (ce_inv b).
 
-  (** Decidable Leibniz equality from base field decidable equality. *)
-  Hypothesis eq_dec_F : forall x y : F, {x = y} + {x <> y}.
+  Variable eq_dec_F : forall x y : F, {x = y} + {x <> y}.
 
   Lemma eq_dec_CE : forall x y : CE, {x = y} + {x <> y}.
   Proof.
@@ -120,19 +96,3 @@ Section CubicExtAbstract.
   Defined.
 
 End CubicExtAbstract.
-
-Arguments ce_c0 {F}.
-Arguments ce_c1 {F}.
-Arguments ce_c2 {F}.
-Arguments ce_build {F}.
-Arguments ce_zero {F} Fzero.
-Arguments ce_one  {F} Fone Fzero.
-Arguments ce_add  {F} Fadd.
-Arguments ce_sub  {F} Fsub.
-Arguments ce_opp  {F} Fopp.
-Arguments ce_mul_by_v {F} mul_by_nr.
-Arguments ce_mul  {F} Fadd Fsub Fmul mul_by_nr.
-Arguments ce_sqr  {F} Fadd Fsub Fmul mul_by_nr.
-Arguments ce_inv  {F} Fadd Fsub Fmul Finv mul_by_nr.
-Arguments ce_div  {F} Fadd Fsub Fmul Finv mul_by_nr.
-Arguments eq_dec_CE {F} eq_dec_F.

@@ -1,17 +1,14 @@
 (** * Generic quadratic extension F[u]/(u² - nr) for any field F.
     Unlike QuadraticExtensionsGeneric.v (which uses F p), this works for
-    any type with field operations and decidable equality.
+    any type with FieldParameters.
 
     Used by GenericQuadraticSpecs.v to build FieldParameters/FieldRepresentation
     for arbitrary base fields (Fp, Fp2, Fp4, Fp6, ...). *)
 
+Require Import Crypto.Bedrock.Specs.AbstractField.
+
 Section QuadExtAbstract.
-  Context {F : Type}.
-  Variable Fzero Fone : F.
-  Variable Fopp : F -> F.
-  Variable Finv : F -> F.
-  Variable Fadd Fsub Fmul : F -> F -> F.
-  Variable Fdiv : F -> F -> F.
+  Context {F : Type} {fp : FieldParameters F}.
 
   Variable nonresidue : F.
 
@@ -43,7 +40,7 @@ Section QuadExtAbstract.
   Definition qe_div (x y : QE) : QE := qe_mul x (qe_inv y).
 
   (** Decidable Leibniz equality from base field decidable equality. *)
-  Hypothesis eq_dec_F : forall x y : F, {x = y} + {x <> y}.
+  Variable eq_dec_F : forall x y : F, {x = y} + {x <> y}.
 
   Lemma eq_dec_QE : forall x y : QE, {x = y} + {x <> y}.
   Proof.
@@ -54,13 +51,3 @@ Section QuadExtAbstract.
   Defined.
 
 End QuadExtAbstract.
-
-Arguments qe_zero {F} Fzero.
-Arguments qe_one  {F} Fone Fzero.
-Arguments qe_add  {F} Fadd.
-Arguments qe_sub  {F} Fsub.
-Arguments qe_opp  {F} Fopp.
-Arguments qe_mul  {F} Fadd Fmul nonresidue.
-Arguments qe_inv  {F} Fsub Fmul Fopp Finv nonresidue.
-Arguments qe_div  {F} Fadd Fsub Fmul Fopp Finv nonresidue.
-Arguments eq_dec_QE {F} eq_dec_F.

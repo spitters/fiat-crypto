@@ -52,9 +52,10 @@ Section ListLemmas.
   Lemma length_skipn_double : forall (l : list A) n,
     (length l = n + n)%nat -> length (skipn n l) = n.
   Proof.
-    intros. pose proof (firstn_skipn_app l n).
-    rewrite <- H0 in H. rewrite app_length in H.
-    rewrite length_firstn_ge in H; lia.
+    intros l n H. pose proof (firstn_skipn_app l n) as H0.
+    assert (Hge : (length l >= n)%nat) by lia.
+    pose proof (length_firstn_ge l n Hge) as H1.
+    rewrite <- H0 in H. rewrite app_length in H. lia.
   Qed.
 
   Lemma firstn_app_exact : forall (a b : list A),
@@ -98,7 +99,8 @@ Section GenericLength.
     length out = @felem_size_in_words F fp _ _ _ _ fr.
   Proof.
     unfold FElem, Bignum.Bignum.
-    intros [m1 [m2 [_ [[Hlen _] _]]]]. exact Hlen.
+    intros H. destruct H as [m1 [m2 [Hsplit [Hemp Harray]]]].
+    destruct Hemp. assumption.
   Qed.
 End GenericLength.
 
@@ -120,54 +122,52 @@ Section QuadraticSplitJoin.
   Variable prefix : string.
   Hypothesis eq_dec_base : forall x y : BaseField, {x = y} + {x <> y}.
 
-  Local Instance QE_fp := QE_field_parameters nonresidue prefix eq_dec_base
-    (base_fp := base_fp).
-  Local Instance QE_repr := QE_field_representation nonresidue
-    (base_fp := base_fp) (base_repr := base_repr).
-
   Local Notation QE := (BaseField * BaseField)%type.
+
+  Local Instance QE_fp : FieldParameters QE :=
+    QE_field_parameters nonresidue prefix eq_dec_base.
+  Local Instance QE_repr : @FieldRepresentation QE QE_fp width BW word mem :=
+    QE_field_representation nonresidue prefix eq_dec_base.
   Local Notation base_size := (@felem_size_in_words _ base_fp _ _ _ _ base_repr).
   Local Notation base_offset :=
     (Memory.bytes_per_word width * Z.of_nat base_size).
   Local Notation base_offset_word := (word.of_Z base_offset).
 
-  (* List decomposition *)
-  Lemma qe_list_decomp : forall l,
-    qe_fst_felem l ++ qe_snd_felem l = l.
-  Proof. intros. unfold qe_fst_felem, qe_snd_felem. apply firstn_skipn_app. Qed.
+  (* Local decomposition — avoids cross-section typeclass resolution *)
+  Local Definition qe_fst (l : list word) := firstn base_size l.
+  Local Definition qe_snd (l : list word) := skipn base_size l.
 
-  (* Raw Bignum split: QE Bignum → two base Bignums *)
+  Lemma qe_list_decomp : forall l, qe_fst l ++ qe_snd l = l.
+  Proof. intros. unfold qe_fst, qe_snd. apply firstn_skipn_app. Qed.
+
+  (* Raw FElem split: QE → two base *)
   Lemma qe_raw_FElem_split pout out m :
     @FElem _ QE_fp _ _ _ _ QE_repr pout out m ->
-    (@FElem _ base_fp _ _ _ _ base_repr pout (qe_fst_felem out) *
+    (@FElem _ base_fp _ _ _ _ base_repr pout (qe_fst out) *
      @FElem _ base_fp _ _ _ _ base_repr (word.add pout base_offset_word)
-            (qe_snd_felem out))%sep m.
+            (qe_snd out))%sep m.
   Proof.
-    intros H.
-    unfold FElem, Bignum.Bignum in *.
-    destruct H as [me [ma [Hms [[Hme Hlen] Ha]]]].
-    subst me. assert (m = ma) by (apply Properties.map.split_empty_l in Hms; exact Hms). subst.
-    change (@felem_size_in_words _ QE_fp _ _ _ _ QE_repr)
-      with (2 * base_size)%nat in Hlen.
-    assert (out = qe_fst_felem out ++ qe_snd_felem out) as Hdecomp
-      by (symmetry; apply qe_list_decomp).
+    unfold FElem, Bignum.Bignum. intros [me [ma [Hms [Hemp Ha]]]].
+    destruct Hemp as [Hme Hlen]. subst me.
+    assert (m = ma) by (apply Properties.map.split_empty_l in Hms; exact Hms). subst.
+    assert (Hlen2 : length out = (2 * base_size)%nat) by exact Hlen.
+    assert (Hdecomp : out = qe_fst out ++ qe_snd out) by (symmetry; apply qe_list_decomp).
     rewrite Hdecomp in Ha.
-    apply array_append' in Ha.
-    destruct Ha as [m1 [m2 [Hms2 [Ha1 Ha2]]]].
-    assert (Hlen1 : length (qe_fst_felem out) = base_size)
-      by (unfold qe_fst_felem; apply length_firstn_ge; lia).
+    apply array_append' in Ha. destruct Ha as [m1 [m2 [Hms2 [Ha1 Ha2]]]].
+    assert (Hlen1 : length (qe_fst out) = base_size)
+      by (unfold qe_fst; apply length_firstn_ge; lia).
     rewrite Hlen1 in Ha2.
     rewrite <- (@word.ring_morph_mul _ _ word_ok) in Ha2.
     exists m1, m2. split; [exact Hms2 |]. split.
     - exists map.empty, m1. split. { apply Properties.map.split_empty_l. reflexivity. }
-      split; [split; [exact eq_refl | exact Hlen1] | exact Ha1].
+      split. { exact (conj eq_refl Hlen1). } exact Ha1.
     - exists map.empty, m2. split. { apply Properties.map.split_empty_l. reflexivity. }
-      split; [split; [exact eq_refl |] |].
-      + unfold qe_snd_felem. apply length_skipn_double. lia.
-      + exact Ha2.
+      split. { split. { exact eq_refl. }
+        unfold qe_snd. apply length_skipn_double. lia. }
+      exact Ha2.
   Qed.
 
-  (* Raw Bignum join: two base Bignums → QE Bignum *)
+  (* Raw FElem join: two base → QE *)
   Lemma qe_raw_FElem_join pout out1 out2 m :
     length out1 = base_size ->
     length out2 = base_size ->
@@ -175,24 +175,21 @@ Section QuadraticSplitJoin.
      @FElem _ base_fp _ _ _ _ base_repr (word.add pout base_offset_word) out2)%sep m ->
     @FElem _ QE_fp _ _ _ _ QE_repr pout (out1 ++ out2) m.
   Proof.
-    intros Hlen1 Hlen2 H.
-    unfold FElem, Bignum.Bignum in *.
-    destruct H as [m1 [m2 [Hms [H1 H2]]]].
-    destruct H1 as [me1 [ma1 [Hms1 [[Hme1 Hlen1'] Ha1]]]].
-    subst me1. assert (m1 = ma1) by (apply Properties.map.split_empty_l in Hms1; exact Hms1). subst.
-    destruct H2 as [me2 [ma2 [Hms2 [[Hme2 Hlen2'] Ha2]]]].
-    subst me2. assert (m2 = ma2) by (apply Properties.map.split_empty_l in Hms2; exact Hms2). subst.
+    unfold FElem, Bignum.Bignum. intros Hlen1 Hlen2 [m1 [m2 [Hms [H1 H2]]]].
+    destruct H1 as [me1 [ma1 [Hms1 [Hemp1 Ha1]]]].
+    destruct Hemp1 as [Hme1 Hlen1']. subst me1.
+    assert (m1 = ma1) by (apply Properties.map.split_empty_l in Hms1; exact Hms1). subst.
+    destruct H2 as [me2 [ma2 [Hms2 [Hemp2 Ha2]]]].
+    destruct Hemp2 as [Hme2 Hlen2']. subst me2.
+    assert (m2 = ma2) by (apply Properties.map.split_empty_l in Hms2; exact Hms2). subst.
     exists map.empty, m. split. { apply Properties.map.split_empty_l. reflexivity. }
     split.
-    - split; [exact eq_refl |].
-      rewrite app_length.
+    - split; [exact eq_refl |]. rewrite app_length.
       change (@felem_size_in_words _ QE_fp _ _ _ _ QE_repr)
         with (2 * base_size)%nat. lia.
     - apply array_append'.
       exists ma1, ma2. split; [exact Hms |]. split; [exact Ha1 |].
-      rewrite Hlen1'.
-      rewrite <- (@word.ring_morph_mul _ _ word_ok).
-      exact Ha2.
+      rewrite Hlen1'. rewrite <- (@word.ring_morph_mul _ _ word_ok). exact Ha2.
   Qed.
 
 End QuadraticSplitJoin.
@@ -215,77 +212,85 @@ Section CubicSplitJoin.
   Variable prefix : string.
   Hypothesis eq_dec_base : forall x y : BaseField, {x = y} + {x <> y}.
 
-  Local Instance CE_fp := CE_field_parameters mul_by_nr prefix eq_dec_base
-    (base_fp := base_fp).
-  Local Instance CE_repr := CE_field_representation mul_by_nr
-    (base_fp := base_fp) (base_repr := base_repr).
-
   Local Notation CE := (BaseField * BaseField * BaseField)%type.
+
+  Local Instance CE_fp : FieldParameters CE :=
+    CE_field_parameters mul_by_nr prefix eq_dec_base.
+  Local Instance CE_repr : @FieldRepresentation CE CE_fp width BW word mem :=
+    CE_field_representation mul_by_nr prefix eq_dec_base.
   Local Notation base_size := (@felem_size_in_words _ base_fp _ _ _ _ base_repr).
   Local Notation base_offset :=
     (Memory.bytes_per_word width * Z.of_nat base_size).
   Local Notation base_offset_word := (word.of_Z base_offset).
 
   (* List decomposition *)
-  Lemma ce_list_decomp : forall l,
-    ce_c0_felem l ++ ce_c1_felem l ++ ce_c2_felem l = l.
+  (* Local decomposition — avoids cross-section typeclass resolution *)
+  Local Definition ce_c0 (l : list word) := firstn base_size l.
+  Local Definition ce_c1 (l : list word) := firstn base_size (skipn base_size l).
+  Local Definition ce_c2 (l : list word) := skipn (2 * base_size) l.
+
+  Lemma ce_list_decomp : forall l, ce_c0 l ++ ce_c1 l ++ ce_c2 l = l.
   Proof.
-    intros.
-    unfold ce_c0_felem, ce_c1_felem, ce_c2_felem.
-    rewrite <- (firstn_skipn_app (skipn base_size l) base_size) at 2.
-    rewrite <- (firstn_skipn_app l base_size) at 4.
-    rewrite app_assoc. reflexivity.
+    intros l. unfold ce_c0, ce_c1, ce_c2.
+    set (n := base_size).
+    transitivity (firstn n l ++ skipn n l).
+    2: { apply firstn_skipn_app. }
+    f_equal.
+    transitivity (firstn n (skipn n l) ++ skipn n (skipn n l)).
+    2: { apply firstn_skipn_app. }
+    f_equal.
+    replace (2 * n)%nat with (n + n)%nat by lia.
+    symmetry. apply List.skipn_skipn.
   Qed.
+
+  Local Lemma ce_size_eq :
+    @felem_size_in_words _ CE_fp _ _ _ _ CE_repr = (3 * base_size)%nat.
+  Proof. reflexivity. Qed.
 
   (* Raw Bignum split: CE Bignum → three base Bignums *)
   Lemma ce_raw_FElem_split pout out m :
     @FElem _ CE_fp _ _ _ _ CE_repr pout out m ->
-    (@FElem _ base_fp _ _ _ _ base_repr pout (ce_c0_felem out) *
+    (@FElem _ base_fp _ _ _ _ base_repr pout (ce_c0 out) *
      (@FElem _ base_fp _ _ _ _ base_repr (word.add pout base_offset_word)
-             (ce_c1_felem out) *
+             (ce_c1 out) *
       @FElem _ base_fp _ _ _ _ base_repr
              (word.add pout (word.of_Z (2 * base_offset)))
-             (ce_c2_felem out)))%sep m.
+             (ce_c2 out)))%sep m.
   Proof.
-    intros H.
-    unfold FElem, Bignum.Bignum in *.
-    destruct H as [me [ma [Hms [[Hme Hlen] Ha]]]].
-    subst me. assert (m = ma) by (apply Properties.map.split_empty_l in Hms; exact Hms). subst.
+    unfold FElem, Bignum.Bignum.
+    intros [me [ma [Hms [Hemp Ha]]]]. destruct Hemp as [Hme Hlen]. subst me.
+    assert (m = ma) by (apply Properties.map.split_empty_l in Hms; exact Hms). subst.
     change (@felem_size_in_words _ CE_fp _ _ _ _ CE_repr)
       with (3 * base_size)%nat in Hlen.
-    (* Split into c0 ++ (c1 ++ c2) *)
-    assert (out = ce_c0_felem out ++ ce_c1_felem out ++ ce_c2_felem out) as Hdecomp
+    (* Step 1: split c0 from (c1++c2) — DON'T use app_assoc *)
+    assert (Hdecomp : out = ce_c0 out ++ (ce_c1 out ++ ce_c2 out))
       by (symmetry; apply ce_list_decomp).
     rewrite Hdecomp in Ha.
-    rewrite app_assoc in Ha.
-    apply array_append' in Ha.
-    destruct Ha as [m0 [m12 [Hms0 [Ha0 Ha12]]]].
-    assert (Hlen0 : length (ce_c0_felem out) = base_size)
-      by (unfold ce_c0_felem; apply length_firstn_ge; lia).
-    (* Split c1 ++ c2 *)
-    rewrite Hlen0 in Ha12.
-    rewrite <- (@word.ring_morph_mul _ _ word_ok) in Ha12.
-    apply array_append' in Ha12.
-    destruct Ha12 as [m1 [m2 [Hms12 [Ha1 Ha2]]]].
-    assert (Hlen1 : length (ce_c1_felem out) = base_size).
-    { unfold ce_c1_felem. apply length_firstn_ge.
-      assert (length (skipn base_size out) = (3 * base_size - base_size)%nat)
-        by (rewrite skipn_length; lia).
-      lia. }
+    apply array_append' in Ha. destruct Ha as [m0 [m12 [Hms0 [Ha0 Ha12]]]].
+    assert (Hlen0 : length (ce_c0 out) = base_size)
+      by (unfold ce_c0; apply length_firstn_ge; lia).
+    (* Step 2: split c1 from c2 *)
+    rewrite Hlen0 in Ha12. rewrite <- (@word.ring_morph_mul _ _ word_ok) in Ha12.
+    apply array_append' in Ha12. destruct Ha12 as [m1 [m2 [Hms12 [Ha1 Ha2]]]].
+    assert (Hlen1 : length (ce_c1 out) = base_size).
+    { unfold ce_c1. apply length_firstn_ge.
+      rewrite skipn_length. lia. }
     rewrite Hlen1 in Ha2.
-    (* Fix offset for c2: ptr + base_size + base_size = ptr + 2*base_size *)
     replace (word.add (word.add pout base_offset_word)
                       (word.mul (word.of_Z (Memory.bytes_per_word width))
                                 (word.of_Z (Z.of_nat base_size))))
       with (word.add pout (word.of_Z (2 * base_offset))) in Ha2.
-    2: { rewrite <- (@word.ring_morph_mul _ _ word_ok).
-         rewrite word.add_assoc. f_equal.
-         rewrite <- word.ring_morph_add. f_equal. lia. }
-    (* Build the 3-way sep *)
+    2: { unfold base_offset_word.
+         rewrite <- !(@word.ring_morph_mul _ _ word_ok).
+         rewrite <- word.add_assoc.
+         rewrite <- (@word.ring_morph_add _ _ word_ok).
+         fold (@word.of_Z _ word).
+         replace (base_offset + base_offset) with (2 * base_offset) by lia.
+         reflexivity. }
+    (* Build 3-way sep *)
     exists m0, (map.putmany m1 m2).
     split.
-    { destruct Hms0 as [Hms0eq Hms0d].
-      destruct Hms12 as [Hms12eq Hms12d].
+    { destruct Hms0 as [Hms0eq Hms0d]. destruct Hms12 as [Hms12eq Hms12d].
       split.
       - rewrite Hms0eq, Hms12eq. reflexivity.
       - rewrite Hms12eq in Hms0d.
@@ -293,15 +298,18 @@ Section CubicSplitJoin.
         apply map.disjoint_putmany_r. split; assumption. }
     split.
     - exists map.empty, m0. split. { apply Properties.map.split_empty_l. reflexivity. }
-      split; [split; [exact eq_refl | exact Hlen0] | exact Ha0].
-    - exists m1, m2. split.
-      { exact Hms12. }
+      split; [exact (conj eq_refl Hlen0) | exact Ha0].
+    - exists m1, m2.
+      destruct Hms12 as [-> Hd].
+      split; [split; [reflexivity | exact Hd] |].
       split.
       + exists map.empty, m1. split. { apply Properties.map.split_empty_l. reflexivity. }
-        split; [split; [exact eq_refl | exact Hlen1] | exact Ha1].
+        split; [exact (conj eq_refl Hlen1) | exact Ha1].
       + exists map.empty, m2. split. { apply Properties.map.split_empty_l. reflexivity. }
         split; [split; [exact eq_refl |] | exact Ha2].
-        unfold ce_c2_felem. rewrite skipn_length. lia.
+        unfold ce_c2. replace (2 * base_size)%nat with (base_size + base_size)%nat by lia.
+        rewrite <- List.skipn_skipn. rewrite skipn_length.
+        rewrite skipn_length. lia.
   Qed.
 
   (* Raw Bignum join: three base Bignums → CE Bignum *)
@@ -318,51 +326,51 @@ Section CubicSplitJoin.
     intros Hlen0 Hlen1 Hlen2 H.
     unfold FElem, Bignum.Bignum in *.
     destruct H as [m0 [m12 [Hms0 [H0 H12]]]].
-    destruct H0 as [me0 [ma0 [Hms_0 [[Hme0 Hlen0'] Ha0]]]].
-    subst me0. assert (m0 = ma0) by (apply Properties.map.split_empty_l in Hms_0; exact Hms_0). subst.
+    destruct H0 as [me0 [ma0 [Hms_0 [Hemp0 Ha0]]]].
+    destruct Hemp0 as [Hme0 Hlen0']. subst me0.
+    assert (m0 = ma0) by (apply Properties.map.split_empty_l in Hms_0; exact Hms_0). subst.
     destruct H12 as [m1 [m2 [Hms12 [H1 H2]]]].
-    destruct H1 as [me1 [ma1 [Hms_1 [[Hme1 Hlen1'] Ha1]]]].
-    subst me1. assert (m1 = ma1) by (apply Properties.map.split_empty_l in Hms_1; exact Hms_1). subst.
-    destruct H2 as [me2 [ma2 [Hms_2 [[Hme2 Hlen2'] Ha2]]]].
-    subst me2. assert (m2 = ma2) by (apply Properties.map.split_empty_l in Hms_2; exact Hms_2). subst.
+    destruct H1 as [me1 [ma1 [Hms_1 [Hemp1 Ha1]]]].
+    destruct Hemp1 as [Hme1 Hlen1']. subst me1.
+    assert (m1 = ma1) by (apply Properties.map.split_empty_l in Hms_1; exact Hms_1). subst.
+    destruct H2 as [me2 [ma2 [Hms_2 [Hemp2 Ha2]]]].
+    destruct Hemp2 as [Hme2 Hlen2']. subst me2.
+    assert (m2 = ma2) by (apply Properties.map.split_empty_l in Hms_2; exact Hms_2). subst.
     exists map.empty, m. split. { apply Properties.map.split_empty_l. reflexivity. }
     split.
     - split; [exact eq_refl |].
       rewrite !app_length.
       change (@felem_size_in_words _ CE_fp _ _ _ _ CE_repr)
         with (3 * base_size)%nat. lia.
-    - (* Reconstruct array from three pieces *)
-      rewrite app_assoc.
+    - (* Reconstruct array: out0 ++ out1 ++ out2 = out0 ++ (out1 ++ out2) *)
+      destruct Hms0 as [-> Hms0d]. destruct Hms12 as [-> Hms12d].
       apply array_append'.
-      (* Combine m1, m2 into the c1++c2 array *)
+      (* First: combine out1 ++ out2 array *)
       assert (Harray12 :
         array scalar (word.of_Z (Memory.bytes_per_word width))
               (word.add pout base_offset_word) (out1 ++ out2)
               (map.putmany ma1 ma2)).
       { apply array_append'.
-        exists ma1, ma2. split; [exact Hms12 |]. split; [exact Ha1 |].
+        exists ma1, ma2. split; [split; [reflexivity | exact Hms12d] |]. split; [exact Ha1 |].
         rewrite Hlen1'.
-        (* Fix offset: (ptr+off) + off = ptr + 2*off *)
         replace (word.add (word.add pout base_offset_word)
                           (word.mul (word.of_Z (Memory.bytes_per_word width))
                                     (word.of_Z (Z.of_nat base_size))))
           with (word.add pout (word.of_Z (2 * base_offset))).
-        2: { rewrite <- (@word.ring_morph_mul _ _ word_ok).
-             rewrite word.add_assoc. f_equal.
-             rewrite <- word.ring_morph_add. f_equal. lia. }
+        2: { unfold base_offset_word.
+             rewrite <- !(@word.ring_morph_mul _ _ word_ok).
+             rewrite <- word.add_assoc. rewrite <- (@word.ring_morph_add _ _ word_ok).
+             fold (@word.of_Z _ word).
+             replace (base_offset + base_offset) with (2 * base_offset) by lia.
+             reflexivity. }
         exact Ha2. }
       exists ma0, (map.putmany ma1 ma2).
       split.
-      { destruct Hms0 as [Hms0eq Hms0d].
-        destruct Hms12 as [Hms12eq Hms12d].
-        split.
-        - rewrite Hms0eq, Hms12eq. reflexivity.
-        - rewrite Hms12eq in Hms0d.
-          apply map.disjoint_putmany_r in Hms0d. destruct Hms0d.
-          apply map.disjoint_putmany_r. split; assumption. }
+      { split; [reflexivity |].
+        apply map.disjoint_putmany_r in Hms0d. destruct Hms0d.
+        apply map.disjoint_putmany_r. split; assumption. }
       split; [exact Ha0 |].
-      rewrite Hlen0'.
-      rewrite <- (@word.ring_morph_mul _ _ word_ok).
+      rewrite Hlen0'. rewrite <- (@word.ring_morph_mul _ _ word_ok).
       exact Harray12.
   Qed.
 

@@ -49,20 +49,17 @@ Section GenericQuadraticExtension.
   (* ================================================================ *)
 
   Instance QE_field_parameters : FieldParameters QE :=
-    {| Fzero := qe_zero (@Fzero _ base_fp);
-       Fone  := qe_one (@Fone _ base_fp) (@Fzero _ base_fp);
+    {| Fzero := @qe_zero _ base_fp;
+       Fone  := @qe_one _ base_fp;
        Feq   := @eq QE;
-       Fopp  := qe_opp (@Fopp _ base_fp);
-       Finv  := qe_inv (@Fsub _ base_fp) (@Fmul _ base_fp)
-                        (@Fopp _ base_fp) (@Finv _ base_fp) nonresidue;
-       Fadd  := qe_add (@Fadd _ base_fp);
-       Fsub  := qe_sub (@Fsub _ base_fp);
-       Fmul  := qe_mul (@Fadd _ base_fp) (@Fmul _ base_fp) nonresidue;
-       Fdiv  := qe_div (@Fadd _ base_fp) (@Fsub _ base_fp)
-                        (@Fmul _ base_fp) (@Fopp _ base_fp)
-                        (@Finv _ base_fp) nonresidue;
-       Feq_dec := eq_dec_QE eq_dec_base;
-       a24   := qe_zero (@Fzero _ base_fp);
+       Fopp  := @qe_opp _ base_fp;
+       Finv  := @qe_inv _ base_fp nonresidue;
+       Fadd  := @qe_add _ base_fp;
+       Fsub  := @qe_sub _ base_fp;
+       Fmul  := @qe_mul _ base_fp nonresidue;
+       Fdiv  := @qe_div _ base_fp nonresidue;
+       Feq_dec := @eq_dec_QE _ eq_dec_base;
+       a24   := @qe_zero _ base_fp;
        mul   := (prefix ++ "mul")%string;
        add   := (prefix ++ "add")%string;
        sub   := (prefix ++ "sub")%string;

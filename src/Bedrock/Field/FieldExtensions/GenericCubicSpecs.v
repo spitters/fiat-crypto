@@ -51,20 +51,17 @@ Section GenericCubicExtension.
   (* ================================================================ *)
 
   Instance CE_field_parameters : FieldParameters CE :=
-    {| Fzero := ce_zero (@Fzero _ base_fp);
-       Fone  := ce_one (@Fone _ base_fp) (@Fzero _ base_fp);
+    {| Fzero := @ce_zero _ base_fp;
+       Fone  := @ce_one _ base_fp;
        Feq   := @eq CE;
-       Fopp  := ce_opp (@Fopp _ base_fp);
-       Finv  := ce_inv (@Fadd _ base_fp) (@Fsub _ base_fp)
-                        (@Fmul _ base_fp) (@Finv _ base_fp) mul_by_nr;
-       Fadd  := ce_add (@Fadd _ base_fp);
-       Fsub  := ce_sub (@Fsub _ base_fp);
-       Fmul  := ce_mul (@Fadd _ base_fp) (@Fsub _ base_fp)
-                        (@Fmul _ base_fp) mul_by_nr;
-       Fdiv  := ce_div (@Fadd _ base_fp) (@Fsub _ base_fp)
-                        (@Fmul _ base_fp) (@Finv _ base_fp) mul_by_nr;
-       Feq_dec := eq_dec_CE eq_dec_base;
-       a24   := ce_zero (@Fzero _ base_fp);
+       Fopp  := @ce_opp _ base_fp;
+       Finv  := @ce_inv _ base_fp mul_by_nr;
+       Fadd  := @ce_add _ base_fp;
+       Fsub  := @ce_sub _ base_fp;
+       Fmul  := @ce_mul _ base_fp mul_by_nr;
+       Fdiv  := @ce_div _ base_fp mul_by_nr;
+       Feq_dec := @eq_dec_CE _ eq_dec_base;
+       a24   := @ce_zero _ base_fp;
        mul   := (prefix ++ "mul")%string;
        add   := (prefix ++ "add")%string;
        sub   := (prefix ++ "sub")%string;

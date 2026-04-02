@@ -40,13 +40,13 @@ Section GenericQuadExt.
   Variable prefix : string.
   Hypothesis eq_dec_base : forall x y : BaseField, {x = y} + {x <> y}.
 
-  (* Import generic specs *)
-  Local Instance QE_fp := QE_field_parameters nonresidue prefix eq_dec_base
-    (base_fp := base_fp).
-  Local Instance QE_repr := QE_field_representation
-    (base_fp := base_fp) (base_repr := base_repr).
-
   Local Notation QE := (BaseField * BaseField)%type.
+
+  (* Import generic specs *)
+  Local Instance QE_fp : FieldParameters QE :=
+    QE_field_parameters nonresidue prefix eq_dec_base.
+  Local Instance QE_repr : @FieldRepresentation QE QE_fp width BW word mem :=
+    QE_field_representation nonresidue prefix eq_dec_base.
 
   (* ================================================================ *)
   (* Field names                                                       *)
