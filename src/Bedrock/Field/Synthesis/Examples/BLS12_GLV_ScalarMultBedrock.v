@@ -1091,8 +1091,7 @@ Section GLV_Shamir_Generic.
             | Hsep : (_ ⋆ _) ?m |- (_ ⋆ _) ?m =>
               refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m Hsep);
               repeat rewrite <- sep_assoc;
-              cancel; repeat ecancel_step_by_implication;
-              cbn [seps]; apply impl1_refl
+              apply impl1_refl
             end
           | glv_postcall ];
           repeat match goal with
@@ -1107,6 +1106,15 @@ Section GLV_Shamir_Generic.
           end;
           try match goal with
           | H : ?tr = ?t |- _ => first [ subst t | subst tr | idtac ]
+          end;
+          (* Flatten postcondition sep: the R_frame from weaken_call is a
+             compound predicate. Assert a flat version using impl1. *)
+          try match goal with
+          | Hrem : (_ ⋆ _) ?m |- _ =>
+            let Hflat := fresh "Hflat" in
+            assert (Hflat := Hrem);
+            repeat (seprewrite_in_by @sep_assoc Hflat ltac:(trivial));
+            clear Hrem; rename Hflat into Hrem
           end;
           try flatten_seps.
 
