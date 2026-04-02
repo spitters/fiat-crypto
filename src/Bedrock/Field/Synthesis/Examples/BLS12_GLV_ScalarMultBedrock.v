@@ -1080,10 +1080,40 @@ Section GLV_Shamir_Generic.
           | |- WeakestPrecondition.cmd _ _ _ _ _ _ => flatten_seps
           end.
 
+        (* Tactic for calls with explicit spec args — avoids ecancel evar issue *)
+        Local Ltac gcall_explicit spec pc px c x :=
+          try glv_straightline;
+          unfold1_cmd_goal; cbv beta match delta [cmd_body];
+          letexists; split; [solve [eval_dexprs_abstract] |];
+          eapply Semantics.weaken_call;
+          [ pose proof (spec pc px c x) as HS; eapply HS;
+            match goal with
+            | Hsep : (_ ⋆ _) ?m |- (_ ⋆ _) ?m =>
+              refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m Hsep);
+              repeat rewrite <- sep_assoc;
+              cancel; repeat ecancel_step_by_implication;
+              cbn [seps]; apply impl1_refl
+            end
+          | glv_postcall ];
+          repeat match goal with
+          | H : exists _, _ |- _ => destruct H
+          end;
+          repeat match goal with
+          | H : _ /\ _ |- _ =>
+              lazymatch type of H with
+              | _ = _ /\ _ => destruct H
+              | _ /\ _ => destruct H
+              end
+          end;
+          try match goal with
+          | H : ?tr = ?t |- _ => first [ subst t | subst tr | idtac ]
+          end;
+          try flatten_seps.
+
         (* Call 1: shift_scalar(cond1, pk1) *)
-        gcall_clean HShiftScalar.
+        gcall_explicit HShiftScalar a_cond1 pk1 c1_i k1w_i.
         (* Call 2: shift_scalar(cond2, pk2) *)
-        gcall_clean HShiftScalar.
+        gcall_explicit HShiftScalar a_cond2 pk2 c2_i k2w_i.
         (* Call 3: store_zero(aux) *)
         gcall_clean HStoreZero.
         (* Call 4: cmov_alt(aux, aux, P, cond1) + bounds proof *)
