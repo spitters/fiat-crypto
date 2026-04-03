@@ -48,378 +48,10 @@ Section FpRing.
 End FpRing.
 
 (* ================================================================== *)
-(** * Section 1: Fp2 bridges                                           *)
-(*   qe_ops (Fp, beta=-1) = Tower.fp2_ops                             *)
+(** * All feval bridges in a single section                            *)
 (* ================================================================== *)
 
-Section Fp2Feval.
-  Variable p : positive.
-
-  Local Notation Fp := (F p).
-  Local Notation Fp2 := (Fp * Fp)%type.
-
-  (** The Fp-level FieldParameters used by the bedrock2 instances. *)
-  Local Instance fp_params : FieldParameters Fp :=
-    {| Fzero := @F.zero p; Fone := @F.one p; Feq := @eq Fp;
-       Fopp := @F.opp p; Finv := @F.inv p;
-       Fadd := @F.add p; Fsub := @F.sub p;
-       Fmul := @F.mul p; Fdiv := @F.div p;
-       Feq_dec := @F.eq_dec p;
-       a24 := @F.zero p;
-       mul := "mul"; add := "add"; sub := "sub";
-       opp := "opp"; square := "square";
-       scmula24 := "scmula24"; inv := "inv";
-       from_bytes := "from_bytes"; to_bytes := "to_bytes";
-       select_znz := "select_znz"; felem_copy := "felem_copy";
-       from_word := "from_word"; from_list := "from_list" |}.
-
-  Let beta : Fp := F.of_Z p (-1).
-
-  Local Lemma beta_is_opp_one : beta = @F.opp p (@F.one p).
-  Proof.
-    unfold beta. change (-1)%Z with (Z.opp 1%Z).
-    rewrite F.of_Z_opp. reflexivity.
-  Qed.
-
-  Add Ring Fp_ring_fp2 : (Fp_ring_theory p).
-
-  (** qe_add = Tower.fp2_add *)
-  Lemma fp2_add_bridge : forall a b : Fp2,
-    @qe_add _ fp_params a b = Tower.fp2_add p a b.
-  Proof. intros [a0 a1] [b0 b1]; reflexivity. Qed.
-
-  (** qe_sub = Tower.fp2_sub *)
-  Lemma fp2_sub_bridge : forall a b : Fp2,
-    @qe_sub _ fp_params a b = Tower.fp2_sub p a b.
-  Proof. intros [a0 a1] [b0 b1]; reflexivity. Qed.
-
-  (** qe_opp = Tower.fp2_neg *)
-  Lemma fp2_neg_bridge : forall a : Fp2,
-    @qe_opp _ fp_params a = Tower.fp2_neg p a.
-  Proof. intros [a0 a1]; reflexivity. Qed.
-
-  (** qe_mul beta = Tower.fp2_mul.
-      qe_mul:  (a0*b0 + beta*(a1*b1), a0*b1 + a1*b0)
-      fp2_mul: (a0*b0 - a1*b1,        a0*b1 + a1*b0)
-      With beta = -1: a0*b0 + (-1)*(a1*b1) = a0*b0 - a1*b1. *)
-  Lemma fp2_mul_bridge : forall a b : Fp2,
-    @qe_mul _ fp_params beta a b = Tower.fp2_mul p a b.
-  Proof.
-    intros [a0 a1] [b0 b1].
-    unfold qe_mul, Tower.fp2_mul, Fadd, Fmul, fp_params; simpl fst; simpl snd.
-    rewrite beta_is_opp_one. f_equal; ring.
-  Qed.
-
-  (** qe_mul beta x x = Tower.fp2_sqr x *)
-  Lemma fp2_sqr_bridge : forall a : Fp2,
-    @qe_mul _ fp_params beta a a = Tower.fp2_sqr p a.
-  Proof.
-    intros [a0 a1].
-    unfold qe_mul, Tower.fp2_sqr, Fadd, Fmul, fp_params; simpl fst; simpl snd.
-    rewrite beta_is_opp_one. f_equal; ring.
-  Qed.
-
-  (** qe_inv beta = Tower.fp2_inv *)
-  Lemma fp2_inv_bridge : forall a : Fp2,
-    @qe_inv _ fp_params beta a = Tower.fp2_inv p a.
-  Proof.
-    intros [a0 a1].
-    unfold qe_inv, Tower.fp2_inv, Fadd, Fmul, Fsub, Fopp, Finv, fp_params;
-      simpl fst; simpl snd.
-    rewrite beta_is_opp_one.
-    replace (a0 * a0 - F.opp 1 * (a1 * a1))%F
-      with (a0 * a0 + a1 * a1)%F by ring.
-    reflexivity.
-  Qed.
-
-  (** Conjugate *)
-  Lemma fp2_conjugate_bridge : forall a : Fp2,
-    (fst a, @F.opp p (snd a)) = Tower.fp2_conjugate p a.
-  Proof. intros [a0 a1]; reflexivity. Qed.
-
-  (** mul_by_xi: qe_mul beta (1,1) a = Tower.fp2_mul_xi a *)
-  Lemma fp2_mul_xi_bridge : forall a : Fp2,
-    @qe_mul _ fp_params beta (@F.one p, @F.one p) a = Tower.fp2_mul_xi p a.
-  Proof.
-    intros [a0 a1].
-    unfold qe_mul, Tower.fp2_mul_xi, Fadd, Fmul, fp_params; simpl fst; simpl snd.
-    rewrite beta_is_opp_one. f_equal; ring.
-  Qed.
-
-End Fp2Feval.
-
-(* ================================================================== *)
-(** * Section 2: Fp4 bridges                                           *)
-(*   qe_ops (Fp2, xi=(1,1)) = Tower.fp4_ops                           *)
-(* ================================================================== *)
-
-Section Fp4Feval.
-  Variable p : positive.
-
-  Local Notation Fp := (F p).
-  Local Notation Fp2 := (Fp * Fp)%type.
-  Local Notation Fp4 := (Fp2 * Fp2)%type.
-
-  Local Instance fp_params : FieldParameters Fp :=
-    {| Fzero := @F.zero p; Fone := @F.one p; Feq := @eq Fp;
-       Fopp := @F.opp p; Finv := @F.inv p;
-       Fadd := @F.add p; Fsub := @F.sub p;
-       Fmul := @F.mul p; Fdiv := @F.div p;
-       Feq_dec := @F.eq_dec p;
-       a24 := @F.zero p;
-       mul := "mul"; add := "add"; sub := "sub";
-       opp := "opp"; square := "square";
-       scmula24 := "scmula24"; inv := "inv";
-       from_bytes := "from_bytes"; to_bytes := "to_bytes";
-       select_znz := "select_znz"; felem_copy := "felem_copy";
-       from_word := "from_word"; from_list := "from_list" |}.
-
-  Let beta : Fp := F.of_Z p (-1).
-  Let xi : Fp2 := (@F.one p, @F.one p).
-
-  (** Fp2-level FieldParameters: add = qe_add, mul = qe_mul beta, etc. *)
-  Local Instance fp2_params : FieldParameters Fp2 :=
-    {| Fzero := @qe_zero _ fp_params;
-       Fone  := @qe_one _ fp_params;
-       Feq   := @eq Fp2;
-       Fopp  := @qe_opp _ fp_params;
-       Finv  := @qe_inv _ fp_params beta;
-       Fadd  := @qe_add _ fp_params;
-       Fsub  := @qe_sub _ fp_params;
-       Fmul  := @qe_mul _ fp_params beta;
-       Fdiv  := @qe_div _ fp_params beta;
-       Feq_dec := @eq_dec_QE _ (@F.eq_dec p);
-       a24   := @qe_zero _ fp_params;
-       mul := "mul"; add := "add"; sub := "sub";
-       opp := "opp"; square := "square";
-       scmula24 := "scmula24"; inv := "inv";
-       from_bytes := "from_bytes"; to_bytes := "to_bytes";
-       select_znz := "select_znz"; felem_copy := "felem_copy";
-       from_word := "from_word"; from_list := "from_list" |}.
-
-  Add Ring Fp_ring_fp4 : (Fp_ring_theory p).
-
-  Local Lemma beta_is_opp_one : beta = @F.opp p (@F.one p).
-  Proof.
-    unfold beta. change (-1)%Z with (Z.opp 1%Z).
-    rewrite F.of_Z_opp. reflexivity.
-  Qed.
-
-  (** Fp4 add/sub/neg: componentwise Fp2 operations = Tower *)
-  Lemma fp4_add_bridge : forall a b : Fp4,
-    @qe_add _ fp2_params a b = Tower.fp4_add p a b.
-  Proof. intros [a0 a1] [b0 b1]; reflexivity. Qed.
-
-  Lemma fp4_sub_bridge : forall a b : Fp4,
-    @qe_sub _ fp2_params a b = Tower.fp4_sub p a b.
-  Proof. intros [a0 a1] [b0 b1]; reflexivity. Qed.
-
-  Lemma fp4_neg_bridge : forall a : Fp4,
-    @qe_opp _ fp2_params a = Tower.fp4_neg p a.
-  Proof. intros [a0 a1]; reflexivity. Qed.
-
-  (** qe_mul xi = Tower.fp4_mul *)
-  Lemma fp4_mul_bridge : forall a b : Fp4,
-    @qe_mul _ fp2_params xi a b = Tower.fp4_mul p a b.
-  Proof.
-    intros [a0 a1] [b0 b1].
-    unfold qe_mul; simpl fst; simpl snd.
-    unfold Tower.fp4_mul; simpl fst; simpl snd.
-    rewrite !(fp2_mul_bridge p), !(fp2_add_bridge p), !(fp2_mul_xi_bridge p).
-    reflexivity.
-  Qed.
-
-  (** qe_inv xi = Tower.fp4_inv *)
-  Lemma fp4_inv_bridge : forall a : Fp4,
-    @qe_inv _ fp2_params xi a = Tower.fp4_inv p a.
-  Proof.
-    intros [a0 a1].
-    unfold qe_inv; simpl fst; simpl snd.
-    unfold Tower.fp4_inv; simpl fst; simpl snd.
-    rewrite !(fp2_mul_bridge p), !(fp2_mul_xi_bridge p),
-            !(fp2_sub_bridge p), !(fp2_inv_bridge p), !(fp2_neg_bridge p).
-    reflexivity.
-  Qed.
-
-  (** mul_by_v: used as mul_by_nonresidue at the Fp8 level.
-      qe_mul beta xi (snd a), fst a) = Tower.fp4_mul_by_v a *)
-  Lemma fp4_mul_by_v_bridge : forall a : Fp4,
-    (@qe_mul _ fp_params beta xi (snd a), fst a) = Tower.fp4_mul_by_v p a.
-  Proof.
-    intros [a0 a1].
-    unfold Tower.fp4_mul_by_v; simpl fst; simpl snd.
-    rewrite (fp2_mul_xi_bridge p). reflexivity.
-  Qed.
-
-End Fp4Feval.
-
-(* ================================================================== *)
-(** * Section 3: Fp8 bridges                                           *)
-(*   qe_ops (Fp4, v_in_Fp4) = Tower.fp8_ops                           *)
-(* ================================================================== *)
-
-Section Fp8Feval.
-  Variable p : positive.
-
-  Local Notation Fp := (F p).
-  Local Notation Fp2 := (Fp * Fp)%type.
-  Local Notation Fp4 := (Fp2 * Fp2)%type.
-  Local Notation Fp8 := (Fp4 * Fp4)%type.
-
-  Local Instance fp_params : FieldParameters Fp :=
-    {| Fzero := @F.zero p; Fone := @F.one p; Feq := @eq Fp;
-       Fopp := @F.opp p; Finv := @F.inv p;
-       Fadd := @F.add p; Fsub := @F.sub p;
-       Fmul := @F.mul p; Fdiv := @F.div p;
-       Feq_dec := @F.eq_dec p;
-       a24 := @F.zero p;
-       mul := "mul"; add := "add"; sub := "sub";
-       opp := "opp"; square := "square";
-       scmula24 := "scmula24"; inv := "inv";
-       from_bytes := "from_bytes"; to_bytes := "to_bytes";
-       select_znz := "select_znz"; felem_copy := "felem_copy";
-       from_word := "from_word"; from_list := "from_list" |}.
-
-  Let beta : Fp := F.of_Z p (-1).
-  Let xi : Fp2 := (@F.one p, @F.one p).
-
-  Local Instance fp2_params : FieldParameters Fp2 :=
-    {| Fzero := @qe_zero _ fp_params;
-       Fone  := @qe_one _ fp_params;
-       Feq   := @eq Fp2;
-       Fopp  := @qe_opp _ fp_params;
-       Finv  := @qe_inv _ fp_params beta;
-       Fadd  := @qe_add _ fp_params;
-       Fsub  := @qe_sub _ fp_params;
-       Fmul  := @qe_mul _ fp_params beta;
-       Fdiv  := @qe_div _ fp_params beta;
-       Feq_dec := @eq_dec_QE _ (@F.eq_dec p);
-       a24   := @qe_zero _ fp_params;
-       mul := "mul"; add := "add"; sub := "sub";
-       opp := "opp"; square := "square";
-       scmula24 := "scmula24"; inv := "inv";
-       from_bytes := "from_bytes"; to_bytes := "to_bytes";
-       select_znz := "select_znz"; felem_copy := "felem_copy";
-       from_word := "from_word"; from_list := "from_list" |}.
-
-  Let v_in_Fp4 : Fp4 :=
-    ((@F.zero p, @F.zero p), (@F.one p, @F.zero p)).
-
-  Local Instance fp4_params : FieldParameters Fp4 :=
-    {| Fzero := @qe_zero _ fp2_params;
-       Fone  := @qe_one _ fp2_params;
-       Feq   := @eq Fp4;
-       Fopp  := @qe_opp _ fp2_params;
-       Finv  := @qe_inv _ fp2_params xi;
-       Fadd  := @qe_add _ fp2_params;
-       Fsub  := @qe_sub _ fp2_params;
-       Fmul  := @qe_mul _ fp2_params xi;
-       Fdiv  := @qe_div _ fp2_params xi;
-       Feq_dec := @eq_dec_QE _ (@eq_dec_QE _ (@F.eq_dec p));
-       a24   := @qe_zero _ fp2_params;
-       mul := "mul"; add := "add"; sub := "sub";
-       opp := "opp"; square := "square";
-       scmula24 := "scmula24"; inv := "inv";
-       from_bytes := "from_bytes"; to_bytes := "to_bytes";
-       select_znz := "select_znz"; felem_copy := "felem_copy";
-       from_word := "from_word"; from_list := "from_list" |}.
-
-  Add Ring Fp_ring_fp8 : (Fp_ring_theory p).
-
-  Local Lemma beta_is_opp_one : beta = @F.opp p (@F.one p).
-  Proof.
-    unfold beta. change (-1)%Z with (Z.opp 1%Z).
-    rewrite F.of_Z_opp. reflexivity.
-  Qed.
-
-  Lemma fp8_add_bridge : forall a b : Fp8,
-    @qe_add _ fp4_params a b = Tower.fp8_add p a b.
-  Proof. intros [a0 a1] [b0 b1]; reflexivity. Qed.
-
-  Lemma fp8_sub_bridge : forall a b : Fp8,
-    @qe_sub _ fp4_params a b = Tower.fp8_sub p a b.
-  Proof. intros [a0 a1] [b0 b1]; reflexivity. Qed.
-
-  Lemma fp8_neg_bridge : forall a : Fp8,
-    @qe_opp _ fp4_params a = Tower.fp8_neg p a.
-  Proof. intros [a0 a1]; reflexivity. Qed.
-
-  (** Helper: Fp4 mul via qe_mul xi = Tower.fp4_mul *)
-  Local Lemma fp4_mul_eq : forall a b : Fp4,
-    @qe_mul _ fp2_params xi a b = Tower.fp4_mul p a b.
-  Proof. exact (fp4_mul_bridge p). Qed.
-
-  Local Lemma fp4_add_eq : forall a b : Fp4,
-    @qe_add _ fp2_params a b = Tower.fp4_add p a b.
-  Proof. exact (fp4_add_bridge p). Qed.
-
-  Local Lemma fp4_sub_eq : forall a b : Fp4,
-    @qe_sub _ fp2_params a b = Tower.fp4_sub p a b.
-  Proof. exact (fp4_sub_bridge p). Qed.
-
-  Local Lemma fp4_neg_eq : forall a : Fp4,
-    @qe_opp _ fp2_params a = Tower.fp4_neg p a.
-  Proof. exact (fp4_neg_bridge p). Qed.
-
-  Local Lemma fp4_inv_eq : forall a : Fp4,
-    @qe_inv _ fp2_params xi a = Tower.fp4_inv p a.
-  Proof. exact (fp4_inv_bridge p). Qed.
-
-  (** Fp4 mul by v via full multiplication *)
-  Local Lemma fp4_mul_by_v_eq : forall a : Fp4,
-    @qe_mul _ fp2_params xi v_in_Fp4 a = Tower.fp4_mul_by_v p a.
-  Proof.
-    intros [a0 a1].
-    rewrite fp4_mul_eq.
-    unfold Tower.fp4_mul, Tower.fp4_mul_by_v; simpl fst; simpl snd.
-    unfold v_in_Fp4; simpl fst; simpl snd.
-    unfold Tower.fp2_mul, Tower.fp2_add, Tower.fp2_mul_xi; simpl fst; simpl snd.
-    rewrite beta_is_opp_one.
-    f_equal; f_equal; ring.
-  Qed.
-
-  (** qe_mul v_in_Fp4 = Tower.fp8_mul *)
-  Lemma fp8_mul_bridge : forall a b : Fp8,
-    @qe_mul _ fp4_params v_in_Fp4 a b = Tower.fp8_mul p a b.
-  Proof.
-    intros [a0 a1] [b0 b1].
-    unfold qe_mul; simpl fst; simpl snd.
-    unfold Tower.fp8_mul; simpl fst; simpl snd.
-    rewrite !fp4_mul_eq, !fp4_add_eq, !fp4_mul_by_v_eq.
-    reflexivity.
-  Qed.
-
-  (** qe_inv v_in_Fp4 = Tower.fp8_inv *)
-  Lemma fp8_inv_bridge : forall a : Fp8,
-    @qe_inv _ fp4_params v_in_Fp4 a = Tower.fp8_inv p a.
-  Proof.
-    intros [a0 a1].
-    unfold qe_inv; simpl fst; simpl snd.
-    unfold Tower.fp8_inv; simpl fst; simpl snd.
-    rewrite !fp4_mul_eq, !fp4_mul_by_v_eq, !fp4_sub_eq,
-            !fp4_inv_eq, !fp4_neg_eq.
-    reflexivity.
-  Qed.
-
-  (** mul_by_w: nonresidue multiplication Fp8 -> Fp24.
-      Uses fp4_mul_by_v on the second component. *)
-  Lemma fp8_mul_by_w_bridge : forall a : Fp8,
-    (@qe_mul _ fp2_params xi v_in_Fp4 (snd a), fst a) =
-    Tower.fp8_mul_by_w p a.
-  Proof.
-    intros [a0 a1].
-    unfold Tower.fp8_mul_by_w; simpl fst; simpl snd.
-    rewrite fp4_mul_by_v_eq. reflexivity.
-  Qed.
-
-End Fp8Feval.
-
-(* ================================================================== *)
-(** * Section 4: Fp24 bridges                                          *)
-(*   ce_ops (Fp8, mul_by_w) = Tower.fp24_ops                          *)
-(* ================================================================== *)
-
-Section Fp24Feval.
+Section AllFeval.
   Variable p : positive.
 
   Local Notation Fp := (F p).
@@ -428,6 +60,11 @@ Section Fp24Feval.
   Local Notation Fp8 := (Fp4 * Fp4)%type.
   Local Notation Fp24 := (Fp8 * Fp8 * Fp8)%type.
 
+  (* -------------------------------------------------------------- *)
+  (* Shared definitions                                              *)
+  (* -------------------------------------------------------------- *)
+
+  (** The Fp-level FieldParameters used by the bedrock2 instances. *)
   Local Instance fp_params : FieldParameters Fp :=
     {| Fzero := @F.zero p; Fone := @F.one p; Feq := @eq Fp;
        Fopp := @F.opp p; Finv := @F.inv p;
@@ -505,8 +142,213 @@ Section Fp24Feval.
        select_znz := "select_znz"; felem_copy := "felem_copy";
        from_word := "from_word"; from_list := "from_list" |}.
 
-  (** The mul_by_nr model for Fp24's cubic extension.
-      Matches bls24_Fp8_mul_by_w_model from BLS24_509_Instances.v. *)
+  Local Lemma beta_is_opp_one : beta = @F.opp p (@F.one p).
+  Proof.
+    unfold beta. change (-1)%Z with (Z.opp 1%Z).
+    rewrite F.of_Z_opp. reflexivity.
+  Qed.
+
+  Add Ring Fp_ring : (Fp_ring_theory p).
+
+  (* ================================================================ *)
+  (* Fp2 bridges: qe_ops (Fp, beta=-1) = Tower.fp2_ops               *)
+  (* ================================================================ *)
+
+  (** qe_add = Tower.fp2_add *)
+  Lemma fp2_add_bridge : forall a b : Fp2,
+    @qe_add _ fp_params a b = Tower.fp2_add p a b.
+  Proof. intros [a0 a1] [b0 b1]; reflexivity. Qed.
+
+  (** qe_sub = Tower.fp2_sub *)
+  Lemma fp2_sub_bridge : forall a b : Fp2,
+    @qe_sub _ fp_params a b = Tower.fp2_sub p a b.
+  Proof. intros [a0 a1] [b0 b1]; reflexivity. Qed.
+
+  (** qe_opp = Tower.fp2_neg *)
+  Lemma fp2_neg_bridge : forall a : Fp2,
+    @qe_opp _ fp_params a = Tower.fp2_neg p a.
+  Proof. intros [a0 a1]; reflexivity. Qed.
+
+  (** qe_mul beta = Tower.fp2_mul *)
+  Lemma fp2_mul_bridge : forall a b : Fp2,
+    @qe_mul _ fp_params beta a b = Tower.fp2_mul p a b.
+  Proof.
+    intros [a0 a1] [b0 b1].
+    unfold qe_mul, Tower.fp2_mul, Fadd, Fmul, fp_params; simpl fst; simpl snd.
+    rewrite beta_is_opp_one. f_equal; ring.
+  Qed.
+
+  (** qe_mul beta x x = Tower.fp2_sqr x *)
+  Lemma fp2_sqr_bridge : forall a : Fp2,
+    @qe_mul _ fp_params beta a a = Tower.fp2_sqr p a.
+  Proof.
+    intros [a0 a1].
+    unfold qe_mul, Tower.fp2_sqr, Fadd, Fmul, fp_params; simpl fst; simpl snd.
+    rewrite beta_is_opp_one. f_equal; ring.
+  Qed.
+
+  (** qe_inv beta = Tower.fp2_inv *)
+  Lemma fp2_inv_bridge : forall a : Fp2,
+    @qe_inv _ fp_params beta a = Tower.fp2_inv p a.
+  Proof.
+    intros [a0 a1].
+    unfold qe_inv, Tower.fp2_inv, Fadd, Fmul, Fsub, Fopp, Finv, fp_params;
+      simpl fst; simpl snd.
+    rewrite beta_is_opp_one.
+    replace (a0 * a0 - F.opp 1 * (a1 * a1))%F
+      with (a0 * a0 + a1 * a1)%F by ring.
+    reflexivity.
+  Qed.
+
+  (** Conjugate *)
+  Lemma fp2_conjugate_bridge : forall a : Fp2,
+    (fst a, @F.opp p (snd a)) = Tower.fp2_conjugate p a.
+  Proof. intros [a0 a1]; reflexivity. Qed.
+
+  (** mul_by_xi: qe_mul beta (1,1) a = Tower.fp2_mul_xi a *)
+  Lemma fp2_mul_xi_bridge : forall a : Fp2,
+    @qe_mul _ fp_params beta (@F.one p, @F.one p) a = Tower.fp2_mul_xi p a.
+  Proof.
+    intros [a0 a1].
+    unfold qe_mul, Tower.fp2_mul_xi, Fadd, Fmul, fp_params; simpl fst; simpl snd.
+    rewrite beta_is_opp_one. f_equal; ring.
+  Qed.
+
+  (* ================================================================ *)
+  (* Fp4 bridges: qe_ops (Fp2, xi=(1,1)) = Tower.fp4_ops             *)
+  (* ================================================================ *)
+
+  (** Fp4 add/sub/neg: componentwise Fp2 operations = Tower *)
+  Lemma fp4_add_bridge : forall a b : Fp4,
+    @qe_add _ fp2_params a b = Tower.fp4_add p a b.
+  Proof. intros [a0 a1] [b0 b1]; reflexivity. Qed.
+
+  Lemma fp4_sub_bridge : forall a b : Fp4,
+    @qe_sub _ fp2_params a b = Tower.fp4_sub p a b.
+  Proof. intros [a0 a1] [b0 b1]; reflexivity. Qed.
+
+  Lemma fp4_neg_bridge : forall a : Fp4,
+    @qe_opp _ fp2_params a = Tower.fp4_neg p a.
+  Proof. intros [a0 a1]; reflexivity. Qed.
+
+  (** Local helper: fp2_mul_xi stated in terms of section's xi *)
+  Local Lemma fp2_mul_xi_eq : forall a : Fp2,
+    @qe_mul _ fp_params beta xi a = Tower.fp2_mul_xi p a.
+  Proof. intros; unfold xi; apply fp2_mul_xi_bridge. Qed.
+
+  (** qe_mul xi = Tower.fp4_mul *)
+  Lemma fp4_mul_bridge : forall a b : Fp4,
+    @qe_mul _ fp2_params xi a b = Tower.fp4_mul p a b.
+  Proof.
+    intros [a0 a1] [b0 b1].
+    unfold qe_mul at 1; simpl fst; simpl snd.
+    change (@Fmul Fp2 fp2_params) with (@qe_mul Fp fp_params beta);
+    change (@Fadd Fp2 fp2_params) with (@qe_add Fp fp_params).
+    unfold Tower.fp4_mul; simpl fst; simpl snd.
+    rewrite !fp2_mul_xi_eq, !fp2_mul_bridge, !fp2_add_bridge.
+    reflexivity.
+  Qed.
+
+  (** qe_inv xi = Tower.fp4_inv *)
+  Lemma fp4_inv_bridge : forall a : Fp4,
+    @qe_inv _ fp2_params xi a = Tower.fp4_inv p a.
+  Proof.
+    intros [a0 a1].
+    unfold qe_inv at 1; simpl fst; simpl snd.
+    change (@Fmul Fp2 fp2_params) with (@qe_mul Fp fp_params beta);
+    change (@Fsub Fp2 fp2_params) with (@qe_sub Fp fp_params);
+    change (@Fopp Fp2 fp2_params) with (@qe_opp Fp fp_params);
+    change (@Finv Fp2 fp2_params) with (@qe_inv Fp fp_params beta).
+    rewrite !fp2_mul_xi_eq, !fp2_mul_bridge,
+            !fp2_sub_bridge, !fp2_inv_bridge, !fp2_neg_bridge.
+    unfold Tower.fp4_inv; simpl fst; simpl snd.
+    reflexivity.
+  Qed.
+
+  (** mul_by_v: used as mul_by_nonresidue at the Fp8 level. *)
+  Lemma fp4_mul_by_v_bridge : forall a : Fp4,
+    (@qe_mul _ fp_params beta xi (snd a), fst a) = Tower.fp4_mul_by_v p a.
+  Proof.
+    intros [a0 a1].
+    unfold Tower.fp4_mul_by_v; simpl fst; simpl snd.
+    rewrite fp2_mul_xi_eq. reflexivity.
+  Qed.
+
+  (* ================================================================ *)
+  (* Fp8 bridges: qe_ops (Fp4, v_in_Fp4) = Tower.fp8_ops             *)
+  (* ================================================================ *)
+
+  (** Fp4 mul by v via full multiplication *)
+  Local Lemma fp4_mul_by_v_eq : forall a : Fp4,
+    @qe_mul _ fp2_params xi v_in_Fp4 a = Tower.fp4_mul_by_v p a.
+  Proof.
+    intros [[a00 a01] [a10 a11]].
+    rewrite fp4_mul_bridge.
+    unfold Tower.fp4_mul, Tower.fp4_mul_by_v; simpl fst; simpl snd.
+    unfold v_in_Fp4; simpl fst; simpl snd.
+    unfold Tower.fp2_mul, Tower.fp2_add, Tower.fp2_mul_xi; simpl fst; simpl snd.
+    f_equal.
+    - f_equal; ring.
+    - f_equal; ring.
+  Qed.
+
+  Lemma fp8_add_bridge : forall a b : Fp8,
+    @qe_add _ fp4_params a b = Tower.fp8_add p a b.
+  Proof. intros [a0 a1] [b0 b1]; reflexivity. Qed.
+
+  Lemma fp8_sub_bridge : forall a b : Fp8,
+    @qe_sub _ fp4_params a b = Tower.fp8_sub p a b.
+  Proof. intros [a0 a1] [b0 b1]; reflexivity. Qed.
+
+  Lemma fp8_neg_bridge : forall a : Fp8,
+    @qe_opp _ fp4_params a = Tower.fp8_neg p a.
+  Proof. intros [a0 a1]; reflexivity. Qed.
+
+  (** qe_mul v_in_Fp4 = Tower.fp8_mul *)
+  Lemma fp8_mul_bridge : forall a b : Fp8,
+    @qe_mul _ fp4_params v_in_Fp4 a b = Tower.fp8_mul p a b.
+  Proof.
+    intros [a0 a1] [b0 b1].
+    unfold qe_mul at 1; simpl fst; simpl snd.
+    change (@Fmul Fp4 fp4_params) with (@qe_mul Fp2 fp2_params xi);
+    change (@Fadd Fp4 fp4_params) with (@qe_add Fp2 fp2_params).
+    unfold Tower.fp8_mul; simpl fst; simpl snd.
+    rewrite !fp4_mul_by_v_eq, !fp4_mul_bridge, !fp4_add_bridge.
+    reflexivity.
+  Qed.
+
+  (** qe_inv v_in_Fp4 = Tower.fp8_inv *)
+  Lemma fp8_inv_bridge : forall a : Fp8,
+    @qe_inv _ fp4_params v_in_Fp4 a = Tower.fp8_inv p a.
+  Proof.
+    intros [a0 a1].
+    unfold qe_inv at 1; simpl fst; simpl snd.
+    change (@Fmul Fp4 fp4_params) with (@qe_mul Fp2 fp2_params xi);
+    change (@Fadd Fp4 fp4_params) with (@qe_add Fp2 fp2_params);
+    change (@Fsub Fp4 fp4_params) with (@qe_sub Fp2 fp2_params);
+    change (@Fopp Fp4 fp4_params) with (@qe_opp Fp2 fp2_params);
+    change (@Finv Fp4 fp4_params) with (@qe_inv Fp2 fp2_params xi).
+    rewrite !fp4_mul_by_v_eq, !fp4_mul_bridge,
+            !fp4_sub_bridge, !fp4_inv_bridge, !fp4_neg_bridge.
+    unfold Tower.fp8_inv; simpl fst; simpl snd.
+    reflexivity.
+  Qed.
+
+  (** mul_by_w: nonresidue multiplication Fp8 -> Fp24. *)
+  Lemma fp8_mul_by_w_bridge : forall a : Fp8,
+    (@qe_mul _ fp2_params xi v_in_Fp4 (snd a), fst a) =
+    Tower.fp8_mul_by_w p a.
+  Proof.
+    intros [a0 a1].
+    unfold Tower.fp8_mul_by_w; simpl fst; simpl snd.
+    rewrite fp4_mul_by_v_eq. reflexivity.
+  Qed.
+
+  (* ================================================================ *)
+  (* Fp24 bridges: ce_ops (Fp8, mul_by_w) = Tower.fp24_ops            *)
+  (* ================================================================ *)
+
+  (** The mul_by_nr model for Fp24's cubic extension. *)
   Let mul_by_w (x : Fp8) : Fp8 :=
     let fp2_mul_xi_model (a : Fp2) : Fp2 :=
       (F.sub (fst a) (snd a), F.add (fst a) (snd a)) in
@@ -522,33 +364,15 @@ Section Fp24Feval.
     simpl fst; simpl snd. reflexivity.
   Qed.
 
-  (* Fp8-level helpers *)
-  Local Lemma fp8_add_eq : forall a b : Fp8,
-    @qe_add _ fp4_params a b = Tower.fp8_add p a b.
-  Proof. exact (fp8_add_bridge p). Qed.
-
-  Local Lemma fp8_sub_eq : forall a b : Fp8,
-    @qe_sub _ fp4_params a b = Tower.fp8_sub p a b.
-  Proof. exact (fp8_sub_bridge p). Qed.
-
-  Local Lemma fp8_neg_eq : forall a : Fp8,
-    @qe_opp _ fp4_params a = Tower.fp8_neg p a.
-  Proof. exact (fp8_neg_bridge p). Qed.
-
-  Local Lemma fp8_mul_eq : forall a b : Fp8,
-    @qe_mul _ fp4_params v_in_Fp4 a b = Tower.fp8_mul p a b.
-  Proof. exact (fp8_mul_bridge p). Qed.
-
-  (* ------- Fp24 bridges ------- *)
-
   Lemma fp24_add_bridge : forall a b : Fp24,
     @ce_add _ fp8_params a b = Tower.fp24_add p a b.
   Proof.
     intros [[a0 a1] a2] [[b0 b1] b2].
     unfold ce_add, ce_build, ce_c0, ce_c1, ce_c2; simpl fst; simpl snd.
+    change (@Fadd Fp8 fp8_params) with (@qe_add Fp4 fp4_params).
     unfold Tower.fp24_add, Tower.fp24_build,
            Tower.fp24_c0, Tower.fp24_c1, Tower.fp24_c2; simpl fst; simpl snd.
-    rewrite !fp8_add_eq. reflexivity.
+    rewrite !fp8_add_bridge. reflexivity.
   Qed.
 
   Lemma fp24_sub_bridge : forall a b : Fp24,
@@ -556,9 +380,10 @@ Section Fp24Feval.
   Proof.
     intros [[a0 a1] a2] [[b0 b1] b2].
     unfold ce_sub, ce_build, ce_c0, ce_c1, ce_c2; simpl fst; simpl snd.
+    change (@Fsub Fp8 fp8_params) with (@qe_sub Fp4 fp4_params).
     unfold Tower.fp24_sub, Tower.fp24_build,
            Tower.fp24_c0, Tower.fp24_c1, Tower.fp24_c2; simpl fst; simpl snd.
-    rewrite !fp8_sub_eq. reflexivity.
+    rewrite !fp8_sub_bridge. reflexivity.
   Qed.
 
   Lemma fp24_neg_bridge : forall a : Fp24,
@@ -566,9 +391,10 @@ Section Fp24Feval.
   Proof.
     intros [[a0 a1] a2].
     unfold ce_opp, ce_build, ce_c0, ce_c1, ce_c2; simpl fst; simpl snd.
+    change (@Fopp Fp8 fp8_params) with (@qe_opp Fp4 fp4_params).
     unfold Tower.fp24_neg, Tower.fp24_build,
            Tower.fp24_c0, Tower.fp24_c1, Tower.fp24_c2; simpl fst; simpl snd.
-    rewrite !fp8_neg_eq. reflexivity.
+    rewrite !fp8_neg_bridge. reflexivity.
   Qed.
 
   (** ce_mul mul_by_w = Tower.fp24_mul *)
@@ -577,25 +403,29 @@ Section Fp24Feval.
   Proof.
     intros [[a0 a1] a2] [[b0 b1] b2].
     unfold ce_mul, ce_build, ce_c0, ce_c1, ce_c2; simpl fst; simpl snd.
+    change (@Fmul Fp8 fp8_params) with (@qe_mul Fp4 fp4_params v_in_Fp4);
+    change (@Fadd Fp8 fp8_params) with (@qe_add Fp4 fp4_params);
+    change (@Fsub Fp8 fp8_params) with (@qe_sub Fp4 fp4_params).
     unfold Tower.fp24_mul, Tower.fp24_build,
            Tower.fp24_c0, Tower.fp24_c1, Tower.fp24_c2; simpl fst; simpl snd.
-    rewrite !fp8_mul_eq, !fp8_add_eq, !fp8_sub_eq, !mul_by_w_eq.
+    rewrite !fp8_mul_bridge, !fp8_add_bridge, !fp8_sub_bridge, !mul_by_w_eq.
     reflexivity.
   Qed.
 
   Lemma fp24_conjugate_bridge : forall a : Fp24,
-    @ce_build _ fp8_params (ce_c0 a) (@Fopp _ fp8_params (ce_c1 a)) (ce_c2 a) =
+    ce_build (ce_c0 a) (@Fopp _ fp8_params (ce_c1 a)) (ce_c2 a) =
     Tower.fp24_conjugate p a.
   Proof.
     intros [[a0 a1] a2].
     unfold ce_build, ce_c0, ce_c1, ce_c2; simpl fst; simpl snd.
+    change (@Fopp Fp8 fp8_params) with (@qe_opp Fp4 fp4_params).
     unfold Tower.fp24_conjugate, Tower.fp24_build,
            Tower.fp24_c0, Tower.fp24_c1, Tower.fp24_c2; simpl fst; simpl snd.
-    rewrite fp8_neg_eq. reflexivity.
+    rewrite fp8_neg_bridge. reflexivity.
   Qed.
 
   Lemma fp24_mul_by_t_bridge : forall a : Fp24,
-    @ce_mul_by_v _ fp8_params mul_by_w a = Tower.fp24_mul_by_t p a.
+    @ce_mul_by_v _ mul_by_w a = Tower.fp24_mul_by_t p a.
   Proof.
     intros [[a0 a1] a2].
     unfold ce_mul_by_v, ce_build, ce_c0, ce_c1, ce_c2; simpl fst; simpl snd.
@@ -604,21 +434,13 @@ Section Fp24Feval.
     rewrite mul_by_w_eq. reflexivity.
   Qed.
 
-End Fp24Feval.
+  (* ================================================================ *)
+  (* Algebraic identities at the Fp8 level                            *)
+  (* ================================================================ *)
 
-(* ================================================================== *)
-(** * Algebraic identities at the Fp8 level                            *)
-(* ================================================================== *)
-
-Section Fp8Identities.
-  Variable p : positive.
-
-  Local Notation Fp := (F p).
-  Local Notation Fp2 := (Fp * Fp)%type.
-  Local Notation Fp4 := (Fp2 * Fp2)%type.
-  Local Notation Fp8 := (Fp4 * Fp4)%type.
-
-  Add Ring Fp_ring_id : (Fp_ring_theory p).
+  Local Ltac fp8_pair_ring :=
+    f_equal; [f_equal; [f_equal; ring | f_equal; ring]
+             |f_equal; [f_equal; ring | f_equal; ring]].
 
   (** Sub-associativity: (x - y) - z = x - (y + z) *)
   Lemma fp8_sub_sub_eq_sub_add : forall x y z : Fp8,
@@ -630,7 +452,7 @@ Section Fp8Identities.
            [[[z00 z01] [z10 z11]] [[z20 z21] [z30 z31]]].
     unfold Tower.fp8_sub, Tower.fp8_add, Tower.fp4_sub, Tower.fp4_add,
            Tower.fp2_sub, Tower.fp2_add; simpl fst; simpl snd.
-    f_equal; f_equal; f_equal; f_equal; ring.
+    fp8_pair_ring.
   Qed.
 
   (** Karatsuba cross term: (a+b)^2 - a^2 - b^2 = 2*a*b *)
@@ -649,7 +471,7 @@ Section Fp8Identities.
            Tower.fp4_mul_by_v,
            Tower.fp2_mul, Tower.fp2_add, Tower.fp2_sub,
            Tower.fp2_mul_xi; simpl fst; simpl snd.
-    f_equal; f_equal; f_equal; f_equal; ring.
+    fp8_pair_ring.
   Qed.
 
   (** mul_self: fp8_mul a a has squaring-style form *)
@@ -667,10 +489,10 @@ Section Fp8Identities.
     destruct a1_lo as [bl0 bl1]; destruct a1_hi as [bh0 bh1].
     unfold Tower.fp4_mul, Tower.fp4_add, Tower.fp2_mul,
            Tower.fp2_add, Tower.fp2_mul_xi; simpl fst; simpl snd.
-    f_equal; f_equal; f_equal; ring.
+    f_equal; [f_equal; ring | f_equal; ring].
   Qed.
 
-End Fp8Identities.
+End AllFeval.
 
 (* ================================================================== *)
 (** * Hint databases for easy rewriting                                *)

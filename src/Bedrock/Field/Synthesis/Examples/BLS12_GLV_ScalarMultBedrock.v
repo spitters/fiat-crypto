@@ -389,6 +389,10 @@ Section GLV_Shamir_Generic.
 
       This follows the LoopBody.v pattern extended to two scalars. *)
 
+  (* Grouped point predicate: 3 FElems at given pointers *)
+  Definition Point3 bnd (px py pz : word) (X Y Z : F) : mem -> Prop :=
+    (FElem bnd px X ⋆ FElem bnd py Y ⋆ FElem bnd pz Z)%sep.
+
   Definition glv_loop_inv
     (pOutx pOuty pOutz pPx pPy pPz pPhix pPhiy pPhiz : word)
     (pk1 pk2 : word) (a_auxx a_auxy a_auxz a_cond1 a_cond2 a_iter : word)
@@ -413,19 +417,11 @@ Section GLV_Shamir_Generic.
       (* Point doubling invariants *)
       /\ (Px, Py, Pz) = scmul_glv (Z.to_nat (2 ^ iter)) (Px_init, Py_init, Pz_init)
       /\ (Phix, Phiy, Phiz) = scmul_glv (Z.to_nat (2 ^ iter)) (Phix_init, Phiy_init, Phiz_init)
-      (* Memory layout *)
-      /\ (FElem (Some tight_bounds) pOutx Outx
-         * FElem (Some tight_bounds) pOuty Outy
-         * FElem (Some tight_bounds) pOutz Outz
-         * FElem (Some tight_bounds) pPx Px
-         * FElem (Some tight_bounds) pPy Py
-         * FElem (Some tight_bounds) pPz Pz
-         * FElem (Some tight_bounds) pPhix Phix
-         * FElem (Some tight_bounds) pPhiy Phiy
-         * FElem (Some tight_bounds) pPhiz Phiz
-         * FElem None a_auxx Auxx
-         * FElem None a_auxy Auxy
-         * FElem None a_auxz Auxz
+      (* Memory layout — grouped into Point3 triples to reduce sep conjuncts *)
+      /\ (Point3 (Some tight_bounds) pOutx pOuty pOutz Outx Outy Outz
+         * Point3 (Some tight_bounds) pPx pPy pPz Px Py Pz
+         * Point3 (Some tight_bounds) pPhix pPhiy pPhiz Phix Phiy Phiz
+         * Point3 None a_auxx a_auxy a_auxz Auxx Auxy Auxz
          * Bignum.Bignum glv_scalar_words pk1 k1_words
          * Bignum.Bignum glv_scalar_words pk2 k2_words
          * scalar a_cond1 c1
@@ -888,9 +884,9 @@ Section GLV_Shamir_Generic.
       rewrite !curve_add_id_r.
       subst a v.
       repeat split; try reflexivity.
-      (* Sep: change Compilation2.FElem to FElem for ecancel matching *)
+      (* Sep: change Compilation2.FElem to FElem, unfold Point3 for ecancel *)
       all: try (change Compilation2.FElem with FElem in Hsep_store;
-                ecancel_assumption).
+                unfold Point3; ecancel_assumption).
       (* Locals *)
       all: try (subst l4 l3 l2 l1 l0 l; resolve_map_get).
       (* iter word value *)
@@ -986,27 +982,9 @@ Section GLV_Shamir_Generic.
 
         (* Flatten right-associated sep from store_word_of_sep.
            Build a flat sep hypothesis via ecancel from Hsep_i + the iter store. *)
-        assert (Hsep_flat :
-          (FElem (Some tight_bounds) pOutx Outx_i
-           ⋆ FElem (Some tight_bounds) pOuty Outy_i
-           ⋆ FElem (Some tight_bounds) pOutz Outz_i
-           ⋆ FElem (Some tight_bounds) pPx Px_i
-           ⋆ FElem (Some tight_bounds) pPy Py_i
-           ⋆ FElem (Some tight_bounds) pPz Pz_i
-           ⋆ FElem (Some tight_bounds) pPhix Phix_i
-           ⋆ FElem (Some tight_bounds) pPhiy Phiy_i
-           ⋆ FElem (Some tight_bounds) pPhiz Phiz_i
-           ⋆ FElem None a_auxx Auxx_i
-           ⋆ FElem None a_auxy Auxy_i
-           ⋆ FElem None a_auxz Auxz_i
-           ⋆ Bignum glv_scalar_words pk1 k1w_i
-           ⋆ Bignum glv_scalar_words pk2 k2w_i
-           ⋆ scalar a_cond1 c1_i
-           ⋆ scalar a_cond2 c2_i
-           ⋆ scalar a_iter (word.add iw_i (word.of_Z 1))
-           ⋆ R) m_iter).
-        { pose proof Hsep_iter as H'. ecancel_assumption. }
-        clear Hsep_iter. rename Hsep_flat into Hsep_iter.
+        (* Hsep_iter from store_word_of_sep is right-assoc with scalar a_iter at front.
+           Don't flatten — just keep it and let gcall_explicit use the slow cancel path
+           for the first call, then impl1_refl for subsequent same-order calls. *)
 
         (* === Loop body: 10 function calls + invariant restoration === *)
 
@@ -1028,7 +1006,7 @@ Section GLV_Shamir_Generic.
                 Hl_phix Hl_phiy Hl_phiz Hl_pk1 Hl_pk2
                 Hl_auxx Hl_auxy Hl_auxz Hl_cond1 Hl_cond2 Hl_iter
                 Hiter_val Hv_eq Hne
-                m_iter Hsep_iter
+                m_iter mi Hsep_iter Hsep_i
                 Px Py Pz Phix Phiy Phiz R tr
                 mem_ok word_ok locals_ok env_ok ext_spec_ok.
 
@@ -1091,9 +1069,12 @@ Section GLV_Shamir_Generic.
             match goal with
             | Hsep : (_ ⋆ _) ?m |- (_ ⋆ _) ?m =>
               refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m Hsep);
-              cancel;
-              repeat ecancel_step_by_implication;
-              cbn [seps]; apply impl1_refl
+              (* Fast path: same order → impl1_refl *)
+              first [ do 20 (try rewrite <- sep_assoc); apply impl1_refl
+                    | (* Slow path: reorder via cancel *)
+                      cancel;
+                      repeat ecancel_step_by_implication;
+                      cbn [seps]; apply impl1_refl ]
             end
           | glv_postcall ];
           repeat match goal with
