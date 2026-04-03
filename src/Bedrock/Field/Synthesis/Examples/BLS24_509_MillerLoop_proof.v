@@ -606,7 +606,52 @@ Section BLS24_MillerLoopProof.
             52 tr m' l' /\
           (* Init commands produce WP for the continuation *)
           True.
-    Proof. intros. admit. Admitted.
+    Proof.
+      intros functions HFp4copy HFfromword
+        a_f a_tx a_ty a_lam a_tmp1 a_tmp2 a_line
+        pout p_px p_py p_qx p_qy
+        f_val tx_val ty_val lam_val tmp1_val tmp2_val
+        line_val old_out p_x p_y q_x q_y
+        Rr tr m l
+        Hbqx Hbqy Hsep Hlf Hltx Hlty Hlqx Hlqy.
+      (* Apply the memory transformation helper:
+         24 from_word calls make f tight-bounded,
+         2 fp4_copy calls write q_x -> t_x and q_y -> t_y *)
+      pose proof (fp24_init_mem_transform a_f a_tx a_ty f_val tx_val ty_val
+        q_x q_y
+        (FElem_Fp4 a_lam lam_val *
+         (FElem_Fp4 a_tmp1 tmp1_val *
+          (FElem_Fp4 a_tmp2 tmp2_val *
+           (FElem_Fp24 a_line line_val *
+            (FElem_Fp24 pout old_out *
+             (FElem_Fp p_px p_x *
+              (FElem_Fp p_py p_y *
+               (FElem_Fp4 p_qx q_x *
+                (FElem_Fp4 p_qy q_y * Rr)))))))))%sep
+        m Hbqx Hbqy Hsep) as [f_new [m' [Hf_tight Hsep']]].
+      (* Build locals map l' with all 13 bindings required by the invariant *)
+      set (l' := map.put (map.put (map.put (map.put (map.put (map.put
+        (map.put (map.put l
+          "lambda" a_lam) "tmp1" a_tmp1) "tmp2" a_tmp2) "line" a_line)
+        "out" pout) "p_x" p_px) "p_y" p_py) "i" (word.of_Z 52)).
+      exists m', l'.
+      split; [| exact I].
+      (* Establish miller_loop_inv *)
+      unfold miller_loop_inv.
+      split; [reflexivity |].
+      exists f_new, q_x, q_y, lam_val, tmp1_val, tmp2_val, line_val.
+      split; [exact Hf_tight |].
+      split; [exact Hbqx |].
+      split; [exact Hbqy |].
+      split; [exact Hsep' |].
+      (* Resolve all 13 map.get goals on l' *)
+      subst l'.
+      repeat split;
+        rewrite ?map.get_put_same, ?map.get_put_diff by congruence;
+        try reflexivity; try assumption.
+      all: repeat (rewrite map.get_put_diff by congruence);
+           first [ rewrite map.get_put_same; reflexivity | assumption ].
+    Qed.
 
     (* ============================================================ *)
     (* Phase 2: Loop body preserves invariant                        *)
@@ -725,50 +770,56 @@ Section BLS24_MillerLoopProof.
       { exact (@AbstractField.relax_bounds
                  _ _ _ _ _ _ bls24_Fp24_repr bls24_Fp24_repr_ok
                  _ Hbnd). }
-      (* Convert each stack FElem to Placeholder via FElem_to_bytes *)
-      assert (Hweaken :
-        Lift1Prop.impl1
-          (FElem_Fp24 a_f f_leftover *
-           (FElem_Fp4 a_tx tx_val *
-            (FElem_Fp4 a_ty ty_val *
-             (FElem_Fp4 a_lam lam_val *
-              (FElem_Fp4 a_tmp1 tmp1_val *
-               (FElem_Fp4 a_tmp2 tmp2_val *
-                (FElem_Fp24 a_line line_val *
-                 (FElem_Fp24 pout f_result *
-                  (FElem_Fp p_px p_x *
-                   (FElem_Fp p_py p_y *
-                    (FElem_Fp4 p_qx q_x *
-                     (FElem_Fp4 p_qy q_y * Rr))))))))))))
-          (AbstractField.Placeholder (field_representation:=bls24_Fp24_repr) a_f *
-           (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_tx *
-            (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_ty *
-             (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_lam *
-              (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_tmp1 *
-               (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_tmp2 *
-                (AbstractField.Placeholder (field_representation:=bls24_Fp24_repr) a_line *
-                 (FElem_Fp24 pout f_result *
-                  (FElem_Fp p_px p_x *
-                   (FElem_Fp p_py p_y *
-                    (FElem_Fp4 p_qx q_x *
-                     (FElem_Fp4 p_qy q_y * Rr))))))))))))%sep).
-      { eapply Proper_sep_impl1;
-          [eapply AbstractField.FElem_to_bytes |].
-        eapply Proper_sep_impl1;
-          [eapply AbstractField.FElem_to_bytes |].
-        eapply Proper_sep_impl1;
-          [eapply AbstractField.FElem_to_bytes |].
-        eapply Proper_sep_impl1;
-          [eapply AbstractField.FElem_to_bytes |].
-        eapply Proper_sep_impl1;
-          [eapply AbstractField.FElem_to_bytes |].
-        eapply Proper_sep_impl1;
-          [eapply AbstractField.FElem_to_bytes |].
-        eapply Proper_sep_impl1;
-          [eapply AbstractField.FElem_to_bytes |].
-        reflexivity. }
-      pose proof (Hweaken m Hsep) as Hsep'.
-      clear Hweaken Hsep.
+      (* Convert each stack FElem to Placeholder via FElem_to_bytes,
+         then ecancel to produce the desired sep ordering.
+         Strategy: destruct the 12-way sep, apply FElem_to_bytes on each
+         stack component, rebuild. *)
+      destruct Hsep as [m1 [mr1 [[Heq1 Hd1] [Hfe_f Hr1]]]].
+      destruct Hr1 as [m2 [mr2 [[Heq2 Hd2] [Hfe_tx Hr2]]]].
+      destruct Hr2 as [m3 [mr3 [[Heq3 Hd3] [Hfe_ty Hr3]]]].
+      destruct Hr3 as [m4 [mr4 [[Heq4 Hd4] [Hfe_lam Hr4]]]].
+      destruct Hr4 as [m5 [mr5 [[Heq5 Hd5] [Hfe_tmp1 Hr5]]]].
+      destruct Hr5 as [m6 [mr6 [[Heq6 Hd6] [Hfe_tmp2 Hr6]]]].
+      destruct Hr6 as [m7 [mr7 [[Heq7 Hd7] [Hfe_line Hr7]]]].
+      (* Hr7 has: FElem_Fp24 pout f_result * (inputs + Rr) on mr7 *)
+      (* Convert stack FElems to Placeholder *)
+      pose proof (AbstractField.FElem_to_bytes a_f f_leftover m1 Hfe_f) as Hph_f.
+      pose proof (AbstractField.FElem_to_bytes a_tx tx_val m2 Hfe_tx) as Hph_tx.
+      pose proof (AbstractField.FElem_to_bytes a_ty ty_val m3 Hfe_ty) as Hph_ty.
+      pose proof (AbstractField.FElem_to_bytes a_lam lam_val m4 Hfe_lam) as Hph_lam.
+      pose proof (AbstractField.FElem_to_bytes a_tmp1 tmp1_val m5 Hfe_tmp1) as Hph_tmp1.
+      pose proof (AbstractField.FElem_to_bytes a_tmp2 tmp2_val m6 Hfe_tmp2) as Hph_tmp2.
+      pose proof (AbstractField.FElem_to_bytes a_line line_val m7 Hfe_line) as Hph_line.
+      (* Rebuild the 12-way sep with Placeholder entries *)
+      (* Reconstruct sep in same order with Placeholder entries *)
+      assert (Hsep' :
+        (AbstractField.Placeholder (field_representation:=bls24_Fp24_repr) a_f *
+         (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_tx *
+          (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_ty *
+           (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_lam *
+            (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_tmp1 *
+             (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_tmp2 *
+              (AbstractField.Placeholder (field_representation:=bls24_Fp24_repr) a_line *
+               (FElem_Fp24 pout f_result *
+                (FElem_Fp p_px p_x *
+                 (FElem_Fp p_py p_y *
+                  (FElem_Fp4 p_qx q_x *
+                   (FElem_Fp4 p_qy q_y * Rr))))))))))))%sep m).
+      { exists m1, mr1. split. { split; assumption. }
+        split. { exact Hph_f. }
+        exists m2, mr2. split. { split; assumption. }
+        split. { exact Hph_tx. }
+        exists m3, mr3. split. { split; assumption. }
+        split. { exact Hph_ty. }
+        exists m4, mr4. split. { split; assumption. }
+        split. { exact Hph_lam. }
+        exists m5, mr5. split. { split; assumption. }
+        split. { exact Hph_tmp1. }
+        exists m6, mr6. split. { split; assumption. }
+        split. { exact Hph_tmp2. }
+        exists m7, mr7. split. { split; assumption. }
+        split. { exact Hph_line. }
+        exact Hr7. }
       ecancel_assumption.
     Qed.
 
