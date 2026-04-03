@@ -1204,7 +1204,17 @@ Section GLV_Shamir_Generic.
                   cbn [seps]; apply impl1_refl).
         all: try (repeat ecancel_step_by_implication;
                   cbn [seps]; apply impl1_refl).
-        (* Remaining goals: accumulator + unsolved impl1/sep residues *)
+        (* Try to solve accumulator + remaining goals *)
+        (* Accumulator needs connecting cmov results to scmul via glv_loop_step *)
+        all: try (change scmul_glv with (scmul Fzero Fone curve_add);
+                  eapply (glv_loop_step Fzero Fone curve_add
+                    curve_add_id_r curve_add_id_l curve_add_assoc curve_add_comm);
+                  [lia | lia | lia]).
+        (* Try all remaining automation *)
+        all: try eassumption.
+        all: try reflexivity.
+        all: try lia.
+        all: try (unfold Point3; ecancel_assumption_impl).
         all: admit. }
 
       { (* FALSE branch: iter >= 129, i.e. vi = 0 *)
