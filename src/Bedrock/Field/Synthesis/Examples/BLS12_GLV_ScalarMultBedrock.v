@@ -1173,8 +1173,20 @@ Section GLV_Shamir_Generic.
                   [intros [[]]; apply curve_add_id_r |
                    intros [[]]; apply curve_add_id_l |
                    exact curve_add_assoc | lia]).
-        (* vi > 0: derive from Hne (branch true implies vi > 0) *)
-        all: try (assert (Hvi_pos : (vi > 0)%nat) by admit; lia).
+        (* vi > 0: derive from Hne *)
+        all: try (assert (Hvi_pos : (vi > 0)%nat).
+        { rewrite (@word.unsigned_b2w _ _ word_ok) in Hne.
+          pose proof (@word.unsigned_ltu _ _ word_ok iw_i (word.of_Z glv_iterations)) as Hltu.
+          destruct (word.ltu iw_i (word.of_Z glv_iterations)) eqn:Eb;
+            [| exfalso; apply Hne; cbn; reflexivity].
+          apply Z.ltb_lt in Hltu.
+          rewrite Hiter_val, word.unsigned_of_Z in Hltu.
+          cbv [glv_iterations] in Hltu. unfold word.wrap in Hltu.
+          destruct (width_cases) as [Hw|Hw]; rewrite Hw in Hltu;
+            (change (129 mod 2 ^ 32) with 129 in Hltu
+             || change (129 mod 2 ^ 64) with 129 in Hltu);
+            lia. }
+        lia).
         (* Remaining: accumulator (glv_loop_step), impl1 residues *)
         all: admit. }
 
