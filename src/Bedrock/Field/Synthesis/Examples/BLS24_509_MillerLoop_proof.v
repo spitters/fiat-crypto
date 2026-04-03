@@ -10,7 +10,11 @@
     - Lemma statement + function entry + 7 stackallocs
     - FElem_from_bytes conversion for all stack buffers
     - Master sep construction (Qed)
-    - Function body: init + loop + post-loop + dealloc (Admitted)
+    - Function body (Admitted) -- decomposed into 4 Admitted blocks:
+      (1) bls24_miller_loop_ok        -- main WP body
+      (2) bls24_miller_init_ok        -- init: 24 from_word + 2 fp4_copy + set i=52
+      (3) bls24_miller_loop_body_step -- loop body preserves invariant
+      (4) bls24_miller_postloop_ok    -- post-loop: opp + conj + copy + dealloc
 *)
 
 From Stdlib Require Import Strings.String.
@@ -518,9 +522,9 @@ Section BLS24_MillerLoopProof.
            fp8_opp [c1(f); c1(f)]   -- conjugate f
            fp24_copy [out; f]       -- copy result
 
-         This is decomposed into 4 Admitted lemmas:
-         (1) bls24_miller_init_ok        -- init phase
-         (2) bls24_miller_loop_inv_init  -- invariant at v=52
+         This is decomposed into 4 Admitted blocks:
+         (1) bls24_miller_loop_ok        -- main WP (uses 2-4 below)
+         (2) bls24_miller_init_ok        -- init: invariant at v=52
          (3) bls24_miller_loop_body_step -- loop body preserves invariant
          (4) bls24_miller_postloop_ok    -- post-loop + dealloc *)
       admit.
@@ -618,8 +622,8 @@ Section BLS24_MillerLoopProof.
         miller_loop_inv a_f a_tx a_ty a_lam a_tmp1 a_tmp2 a_line
           pout p_px p_py p_qx p_qy p_x p_y q_x q_y old_out Rr tr
           vi ti mi li ->
-        (* Condition: i <> 0 *)
-        word.unsigned (word.of_Z (Z.of_nat vi)) <> 0 ->
+        (* Condition: i > 0 (loop hasn't exited) *)
+        (0 < vi)%nat ->
         (* Body produces state with smaller measure *)
         exists vi' ti' mi' li',
           Nat.lt vi' vi /\
