@@ -243,6 +243,7 @@ src/Bedrock/Field/Synthesis/Examples/BLS12_PowX.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_ScalarReduce.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_Sqrt.v
 src/Bedrock/Field/Synthesis/Examples/BLS24_509_Feval.v
+src/Bedrock/Field/Synthesis/Examples/BLS24_509_FinalExp.v
 src/Bedrock/Field/Synthesis/Examples/BLS24_509_Instances.v
 src/Bedrock/Field/Synthesis/Examples/BLS24_509_MillerLoop.v
 src/Bedrock/Field/Synthesis/Examples/ScalarsUtil.v
