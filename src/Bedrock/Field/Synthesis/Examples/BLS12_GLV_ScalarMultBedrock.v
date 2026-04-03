@@ -1141,7 +1141,18 @@ Section GLV_Shamir_Generic.
         end.
         (* Provide the decreasing variant *)
         exists (vi - 1)%nat. unfold Markers.split. split.
-        2: { assert (Hvi_gt0 : (vi > 0)%nat) by admit. lia. }
+        2: { assert (Hvi_gt0 : (vi > 0)%nat).
+             { rewrite (@word.unsigned_b2w _ _ word_ok) in Hne.
+               pose proof (@word.unsigned_ltu _ _ word_ok iw_i (word.of_Z glv_iterations)) as Hltu.
+               destruct (word.ltu iw_i (word.of_Z glv_iterations)) eqn:Eb;
+                 [| exfalso; apply Hne; cbn; reflexivity].
+               symmetry in Hltu; apply Z.ltb_lt in Hltu.
+               rewrite Hiter_val, word.unsigned_of_Z in Hltu.
+               cbv [glv_iterations] in Hltu. unfold word.wrap in Hltu.
+               destruct (width_cases) as [Hw|Hw]; rewrite Hw in Hltu;
+                 (change (129 mod 2 ^ 32) with 129 in Hltu
+                  || change (129 mod 2 ^ 64) with 129 in Hltu); lia. }
+             lia. }
         (* Provide the loop invariant *)
         unfold glv_loop_inv. subst. split. { reflexivity. }
         repeat eexists.
@@ -1180,7 +1191,7 @@ Section GLV_Shamir_Generic.
             pose proof (@word.unsigned_ltu _ _ word_ok iw_i (word.of_Z glv_iterations)) as Hltu;
             destruct (word.ltu iw_i (word.of_Z glv_iterations)) eqn:Eb;
               [| exfalso; apply Hne; cbn; reflexivity];
-            apply Z.ltb_lt in Hltu;
+            symmetry in Hltu; apply Z.ltb_lt in Hltu;
             rewrite Hiter_val, word.unsigned_of_Z in Hltu;
             cbv [glv_iterations] in Hltu; unfold word.wrap in Hltu;
             destruct (width_cases) as [Hw|Hw]; rewrite Hw in Hltu;
@@ -1188,7 +1199,12 @@ Section GLV_Shamir_Generic.
                || change (129 mod 2 ^ 64) with 129 in Hltu);
               lia
           | lia ]).
-        (* Remaining: accumulator (glv_loop_step), impl1 residues *)
+        (* Solve impl1 residues — these instantiate evars needed for accumulator *)
+        all: try (cancel; repeat ecancel_step_by_implication;
+                  cbn [seps]; apply impl1_refl).
+        all: try (repeat ecancel_step_by_implication;
+                  cbn [seps]; apply impl1_refl).
+        (* Remaining goals: accumulator + unsolved impl1/sep residues *)
         all: admit. }
 
       { (* FALSE branch: iter >= 129, i.e. vi = 0 *)
