@@ -1152,7 +1152,14 @@ Section GLV_Shamir_Generic.
         all: try (symmetry; eapply eq_trans; [eassumption |];
                   eapply (shiftr_from_div2 _ _ (129 - Z.of_nat vi));
                   [lia | eassumption]).
-        (* Remaining: accumulator, doubling, sep, word/nat arith *)
+        (* Sep: ecancel on final memory *)
+        all: try (unfold Point3; ecancel_assumption_impl).
+        (* Locals: resolve from map.get *)
+        all: try resolve_map_get.
+        (* Word arithmetic: iter word value *)
+        (* Nat arithmetic: vi = Z.to_nat ... *)
+        (* Accumulator, doubling: need glv_inv_step *)
+        (* Remaining *)
         all: admit. }
 
       { (* FALSE branch: iter >= 129, i.e. vi = 0 *)
