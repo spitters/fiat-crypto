@@ -36,6 +36,7 @@ Require Import Crypto.Bedrock.Group.CurveAdd.CurveAdd.
 Require Import bedrock2.Loops.
 Require Import bedrock2.NotationsCustomEntry.
 Require Import Crypto.Bedrock.Field.FieldExtensions.WPTactics.
+Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS12_GLV_LoopInvariant.
 Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope.
 Local Open Scope Z_scope.
@@ -1147,7 +1148,11 @@ Section GLV_Shamir_Generic.
         all: try eassumption.
         all: try reflexivity.
         all: try resolve_map_get.
-        (* Remaining: scalar shifts, accumulator, doubling, sep, word/nat arith *)
+        (* Scalar shifts: eval x0 = Z.shiftr ... (iter+1) *)
+        all: try (symmetry; eapply eq_trans; [eassumption |];
+                  eapply (shiftr_from_div2 _ _ (129 - Z.of_nat vi));
+                  [lia | eassumption]).
+        (* Remaining: accumulator, doubling, sep, word/nat arith *)
         all: admit. }
 
       { (* FALSE branch: iter >= 129, i.e. vi = 0 *)
