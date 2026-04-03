@@ -1156,10 +1156,17 @@ Section GLV_Shamir_Generic.
         all: try (unfold Point3; ecancel_assumption_impl).
         (* Locals: resolve from map.get *)
         all: try resolve_map_get.
-        (* Word arithmetic: iter word value *)
-        (* Nat arithmetic: vi = Z.to_nat ... *)
-        (* Accumulator, doubling: need glv_inv_step *)
-        (* Remaining *)
+        (* Word arithmetic: word.unsigned (word.add iw_i 1) = 129 - (vi-1) *)
+        all: try (rewrite word.unsigned_add; rewrite Hiter_val;
+                  rewrite word.unsigned_of_Z_1; unfold word.wrap;
+                  destruct (width_cases) as [Hw|Hw]; rewrite Hw;
+                  change (1 mod 2 ^ 32) with 1; change (1 mod 2 ^ 64) with 1;
+                  rewrite Z.mod_small by lia; lia).
+        (* Nat arithmetic: (vi-1) = Z.to_nat (129 - iter') *)
+        all: try (replace (129 - (129 - Z.of_nat (vi - 1)))
+                    with (Z.of_nat (vi - 1)) by lia;
+                  rewrite Nat2Z.id; reflexivity).
+        (* Remaining: accumulator, doubling *)
         all: admit. }
 
       { (* FALSE branch: iter >= 129, i.e. vi = 0 *)
