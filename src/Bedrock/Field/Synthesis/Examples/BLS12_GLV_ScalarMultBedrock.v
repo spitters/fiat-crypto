@@ -1166,7 +1166,10 @@ Section GLV_Shamir_Generic.
         all: try (replace (129 - (129 - Z.of_nat (vi - 1)))
                     with (Z.of_nat (vi - 1)) by lia;
                   rewrite Nat2Z.id; reflexivity).
-        (* Remaining: accumulator, doubling *)
+        (* Accumulator + doubling: use glv_inv_step from LoopInvariant *)
+        (* First check: is scmul_glv convertible to GLV_Algebra.scmul? *)
+        all: try (change scmul_glv with (scmul Fzero Fone curve_add)).
+        (* Remaining: accumulator, doubling, vi>0, impl1 residues *)
         all: admit. }
 
       { (* FALSE branch: iter >= 129, i.e. vi = 0 *)
