@@ -435,27 +435,48 @@ Section AllFeval.
   Qed.
 
   (* ================================================================ *)
-  (* Algebraic identities at the Fp8 level                            *)
+  (* Algebraic identities at the Fp4 level (fast: ring on Fp2 pairs) *)
   (* ================================================================ *)
 
-  Local Ltac fp8_pair_ring :=
-    f_equal; [f_equal; [f_equal; ring | f_equal; ring]
-             |f_equal; [f_equal; ring | f_equal; ring]].
+  Local Ltac fp4_pair_ring :=
+    apply (fun H1 H2 => f_equal2 pair H1 H2);
+    unfold Tower.fp4_add, Tower.fp4_sub, Tower.fp2_add, Tower.fp2_sub;
+    simpl fst; simpl snd; f_equal; ring.
 
-  (** Sub-associativity: (x - y) - z = x - (y + z) *)
+  Lemma fp4_sub_sub_eq_sub_add : forall x y z : Fp4,
+    Tower.fp4_sub p (Tower.fp4_sub p x y) z =
+    Tower.fp4_sub p x (Tower.fp4_add p y z).
+  Proof. intros [[??][??]] [[??][??]] [[??][??]]. fp4_pair_ring. Qed.
+
+  Lemma fp4_add_comm : forall x y : Fp4,
+    Tower.fp4_add p x y = Tower.fp4_add p y x.
+  Proof. intros [[??][??]] [[??][??]]. fp4_pair_ring. Qed.
+
+  Lemma fp4_mul_comm : forall x y : Fp4,
+    Tower.fp4_mul p x y = Tower.fp4_mul p y x.
+  Proof.
+    intros [[a0 a1][a2 a3]] [[b0 b1][b2 b3]].
+    unfold Tower.fp4_mul, Tower.fp4_add, Tower.fp2_mul, Tower.fp2_add,
+           Tower.fp2_mul_xi; simpl fst; simpl snd.
+    apply (fun H1 H2 => f_equal2 pair H1 H2); f_equal; ring.
+  Qed.
+
+  (* ================================================================ *)
+  (* Algebraic identities at the Fp8 level (COMPOSITIONAL — fast)     *)
+  (* ================================================================ *)
+
+  (** Sub-associativity: (x - y) - z = x - (y + z) — via Fp4 *)
   Lemma fp8_sub_sub_eq_sub_add : forall x y z : Fp8,
     Tower.fp8_sub p (Tower.fp8_sub p x y) z =
     Tower.fp8_sub p x (Tower.fp8_add p y z).
   Proof.
-    intros [[[x00 x01] [x10 x11]] [[x20 x21] [x30 x31]]]
-           [[[y00 y01] [y10 y11]] [[y20 y21] [y30 y31]]]
-           [[[z00 z01] [z10 z11]] [[z20 z21] [z30 z31]]].
-    unfold Tower.fp8_sub, Tower.fp8_add, Tower.fp4_sub, Tower.fp4_add,
-           Tower.fp2_sub, Tower.fp2_add; simpl fst; simpl snd.
-    fp8_pair_ring.
+    intros [x0 x1] [y0 y1] [z0 z1].
+    unfold Tower.fp8_sub, Tower.fp8_add; simpl fst; simpl snd.
+    apply (fun H1 H2 => f_equal2 pair H1 H2);
+      apply fp4_sub_sub_eq_sub_add.
   Qed.
 
-  (** Karatsuba cross term: (a+b)^2 - a^2 - b^2 = 2*a*b *)
+  (** Karatsuba cross term — via Fp4 operations, NOT unfolded to Fp *)
   Lemma fp8_karatsuba_cross_term : forall a b : Fp8,
     Tower.fp8_sub p
       (Tower.fp8_sub p
@@ -464,14 +485,26 @@ Section AllFeval.
       (Tower.fp8_mul p b b) =
     Tower.fp8_add p (Tower.fp8_mul p a b) (Tower.fp8_mul p a b).
   Proof.
-    intros [[[a00 a01] [a10 a11]] [[a20 a21] [a30 a31]]]
-           [[[b00 b01] [b10 b11]] [[b20 b21] [b30 b31]]].
-    unfold Tower.fp8_mul, Tower.fp8_add, Tower.fp8_sub,
-           Tower.fp4_mul, Tower.fp4_add, Tower.fp4_sub,
-           Tower.fp4_mul_by_v,
-           Tower.fp2_mul, Tower.fp2_add, Tower.fp2_sub,
-           Tower.fp2_mul_xi; simpl fst; simpl snd.
-    fp8_pair_ring.
+    intros [a0 a1] [b0 b1].
+    unfold Tower.fp8_mul, Tower.fp8_add, Tower.fp8_sub; simpl fst; simpl snd.
+    (* Now goal has Fp4 operations only — use f_equal2 to split *)
+    apply (fun H1 H2 => f_equal2 pair H1 H2).
+    - (* c0: involves fp4_mul_by_v — need to unfold one more level *)
+      unfold Tower.fp4_mul_by_v.
+      (* Now: fp4_add/sub/mul + fp2_mul_xi — destruct Fp4 elements *)
+      destruct a0 as [[a00 a01][a02 a03]]; destruct a1 as [[a10 a11][a12 a13]];
+      destruct b0 as [[b00 b01][b02 b03]]; destruct b1 as [[b10 b11][b12 b13]].
+      unfold Tower.fp4_mul, Tower.fp4_add, Tower.fp4_sub,
+             Tower.fp2_mul, Tower.fp2_add, Tower.fp2_sub,
+             Tower.fp2_mul_xi; simpl fst; simpl snd.
+      apply (fun H1 H2 => f_equal2 pair H1 H2); f_equal; ring.
+    - (* c1: pure fp4 operations *)
+      destruct a0 as [[a00 a01][a02 a03]]; destruct a1 as [[a10 a11][a12 a13]];
+      destruct b0 as [[b00 b01][b02 b03]]; destruct b1 as [[b10 b11][b12 b13]].
+      unfold Tower.fp4_mul, Tower.fp4_add, Tower.fp4_sub,
+             Tower.fp2_mul, Tower.fp2_add, Tower.fp2_sub,
+             Tower.fp2_mul_xi; simpl fst; simpl snd.
+      apply (fun H1 H2 => f_equal2 pair H1 H2); f_equal; ring.
   Qed.
 
   (** mul_self: fp8_mul a a has squaring-style form *)
@@ -482,14 +515,8 @@ Section AllFeval.
                      (Tower.fp4_mul_by_v p (Tower.fp4_mul p a1 a1)),
      Tower.fp4_add p (Tower.fp4_mul p a0 a1) (Tower.fp4_mul p a0 a1)).
   Proof.
-    intros [[a0_lo a0_hi] [a1_lo a1_hi]].
-    unfold Tower.fp8_mul; simpl fst; simpl snd.
-    f_equal.
-    destruct a0_lo as [al0 al1]; destruct a0_hi as [ah0 ah1];
-    destruct a1_lo as [bl0 bl1]; destruct a1_hi as [bh0 bh1].
-    unfold Tower.fp4_mul, Tower.fp4_add, Tower.fp2_mul,
-           Tower.fp2_add, Tower.fp2_mul_xi; simpl fst; simpl snd.
-    f_equal; [f_equal; ring | f_equal; ring].
+    intros [a0 a1]; unfold Tower.fp8_mul; simpl fst; simpl snd.
+    f_equal. f_equal. apply fp4_mul_comm.
   Qed.
 
 End AllFeval.
