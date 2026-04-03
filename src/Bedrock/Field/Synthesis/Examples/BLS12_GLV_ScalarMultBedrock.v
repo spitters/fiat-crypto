@@ -1029,7 +1029,8 @@ Section GLV_Shamir_Generic.
                 Hl_auxx Hl_auxy Hl_auxz Hl_cond1 Hl_cond2 Hl_iter
                 Hiter_val Hv_eq Hne
                 m_iter Hsep_iter
-                Px Py Pz Phix Phiy Phiz R tr.
+                Px Py Pz Phix Phiy Phiz R tr
+                mem_ok word_ok locals_ok env_ok ext_spec_ok.
 
         (* Memory optimization: clear stale sep hypotheses after each call.
            Each gcall produces a fresh sep on new memory; old seps are dead weight. *)
@@ -1077,7 +1078,7 @@ Section GLV_Shamir_Generic.
         Local Ltac gcall_clean spec :=
           gcall spec;
           try lazymatch goal with
-          | |- WeakestPrecondition.cmd _ _ _ _ _ _ => flatten_seps
+          | |- WeakestPrecondition.cmd _ _ _ _ _ _ => idtac
           end.
 
         (* Tactic for calls with explicit spec args — avoids ecancel evar issue *)
@@ -1090,8 +1091,9 @@ Section GLV_Shamir_Generic.
             match goal with
             | Hsep : (_ ⋆ _) ?m |- (_ ⋆ _) ?m =>
               refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m Hsep);
-              repeat rewrite <- sep_assoc;
-              apply impl1_refl
+              cancel;
+              repeat ecancel_step_by_implication;
+              cbn [seps]; apply impl1_refl
             end
           | glv_postcall ];
           repeat match goal with
@@ -1107,16 +1109,7 @@ Section GLV_Shamir_Generic.
           try match goal with
           | H : ?tr = ?t |- _ => first [ subst t | subst tr | idtac ]
           end;
-          (* Flatten postcondition sep: the R_frame from weaken_call is a
-             compound predicate. Assert a flat version using impl1. *)
-          try match goal with
-          | Hrem : (_ ⋆ _) ?m |- _ =>
-            let Hflat := fresh "Hflat" in
-            assert (Hflat := Hrem);
-            repeat (seprewrite_in_by @sep_assoc Hflat ltac:(trivial));
-            clear Hrem; rename Hflat into Hrem
-          end;
-          try flatten_seps.
+          idtac.
 
         (* Call 1: shift_scalar(cond1, pk1) *)
         gcall_explicit HShiftScalar a_cond1 pk1 c1_i k1w_i.
