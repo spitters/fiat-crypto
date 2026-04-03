@@ -1155,6 +1155,7 @@ Section GLV_Shamir_Generic.
              lia. }
         (* Provide the loop invariant *)
         unfold glv_loop_inv. subst. split. { reflexivity. }
+        (* Provide existentials — use eexists and let Rocq unify *)
         repeat eexists.
         all: try eassumption.
         all: try reflexivity.
