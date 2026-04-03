@@ -1133,7 +1133,10 @@ Section GLV_Shamir_Generic.
         10: gcall_clean HCurveAddDouble.
 
         (* === Loop invariant restoration === *)
-        (* TODO: solve impl1 residues, then provide loop invariant existentials *)
+        (* Solve impl1 residues from cancel slow path *)
+        all: try (cancel; repeat ecancel_step_by_implication;
+                  cbn [seps]; apply impl1_refl).
+        (* Remaining impl1 residues + loop invariant existentials *)
         all: admit. }
 
       { (* FALSE branch: iter >= 129, i.e. vi = 0 *)
