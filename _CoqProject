@@ -246,6 +246,7 @@ src/Bedrock/Field/Synthesis/Examples/BLS24_509_Feval.v
 src/Bedrock/Field/Synthesis/Examples/BLS24_509_FinalExp.v
 src/Bedrock/Field/Synthesis/Examples/BLS24_509_Instances.v
 src/Bedrock/Field/Synthesis/Examples/BLS24_509_MillerLoop.v
+src/Bedrock/Field/Synthesis/Examples/BLS24_509_MillerLoop_proof.v
 src/Bedrock/Field/Synthesis/Examples/ScalarsUtil.v
 src/Bedrock/Field/Synthesis/Examples/bls12_377_Fp2.v
 src/Bedrock/Field/Synthesis/Examples/bls12_377_Fp2_mul_test.v
