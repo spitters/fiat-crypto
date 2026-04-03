@@ -1092,62 +1092,49 @@ Section GLV_Shamir_Generic.
           end;
           idtac.
 
+        (* === Process all 10 loop body calls ===
+           Each gcall creates an impl1 residue goal. We skip these using N: focusing
+           and solve them all at the end. The continuation goal number increases by 1
+           after each call. *)
+
         (* Call 1: shift_scalar(cond1, pk1) *)
         gcall_explicit HShiftScalar a_cond1 pk1 c1_i k1w_i.
         (* Call 2: shift_scalar(cond2, pk2) *)
-        gcall_explicit HShiftScalar a_cond2 pk2 c2_i k2w_i.
+        2: gcall_explicit HShiftScalar a_cond2 pk2 c2_i k2w_i.
         (* Call 3: store_zero(aux) *)
-        gcall_clean HStoreZero.
-        (* Call 4: cmov_alt(aux, aux, P, cond1) + bounds proof *)
-        gcall HCmovAlt.
-        1: (unfold ZRange.is_bounded_by_bool; simpl;
+        3: gcall_clean HStoreZero.
+        (* Call 4: cmov_alt(aux, aux, P, cond1) *)
+        4: gcall HCmovAlt.
+        all: try (unfold ZRange.is_bounded_by_bool; simpl;
             rewrite Bool.andb_true_iff; split; apply Z.leb_le;
             match goal with
             | H : _ mod 2 = word.unsigned _ |- _ => rewrite <- H
             end;
             pose proof (Z.mod_pos_bound
               (eval glv_scalar_words k1w_i) 2 ltac:(lia)); lia).
-        clear_stale_seps.
-
-        (* Call 5: curve_add(out, aux, out) — out += cond1 ? P : id *)
-        gcall_clean HCurveAddInplace.
-
-        (* Call 6: store_zero(aux) — reset aux to identity *)
-        gcall HStoreZero.
-        1: solve_store_zero_pre_impl.
-        clear_stale_seps.
-
-        (* Call 7: cmov_alt(aux, aux, phi, cond2) — aux = cond2 ? phi : id *)
-        gcall HCmovAlt.
-        1: (unfold ZRange.is_bounded_by_bool; simpl;
+        (* Call 5: curve_add(out, aux, out) *)
+        5: gcall_clean HCurveAddInplace.
+        (* Call 6: store_zero(aux) *)
+        6: gcall_clean HStoreZero.
+        (* Call 7: cmov_alt(aux, aux, phi, cond2) *)
+        7: gcall HCmovAlt.
+        all: try (unfold ZRange.is_bounded_by_bool; simpl;
             rewrite Bool.andb_true_iff; split; apply Z.leb_le;
             match goal with
             | H : _ mod 2 = word.unsigned _ |- _ => rewrite <- H
             end;
             pose proof (Z.mod_pos_bound
               (eval glv_scalar_words k2w_i) 2 ltac:(lia)); lia).
-        clear_stale_seps.
-
-        (* Call 8: curve_add(out, aux, out) — out += cond2 ? phi : id *)
-        gcall_clean HCurveAddInplace.
-
-        (* Call 9: curve_add(P, P, P) — P = 2P (in-place doubling) *)
-        gcall_clean HCurveAddDouble.
-
-        (* Call 10: curve_add(phi, phi, phi) — phi = 2*phi (in-place doubling) *)
-        gcall_clean HCurveAddDouble.
+        (* Call 8: curve_add(out, aux, out) *)
+        8: gcall_clean HCurveAddInplace.
+        (* Call 9: curve_add(P, P, P) — P = 2P *)
+        9: gcall_clean HCurveAddDouble.
+        (* Call 10: curve_add(phi, phi, phi) — phi = 2*phi *)
+        10: gcall_clean HCurveAddDouble.
 
         (* === Loop invariant restoration === *)
-        exists (vi - 1).
-        unfold Markers.split.
-        split.
-        2: { lia. }
-
-        unfold glv_loop_inv.
-        split. { reflexivity. }
-
-        (* Provide existential witnesses for the next iteration *)
-        admit. }
+        (* TODO: solve impl1 residues, then provide loop invariant existentials *)
+        all: admit. }
 
       { (* FALSE branch: iter >= 129, i.e. vi = 0 *)
         intro Hcond.
@@ -1203,6 +1190,7 @@ Section GLV_Shamir_Generic.
         (* --- Dealloc level 4: auxz (felem-sized FElem None → anybytes) --- *)
         eassert (Hauxz_sep : (_ ⋆ FElem None a_auxz _) m_rest_cond1).
         { change Compilation2.FElem with FElem in Hrest_cond1.
+          unfold Point3 in Hrest_cond1.
           pose proof Hrest_cond1 as H'. ecancel_assumption. }
         destruct Hauxz_sep as [m_rest_auxz [m_stk_auxz [[Heq_auxz' Hd_auxz'] [Hrest_auxz Hstk_auxz]]]].
         exists m_rest_auxz, m_stk_auxz.
@@ -1212,6 +1200,7 @@ Section GLV_Shamir_Generic.
         (* --- Dealloc level 5: auxy (felem-sized FElem None → anybytes) --- *)
         eassert (Hauxy_sep : (_ ⋆ FElem None a_auxy _) m_rest_auxz).
         { change Compilation2.FElem with FElem in Hrest_auxz.
+          unfold Point3 in Hrest_auxz.
           pose proof Hrest_auxz as H'. ecancel_assumption. }
         destruct Hauxy_sep as [m_rest_auxy [m_stk_auxy [[Heq_auxy' Hd_auxy'] [Hrest_auxy Hstk_auxy]]]].
         exists m_rest_auxy, m_stk_auxy.
@@ -1221,6 +1210,7 @@ Section GLV_Shamir_Generic.
         (* --- Dealloc level 6: auxx (felem-sized FElem None → anybytes) --- *)
         eassert (Hauxx_sep : (_ ⋆ FElem None a_auxx _) m_rest_auxy).
         { change Compilation2.FElem with FElem in Hrest_auxy.
+          unfold Point3 in Hrest_auxy.
           pose proof Hrest_auxy as H'. ecancel_assumption. }
         destruct Hauxx_sep as [m_rest_auxx [m_stk_auxx' [[Heq_auxx' Hd_auxx'] [Hrest_auxx Hstk_auxx]]]].
         exists m_rest_auxx, m_stk_auxx'.
@@ -1261,6 +1251,7 @@ Section GLV_Shamir_Generic.
             exact Hout_i. }
         (* Sep: the remaining memory satisfies the postcondition *)
         change Compilation2.FElem with FElem in Hrest_auxx.
+        unfold Point3 in Hrest_auxx.
         ecancel_assumption. } }
   Admitted.
 
