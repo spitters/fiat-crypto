@@ -518,12 +518,14 @@ Section GenericCubicProofs.
           @bounded_by _ CE_fp _ _ _ _ CE_repr (@loose_bounds _ CE_fp _ _ _ _ CE_repr) out' /\
           (@FElem _ CE_fp _ _ _ _ CE_repr pout out' *
            (@FElem _ CE_fp _ _ _ _ CE_repr px x * Rr))%sep mem').
-  Proof. Admitted.
-  (* Proof passes in coq-lsp but map.putmany rewrite diverges in make.
-     Full proof (340 lines) below — uncomment when make/coq-lsp align. *)
-  (*
+  Proof.
     intros functions EnvContains HFopp1 HFopp2 HFopp3 pout px out x Rr tr mem0
            [Hbound_x0 [Hbound_x1 Hbound_x2]] Hmem0.
+    (* Pin implicit args so rewrite works identically in coq-lsp and make *)
+    pose proof (@map.putmany_assoc _ _ _ mem_ok word.eqb
+                  (word.eqb_spec (word := word))) as putmany_assoc.
+    pose proof (@map.putmany_comm _ _ _ mem_ok word.eqb
+                  (word.eqb_spec (word := word))) as putmany_comm.
     eapply start_func; [exact EnvContains | clear EnvContains].
     cbv match beta delta [WeakestPrecondition.func CE_opp GenericCubic.CE_opp].
     eexists; split; [exact eq_refl |]; repeat straightline.
@@ -551,21 +553,16 @@ Section GenericCubicProofs.
                   (FElem_b (word.add pout base_off) (c1_e out) *
                   (FElem_b (word.add pout base_off2) (c2_e out) * Rr))))%sep m) tr).
       { exact Hbound_x0. }
-      (* mem0 = putmany (putmany mx0 (putmany mx1 mx2)) (putmany (putmany mo0 (putmany mo1 mo2)) m_r) *)
-      (* Need: (FElem_b px x0 * (FElem_b pout o0 * Frame)) mem0 *)
-      (* where Frame = (x1 * (x2 * (o1 * (o2 * Rr)))) *)
       exists mx0, (map.putmany mo0 (map.putmany mx1 (map.putmany mx2 (map.putmany mo1 (map.putmany mo2 m_r))))).
       split.
       { split.
-        - rewrite <- !map.putmany_assoc. f_equal.
-          (* Right-assoc: mx1 ++ mx2 ++ mo0 ++ mo1 ++ mo2 ++ m_r *)
-          (* Target:      mo0 ++ mx1 ++ mx2 ++ mo1 ++ mo2 ++ m_r *)
-          rewrite (map.putmany_assoc mx2 mo0 (map.putmany mo1 (map.putmany mo2 m_r))).
-          rewrite (map.putmany_comm mx2 mo0) by map_disjoint_auto.
-          rewrite <- (map.putmany_assoc mo0 mx2 (map.putmany mo1 (map.putmany mo2 m_r))).
-          rewrite (map.putmany_assoc mx1 mo0 (map.putmany mx2 (map.putmany mo1 (map.putmany mo2 m_r)))).
-          rewrite (map.putmany_comm mx1 mo0) by map_disjoint_auto.
-          rewrite <- (map.putmany_assoc mo0 mx1 (map.putmany mx2 (map.putmany mo1 (map.putmany mo2 m_r)))).
+        - rewrite <- !(putmany_assoc). f_equal.
+          rewrite (putmany_assoc mx2 mo0 (map.putmany mo1 (map.putmany mo2 m_r))).
+          rewrite (putmany_comm mx2 mo0) by map_disjoint_auto.
+          rewrite <- (putmany_assoc mo0 mx2 (map.putmany mo1 (map.putmany mo2 m_r))).
+          rewrite (putmany_assoc mx1 mo0 (map.putmany mx2 (map.putmany mo1 (map.putmany mo2 m_r)))).
+          rewrite (putmany_comm mx1 mo0) by map_disjoint_auto.
+          rewrite <- (putmany_assoc mo0 mx1 (map.putmany mx2 (map.putmany mo1 (map.putmany mo2 m_r)))).
           reflexivity.
         - apply map.disjoint_putmany_r; split; [map_disjoint_auto |
           apply map.disjoint_putmany_r; split; [map_disjoint_auto |
@@ -613,8 +610,6 @@ Section GenericCubicProofs.
                   (FElem_b pout out0' *
                   (FElem_b (word.add pout base_off2) (c2_e out) * Rr))))%sep m) t1).
       { exact Hbound_x1. }
-      (* From Hsep1: (out0' * (x0 * (x1 * (x2 * (o1 * (o2 * Rr)))))) on m1' *)
-      (* Need: (x1 * (o1 * (x0 * (x2 * (out0' * (o2 * Rr)))))) on m1' *)
       destruct Hsep1 as [ma [mb [[-> Hda'] [Ha' Hb']]]].
       destruct Hb' as [mc [md [[-> Hdb'] [Hc' Hd'']]]].
       destruct Hd'' as [me [mf [[-> Hdc'] [He' Hf']]]].
@@ -627,18 +622,27 @@ Section GenericCubicProofs.
       exists me, (map.putmany mi (map.putmany mc (map.putmany mg (map.putmany ma (map.putmany mk ml))))).
       split.
       { split.
-        - rewrite !map.putmany_assoc.
-          (* Current flat: ma mc me mg mi mk ml *)
-          (* Target flat:  me mi mc mg ma mk ml *)
-          rewrite (map.putmany_comm mg mi) by map_disjoint_auto.
-          rewrite (map.putmany_comm me mi) by map_disjoint_auto.
-          rewrite (map.putmany_comm mc mi) by map_disjoint_auto.
-          rewrite (map.putmany_comm ma mi) by map_disjoint_auto.
-          rewrite (map.putmany_comm mg me) by map_disjoint_auto.
-          rewrite (map.putmany_comm mc me) by map_disjoint_auto.
-          rewrite (map.putmany_comm ma me) by map_disjoint_auto.
-          rewrite (map.putmany_comm ma mc) by map_disjoint_auto.
-          rewrite (map.putmany_comm ma mg) by map_disjoint_auto.
+        - (* Permute right-assoc: ma mc me mg mi mk ml -> me mi mc mg ma mk ml *)
+          (* Move me from pos 3 to pos 1 *)
+          rewrite (putmany_assoc mc me _). rewrite (putmany_comm mc me) by map_disjoint_auto.
+          rewrite <- (putmany_assoc me mc _).
+          rewrite (putmany_assoc ma me _). rewrite (putmany_comm ma me) by map_disjoint_auto.
+          rewrite <- (putmany_assoc me ma _).
+          (* Now: me ma mc mg mi mk ml *)
+          (* Move mi from pos 5 to pos 2 *)
+          rewrite (putmany_assoc mg mi _). rewrite (putmany_comm mg mi) by map_disjoint_auto.
+          rewrite <- (putmany_assoc mi mg _).
+          rewrite (putmany_assoc mc mi _). rewrite (putmany_comm mc mi) by map_disjoint_auto.
+          rewrite <- (putmany_assoc mi mc _).
+          rewrite (putmany_assoc ma mi _). rewrite (putmany_comm ma mi) by map_disjoint_auto.
+          rewrite <- (putmany_assoc mi ma _).
+          (* Now: me mi ma mc mg mk ml *)
+          (* Move ma from pos 3 to pos 5 *)
+          rewrite (putmany_assoc ma mc _). rewrite (putmany_comm ma mc) by map_disjoint_auto.
+          rewrite <- (putmany_assoc mc ma _).
+          rewrite (putmany_assoc ma mg _). rewrite (putmany_comm ma mg) by map_disjoint_auto.
+          rewrite <- (putmany_assoc mg ma _).
+          (* Now: me mi mc mg ma mk ml *)
           reflexivity.
         - apply map.disjoint_putmany_r; split; [map_disjoint_auto |
           apply map.disjoint_putmany_r; split; [map_disjoint_auto |
@@ -686,8 +690,6 @@ Section GenericCubicProofs.
                   (FElem_b pout out0' *
                   (FElem_b (word.add pout base_off) out1' * Rr))))%sep m) t2).
       { exact Hbound_x2. }
-      (* From Hsep2: (out1' * (x1 * (x0 * (x2 * (out0' * (o2 * Rr)))))) on m2' *)
-      (* Need: (x2 * (o2 * (x0 * (x1 * (out0' * (out1' * Rr)))))) on m2' *)
       destruct Hsep2 as [m2a [m2b [[-> Hd2a] [H2a H2b]]]].
       destruct H2b as [m2c [m2d [[-> Hd2b] [H2c H2d]]]].
       destruct H2d as [m2e [m2f [[-> Hd2c] [H2e H2f]]]].
@@ -700,21 +702,37 @@ Section GenericCubicProofs.
       exists m2g, (map.putmany m2k (map.putmany m2e (map.putmany m2c (map.putmany m2i (map.putmany m2a m2l))))).
       split.
       { split.
-        - rewrite !map.putmany_assoc.
-          (* Current flat: m2a m2c m2e m2g m2i m2k m2l *)
-          (* Target flat:  m2g m2k m2e m2c m2i m2a m2l *)
-          rewrite (map.putmany_comm m2i m2k) by map_disjoint_auto.
-          rewrite (map.putmany_comm m2g m2k) by map_disjoint_auto.
-          rewrite (map.putmany_comm m2e m2k) by map_disjoint_auto.
-          rewrite (map.putmany_comm m2c m2k) by map_disjoint_auto.
-          rewrite (map.putmany_comm m2a m2k) by map_disjoint_auto.
-          rewrite (map.putmany_comm m2i m2g) by map_disjoint_auto.
-          rewrite (map.putmany_comm m2e m2g) by map_disjoint_auto.
-          rewrite (map.putmany_comm m2c m2g) by map_disjoint_auto.
-          rewrite (map.putmany_comm m2a m2g) by map_disjoint_auto.
-          rewrite (map.putmany_comm m2a m2e) by map_disjoint_auto.
-          rewrite (map.putmany_comm m2a m2c) by map_disjoint_auto.
-          rewrite (map.putmany_comm m2a m2i) by map_disjoint_auto.
+        - (* Permute right-assoc: m2a m2c m2e m2g m2i m2k m2l -> m2g m2k m2e m2c m2i m2a m2l *)
+          (* Move m2g from pos 4 to pos 1 *)
+          rewrite (putmany_assoc m2e m2g _). rewrite (putmany_comm m2e m2g) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m2g m2e _).
+          rewrite (putmany_assoc m2c m2g _). rewrite (putmany_comm m2c m2g) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m2g m2c _).
+          rewrite (putmany_assoc m2a m2g _). rewrite (putmany_comm m2a m2g) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m2g m2a _).
+          (* Now: m2g m2a m2c m2e m2i m2k m2l *)
+          (* Move m2k from pos 6 to pos 2 *)
+          rewrite (putmany_assoc m2i m2k _). rewrite (putmany_comm m2i m2k) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m2k m2i _).
+          rewrite (putmany_assoc m2e m2k _). rewrite (putmany_comm m2e m2k) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m2k m2e _).
+          rewrite (putmany_assoc m2c m2k _). rewrite (putmany_comm m2c m2k) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m2k m2c _).
+          rewrite (putmany_assoc m2a m2k _). rewrite (putmany_comm m2a m2k) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m2k m2a _).
+          (* Now: m2g m2k m2a m2c m2e m2i m2l *)
+          (* Move m2e from pos 5 to pos 3 *)
+          rewrite (putmany_assoc m2c m2e _). rewrite (putmany_comm m2c m2e) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m2e m2c _).
+          rewrite (putmany_assoc m2a m2e _). rewrite (putmany_comm m2a m2e) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m2e m2a _).
+          (* Now: m2g m2k m2e m2a m2c m2i m2l *)
+          (* Swap m2a,m2c then m2a,m2i *)
+          rewrite (putmany_assoc m2a m2c _). rewrite (putmany_comm m2a m2c) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m2c m2a _).
+          rewrite (putmany_assoc m2a m2i _). rewrite (putmany_comm m2a m2i) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m2i m2a _).
+          (* Now: m2g m2k m2e m2c m2i m2a m2l *)
           reflexivity.
         - apply map.disjoint_putmany_r; split; [map_disjoint_auto |
           apply map.disjoint_putmany_r; split; [map_disjoint_auto |
@@ -785,35 +803,44 @@ Section GenericCubicProofs.
       rewrite (c2_app_app out0' out1' out2' Hlen0 Hlen1).
       rewrite Hfeval0, Hfeval1, Hfeval2. reflexivity. }
     split.
-    { (* bounded_by — 3 components *)
+    { (* bounded_by -- 3 components *)
       split; [| split].
       - unfold c0_e, ce_c0_felem. rewrite firstn_app_le by exact Hlen0. exact Hbound0.
       - rewrite (c1_app_app out0' out1' out2' Hlen0 Hlen1). exact Hbound1.
       - rewrite (c2_app_app out0' out1' out2' Hlen0 Hlen1). exact Hbound2. }
     { (* sep: (CE_pout (out0'++out1'++out2') * (CE_px x * Rr)) *)
-      (* Current mem: putmany m3a (putmany m3c (putmany m3e (putmany m3g (putmany m3i (putmany m3k m3l))))) *)
-      (* m3a=out2', m3c=x2, m3e=x0, m3g=x1, m3i=out0', m3k=out1', m3l=Rr *)
       exists (map.putmany m3i (map.putmany m3k m3a)),
              (map.putmany m3e (map.putmany m3g (map.putmany m3c m3l))).
       split.
       { split.
-        { (* Permute: [m3a,m3c,m3e,m3g,m3i,m3k,m3l] -> [m3i,m3k,m3a,m3e,m3g,m3c,m3l] *)
-          rewrite !map.putmany_assoc.
-          rewrite (map.putmany_comm m3k m3a) by map_disjoint_auto.
-          rewrite (map.putmany_comm m3i m3a) by map_disjoint_auto.
-          rewrite (map.putmany_comm m3g m3a) by map_disjoint_auto.
-          rewrite (map.putmany_comm m3e m3a) by map_disjoint_auto.
-          rewrite (map.putmany_comm m3c m3a) by map_disjoint_auto.
-          rewrite (map.putmany_comm m3k m3c) by map_disjoint_auto.
-          rewrite (map.putmany_comm m3i m3c) by map_disjoint_auto.
-          rewrite (map.putmany_comm m3g m3c) by map_disjoint_auto.
-          rewrite (map.putmany_comm m3e m3c) by map_disjoint_auto.
-          rewrite (map.putmany_comm m3k m3e) by map_disjoint_auto.
-          rewrite (map.putmany_comm m3i m3e) by map_disjoint_auto.
-          rewrite (map.putmany_comm m3k m3g) by map_disjoint_auto.
-          rewrite (map.putmany_comm m3i m3g) by map_disjoint_auto.
-          rewrite (map.putmany_comm m3i m3k) by map_disjoint_auto.
-          reflexivity. }
+        { (* Permute right-assoc: m3a m3c m3e m3g m3i m3k m3l -> m3i m3k m3a m3e m3g m3c m3l *)
+          (* Move m3i from pos 5 to pos 1 *)
+          rewrite (putmany_assoc m3g m3i _). rewrite (putmany_comm m3g m3i) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m3i m3g _).
+          rewrite (putmany_assoc m3e m3i _). rewrite (putmany_comm m3e m3i) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m3i m3e _).
+          rewrite (putmany_assoc m3c m3i _). rewrite (putmany_comm m3c m3i) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m3i m3c _).
+          rewrite (putmany_assoc m3a m3i _). rewrite (putmany_comm m3a m3i) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m3i m3a _).
+          (* Now: m3i m3a m3c m3e m3g m3k m3l *)
+          (* Move m3k from pos 6 to pos 2 *)
+          rewrite (putmany_assoc m3g m3k _). rewrite (putmany_comm m3g m3k) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m3k m3g _).
+          rewrite (putmany_assoc m3e m3k _). rewrite (putmany_comm m3e m3k) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m3k m3e _).
+          rewrite (putmany_assoc m3c m3k _). rewrite (putmany_comm m3c m3k) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m3k m3c _).
+          rewrite (putmany_assoc m3a m3k _). rewrite (putmany_comm m3a m3k) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m3k m3a _).
+          (* Now: m3i m3k m3a m3c m3e m3g m3l *)
+          (* Swap m3c,m3e and then m3c,m3g to move m3c to end *)
+          rewrite (putmany_assoc m3c m3e _). rewrite (putmany_comm m3c m3e) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m3e m3c _).
+          rewrite (putmany_assoc m3c m3g _). rewrite (putmany_comm m3c m3g) by map_disjoint_auto.
+          rewrite <- (putmany_assoc m3g m3c _).
+          (* Now: m3i m3k m3a m3e m3g m3c m3l -- normalize associativity *)
+          rewrite !putmany_assoc. reflexivity. }
         { apply map.disjoint_putmany_l; split.
           { apply map.disjoint_putmany_r; split; [map_disjoint_auto |
             apply map.disjoint_putmany_r; split; [map_disjoint_auto |
@@ -837,12 +864,12 @@ Section GenericCubicProofs.
         exists m3k, m3a.
         split; [split; [reflexivity | map_disjoint_auto] |].
         split; [exact Hout1 | exact Hout2]. }
-      { (* (CE_px x * Rr) — reconstruct x from c0 x ++ c1 x ++ c2 x *)
+      { (* (CE_px x * Rr) -- reconstruct x from c0 x ++ c1 x ++ c2 x *)
         rewrite <- (@ce_list_decomp _ _ _ _ _ base_fp base_repr x).
         exists (map.putmany m3e (map.putmany m3g m3c)), m3l.
         split.
         { split.
-          - rewrite !map.putmany_assoc. reflexivity.
+          - rewrite !(putmany_assoc). reflexivity.
           - apply map.disjoint_putmany_l; split.
             { map_disjoint_auto. }
             { apply map.disjoint_putmany_l; split; map_disjoint_auto. } }
@@ -858,6 +885,6 @@ Section GenericCubicProofs.
           split; [split; [reflexivity | map_disjoint_auto] |].
           split; [exact Hx1_final | exact Hx2_final]. }
         { exact Hr''. } } }
-  *)
+  Qed.
 
 End GenericCubicProofs.
