@@ -1155,67 +1155,48 @@ Section GLV_Shamir_Generic.
              lia. }
         (* Provide the loop invariant *)
         unfold glv_loop_inv. subst. split. { reflexivity. }
-        (* Provide existentials — use eexists and let Rocq unify *)
-        repeat eexists.
-        all: try eassumption.
-        all: try reflexivity.
-        all: try resolve_map_get.
-        (* Scalar shifts: eval x0 = Z.shiftr ... (iter+1) *)
-        all: try (symmetry; eapply eq_trans; [eassumption |];
-                  eapply (shiftr_from_div2 _ _ (129 - Z.of_nat vi));
-                  [lia | eassumption]).
-        (* Sep: ecancel on final memory *)
+        (* Provide existentials — explicit witnesses for k1/k2/iter,
+           eexists for F values (Out/P/Phi/Aux) and word values (c1/c2) *)
+        do 12 eexists.    (* Outx..Auxz : F — let unification handle *)
+        exists x0, x2.   (* k1_words, k2_words — from shift_scalar *)
+        do 2 eexists.     (* c1, c2 : word *)
+        exists (word.add iw_i (word.of_Z 1)). (* iter_word *)
+        (* STRATEGY: split conjunction, solve sep FIRST to instantiate evars,
+           then solve algebraic + structural goals *)
+        repeat split.
+        (* Sep: solve first to instantiate F-valued evars *)
         all: try (unfold Point3; ecancel_assumption_impl).
-        (* Locals: resolve from map.get *)
+        (* Locals *)
         all: try resolve_map_get.
-        (* Word arithmetic: word.unsigned (word.add iw_i 1) = 129 - (vi-1) *)
+        (* Scalar shifts: eval x0 = Z.shiftr k1 iter', eval x2 = Z.shiftr k2 iter' *)
+        (* Need 0 <= 129 - Z.of_nat vi, i.e. vi <= 129 *)
+        assert (Hvi_bound : (vi <= 129)%nat) by
+          (pose proof (Znat.Nat2Z.is_nonneg vi);
+           pose proof (word.unsigned_range iw_i);
+           lia).
+        all: try (symmetry; rewrite <- H0; rewrite Hk1_i;
+                  apply (shiftr_from_div2 _ _ (129 - Z.of_nat vi));
+                  [lia | reflexivity]).
+        all: try (symmetry; rewrite <- H4; rewrite Hk2_i;
+                  apply (shiftr_from_div2 _ _ (129 - Z.of_nat vi));
+                  [lia | reflexivity]).
+        (* Word arithmetic *)
         all: try (rewrite word.unsigned_add; rewrite Hiter_val;
                   rewrite word.unsigned_of_Z_1; unfold word.wrap;
                   destruct (width_cases) as [Hw|Hw]; rewrite Hw;
                   change (1 mod 2 ^ 32) with 1; change (1 mod 2 ^ 64) with 1;
                   rewrite Z.mod_small by lia; lia).
-        (* Nat arithmetic: (vi-1) = Z.to_nat (129 - iter') *)
+        (* Nat arithmetic *)
         all: try (replace (129 - (129 - Z.of_nat (vi - 1)))
                     with (Z.of_nat (vi - 1)) by lia;
                   rewrite Nat2Z.id; reflexivity).
-        (* Convert scmul_glv to scmul for algebraic lemma compatibility *)
+        (* Convert scmul_glv to scmul *)
         all: try (change scmul_glv with (scmul Fzero Fone curve_add)).
-        (* Doubling: curve_add(P,P) = scmul(2^(iter+1), P_init) *)
+        (* Doubling *)
         all: try (eapply eq_sym; eapply (scmul_pow2_succ Fzero Fone curve_add);
                   [intros [[]]; apply curve_add_id_r |
                    intros [[]]; apply curve_add_id_l |
                    exact curve_add_assoc | lia]).
-        (* vi > 0: derive from Hne *)
-        all: try (
-          assert (Hvi_pos : (vi > 0)%nat);
-          [ rewrite (@word.unsigned_b2w _ _ word_ok) in Hne;
-            pose proof (@word.unsigned_ltu _ _ word_ok iw_i (word.of_Z glv_iterations)) as Hltu;
-            destruct (word.ltu iw_i (word.of_Z glv_iterations)) eqn:Eb;
-              [| exfalso; apply Hne; cbn; reflexivity];
-            symmetry in Hltu; apply Z.ltb_lt in Hltu;
-            rewrite Hiter_val, word.unsigned_of_Z in Hltu;
-            cbv [glv_iterations] in Hltu; unfold word.wrap in Hltu;
-            destruct (width_cases) as [Hw|Hw]; rewrite Hw in Hltu;
-              (change (129 mod 2 ^ 32) with 129 in Hltu
-               || change (129 mod 2 ^ 64) with 129 in Hltu);
-              lia
-          | lia ]).
-        (* Solve impl1 residues — these instantiate evars needed for accumulator *)
-        all: try (cancel; repeat ecancel_step_by_implication;
-                  cbn [seps]; apply impl1_refl).
-        all: try (repeat ecancel_step_by_implication;
-                  cbn [seps]; apply impl1_refl).
-        (* Try to solve accumulator + remaining goals *)
-        (* Accumulator needs connecting cmov results to scmul via glv_loop_step *)
-        all: try (change scmul_glv with (scmul Fzero Fone curve_add);
-                  eapply (glv_loop_step Fzero Fone curve_add
-                    curve_add_id_r curve_add_id_l curve_add_assoc curve_add_comm);
-                  [lia | lia | lia]).
-        (* Try all remaining automation *)
-        all: try eassumption.
-        all: try reflexivity.
-        all: try lia.
-        all: try (unfold Point3; ecancel_assumption_impl).
         all: admit. }
 
       { (* FALSE branch: iter >= 129, i.e. vi = 0 *)

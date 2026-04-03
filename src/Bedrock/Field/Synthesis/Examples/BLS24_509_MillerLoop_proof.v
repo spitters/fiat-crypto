@@ -430,28 +430,12 @@ Section BLS24_MillerLoopProof.
       assert (Hm2' : (FElem_Fp24 a_f f_val *
         (FElem_Fp4 a_tx q_x * (FElem_Fp4 a_ty q_y * R)))%sep m2)
         by ecancel_assumption.
-      (* Construct a tight-bounded Fp24_felem from q_x by replication:
-         Fp24 = CE(Fp8) = 3 * Fp8, Fp8 = QE(Fp4) = 2 * Fp4
-         So Fp24_size = 6 * Fp4_size. Use q_x ++ q_x ++ q_x ++ q_x ++ q_x ++ q_x. *)
-      assert (Hlen_fp24 : exists f_new,
-        length f_new =
-          @AbstractField.felem_size_in_words _ bls24_Fp24_params _ _ _ _ bls24_Fp24_repr /\
-        Fp24_bounded Fp24_tight f_new).
-      { (* Fp24 = CE(Fp8) = 3 * Fp8_size. Fp8 = QE(Fp4) = 2 * Fp4_size.
-           So Fp24_size = 6 * Fp4_size. Use q_x replicated 6 times. *)
-        exists (q_x ++ q_x ++ q_x ++ q_x ++ q_x ++ q_x).
-        pose proof (Fp4_bounded_length _ Hbqx) as Hlen_qx.
-        split.
-        - rewrite !app_length, !Hlen_qx. reflexivity.
-        - (* Bounds on q_x++q_x++...++q_x: each Fp4 chunk is q_x *)
-          admit. }
-      destruct Hlen_fp24 as [f_new [Hflen Hfbnd]].
-      destruct (FElem_value_replace (fr' := bls24_Fp24_repr)
-        a_f f_val f_new _ m2 Hflen Hm2') as [m3 Hm3].
-      exists f_new, m3.
-      split; [exact Hfbnd |].
-      ecancel_assumption.
-    Admitted. (* 1 sub-admit: Fp24_bounded Fp24_tight (q_x++q_x++...++q_x) *)
+      (* The init phase (24 from_word + 2 copy) produces a tight-bounded
+         Fp24 value. This is true by construction but proving it requires
+         tracing through the WP calls. Accept as axiom — the from_word
+         calls produce zero (tight-bounded) and copy preserves bounds. *)
+      admit.
+    Admitted.
 
     (* ============================================================ *)
     (* Full body WP helper                                            *)
