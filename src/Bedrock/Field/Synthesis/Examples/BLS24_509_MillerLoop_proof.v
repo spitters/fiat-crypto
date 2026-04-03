@@ -409,8 +409,10 @@ Section BLS24_MillerLoopProof.
         rewrite map_length in Hs0, Hs1, Hs2, Hs3.
         unfold qe_fst_felem, qe_snd_felem in Hs0, Hs1, Hs2, Hs3.
         rewrite ?firstn_length, ?skipn_length in *.
-        unfold Field.felem_size_in_words, bls24_frep, field_representation,
-          Signature.field_representation, Representation.frep.
+        cbv [Field.felem_size_in_words bls24_frep field_representation
+          Signature.field_representation Representation.frep
+          felem_size_in_words WordByWordMontgomery.n] in *.
+        rewrite ?firstn_length, ?skipn_length in *.
         lia. }
       (* Step 1: Replace FElem_Fp4 a_ty: ty_val -> q_y *)
       assert (H0 : (FElem_Fp4 a_ty ty_val *
@@ -435,14 +437,21 @@ Section BLS24_MillerLoopProof.
         length f_new =
           @AbstractField.felem_size_in_words _ bls24_Fp24_params _ _ _ _ bls24_Fp24_repr /\
         Fp24_bounded Fp24_tight f_new).
-      { admit. }
+      { (* Fp24 = CE(Fp8) = 3 * Fp8_size. Fp8 = QE(Fp4) = 2 * Fp4_size.
+           So Fp24_size = 6 * Fp4_size. Use q_x replicated 6 times. *)
+        exists (q_x ++ q_x ++ q_x ++ q_x ++ q_x ++ q_x).
+        pose proof (Fp4_bounded_length _ Hbqx) as Hlen_qx.
+        split.
+        - rewrite !app_length, !Hlen_qx. reflexivity.
+        - (* Bounds on q_x++q_x++...++q_x: each Fp4 chunk is q_x *)
+          admit. }
       destruct Hlen_fp24 as [f_new [Hflen Hfbnd]].
       destruct (FElem_value_replace (fr' := bls24_Fp24_repr)
         a_f f_val f_new _ m2 Hflen Hm2') as [m3 Hm3].
       exists f_new, m3.
       split; [exact Hfbnd |].
       ecancel_assumption.
-    Admitted.
+    Admitted. (* 1 sub-admit: Fp24_bounded Fp24_tight (q_x++q_x++...++q_x) *)
 
     (* ============================================================ *)
     (* Full body WP helper                                            *)
