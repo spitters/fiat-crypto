@@ -37,6 +37,9 @@ Require Import bedrock2.Loops.
 Require Import bedrock2.NotationsCustomEntry.
 Require Import Crypto.Bedrock.Field.FieldExtensions.WPTactics.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS12_GLV_LoopInvariant.
+Require Import coqutil.Tactics.ltac_list_ops.
+Require Import coqutil.Tactics.rdelta.
+Require Import coqutil.Tactics.syntactic_unify.
 Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope.
 Local Open Scope Z_scope.
@@ -313,6 +316,18 @@ Section GLV_Shamir_Generic.
   (* ================================================================== *)
 
   Local Notation eval n x := (Positional.eval (uweight width) n (List.map word.unsigned x)).
+
+  (* eval of a 2-word list is non-negative (word.unsigned >= 0, weights > 0) *)
+  Local Lemma eval_nonneg_2 (x : list word) : 0 <= eval 2 x.
+  Proof.
+    unfold Positional.eval, Positional.to_associational, Associational.eval.
+    destruct x as [|w0 [|w1 rest]]; simpl;
+    unfold uweight, ModOps.weight; simpl;
+    try (pose proof (word.unsigned_range w0));
+    try (pose proof (word.unsigned_range w1));
+    try (assert (0 < 2 ^ width) by (apply Z.pow_pos_nonneg; lia));
+    try nia; lia.
+  Qed.
 
   Instance spec_of_glv_shamir : spec_of "bls12_glv_shamir" :=
     fnspec! "bls12_glv_shamir"
@@ -713,6 +728,60 @@ Section GLV_Shamir_Generic.
         end
       end.
 
+    (* Fast cancel for impl1: match syntactically unifiable non-evar
+       conjuncts. Standard cancel_step only handles iff1, not impl1.
+       ecancel_step_by_implication can't match equal pairs either
+       (it relies on ecancel_impl hints which don't include reflexivity). *)
+    Local Ltac cancel_impl_step :=
+      let RHS := lazymatch goal with
+                 | |- Lift1Prop.impl1 (seps _) (seps ?RHS) => RHS end in
+      let jy := index_and_element_of RHS in
+      let j := lazymatch jy with (?i, _) => i end in
+      let y := lazymatch jy with (_, ?y) => y end in
+      assert_fails (idtac; let y := rdelta_var y in is_evar y);
+      let LHS := lazymatch goal with
+                 | |- Lift1Prop.impl1 (seps ?LHS) _ => LHS end in
+      let i := find_syntactic_unify_deltavar LHS y in
+      cancel_seps_at_indices_by_implication i j;
+      [exact (impl1_refl _)|].
+
+    (* ecancel with fast impl1 syntactic pre-pass *)
+    Local Ltac ecancel_fast :=
+      cancel;
+      lazymatch goal with
+      | |- Lift1Prop.impl1 _ _ =>
+        repeat cancel_impl_step;
+        repeat ecancel_step_by_implication;
+        cbv [seps]; exact impl1_refl
+      | |- Lift1Prop.iff1 _ _ =>
+        ecancel_steps_at O;
+        ecancel_done
+      end.
+
+    (* ecancel_assumption using the fast impl1 path.
+       Copies the hypothesis first (like ecancel_assumption_with_copy)
+       so multi-sep specs (e.g., cmov_alt) can reuse it.
+       Handles let-match bindings from curve_add postconditions
+       (let '(X,Y,Z) := curve_add ... in sep) by destructing the pair. *)
+    Local Ltac ecancel_assumption_fast :=
+      multimatch goal with
+      | |- ?PG ?m1 =>
+        multimatch goal with
+        | H: _ ?m2 |- _ =>
+          syntactic_unify_deltavar m1 m2;
+          let H' := fresh "Hcopy" in
+          pose proof H as H';
+          cbv beta iota zeta in H';
+          lazymatch type of H' with
+          | (_ * _)%sep _ =>
+            refine (Morphisms.subrelation_refl
+                      Lift1Prop.impl1 _ _ _ _ H');
+            clear H';
+            ecancel_fast
+          end
+        end
+      end.
+
     Local Ltac gcall spec :=
       try glv_straightline;
       unfold1_cmd_goal; cbv beta match delta [cmd_body];
@@ -722,11 +791,11 @@ Section GLV_Shamir_Generic.
         first
         [ wp_binop_precond solve_bounds_auto
         | wp_unop_precond solve_bounds_auto
-        | split; ecancel_assumption_with_copy
-        | ecancel_assumption_with_copy
+        | split; ecancel_assumption_fast
+        | ecancel_assumption_fast
         | repeat (first
             [ solve_bounds_auto
-            | ecancel_assumption_with_copy
+            | ecancel_assumption_fast
             | split ])
         ]
       | glv_postcall ];
@@ -1061,23 +1130,14 @@ Section GLV_Shamir_Generic.
           | |- WeakestPrecondition.cmd _ _ _ _ _ _ => idtac
           end.
 
-        (* Tactic for calls with explicit spec args — avoids ecancel evar issue *)
+        (* Tactic for calls with explicit spec args *)
         Local Ltac gcall_explicit spec pc px c x :=
           try glv_straightline;
           unfold1_cmd_goal; cbv beta match delta [cmd_body];
           letexists; split; [solve [eval_dexprs_abstract] |];
           eapply Semantics.weaken_call;
           [ pose proof (spec pc px c x) as HS; eapply HS;
-            match goal with
-            | Hsep : (_ ⋆ _) ?m |- (_ ⋆ _) ?m =>
-              refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m Hsep);
-              (* Fast path: same order → impl1_refl *)
-              first [ do 20 (try rewrite <- sep_assoc); apply impl1_refl
-                    | (* Slow path: reorder via cancel *)
-                      cancel;
-                      repeat ecancel_step_by_implication;
-                      cbn [seps]; apply impl1_refl ]
-            end
+            ecancel_assumption_fast
           | glv_postcall ];
           repeat match goal with
           | H : exists _, _ |- _ => destruct H
@@ -1105,11 +1165,11 @@ Section GLV_Shamir_Generic.
         (* Call 1: shift_scalar(cond1, pk1) *)
         gcall_explicit HShiftScalar a_cond1 pk1 c1_i k1w_i.
         (* Call 2: shift_scalar(cond2, pk2) *)
-        2: gcall_explicit HShiftScalar a_cond2 pk2 c2_i k2w_i.
+        gcall_explicit HShiftScalar a_cond2 pk2 c2_i k2w_i.
         (* Call 3: store_zero(aux) *)
-        3: gcall_clean HStoreZero.
+        gcall_clean HStoreZero.
         (* Call 4: cmov_alt(aux, aux, P, cond1) *)
-        4: gcall HCmovAlt.
+        gcall HCmovAlt.
         all: try (unfold ZRange.is_bounded_by_bool; simpl;
             rewrite Bool.andb_true_iff; split; apply Z.leb_le;
             match goal with
@@ -1118,11 +1178,24 @@ Section GLV_Shamir_Generic.
             pose proof (Z.mod_pos_bound
               (eval glv_scalar_words k1w_i) 2 ltac:(lia)); lia).
         (* Call 5: curve_add(out, aux, out) *)
-        5: gcall_clean HCurveAddInplace.
+        gcall_clean HCurveAddInplace.
+        (* Destruct curve_add let-bindings BEFORE call 6:
+           1) puts result variables in scope for evar resolution
+           2) preserves equations for algebraic goals *)
+        Opaque curve_add.
+        repeat match goal with
+        | H : context[curve_add (?a, ?b, ?c) (?d, ?e, ?ff)] |- _ =>
+          let r := fresh "ca" in
+          set (r := curve_add (a, b, c) (d, e, ff)) in H;
+          let Heq := fresh "Hca_eq" in
+          destruct r as [[? ?] ?] eqn:Heq;
+          symmetry in Heq
+        end.
+        Transparent curve_add.
         (* Call 6: store_zero(aux) *)
-        6: gcall_clean HStoreZero.
+        gcall_clean HStoreZero.
         (* Call 7: cmov_alt(aux, aux, phi, cond2) *)
-        7: gcall HCmovAlt.
+        gcall HCmovAlt.
         all: try (unfold ZRange.is_bounded_by_bool; simpl;
             rewrite Bool.andb_true_iff; split; apply Z.leb_le;
             match goal with
@@ -1131,18 +1204,36 @@ Section GLV_Shamir_Generic.
             pose proof (Z.mod_pos_bound
               (eval glv_scalar_words k2w_i) 2 ltac:(lia)); lia).
         (* Call 8: curve_add(out, aux, out) *)
-        8: gcall_clean HCurveAddInplace.
+        gcall_clean HCurveAddInplace.
+        (* Destruct curve_add let-bindings before calls 9-10 *)
+        Opaque curve_add.
+        repeat match goal with
+        | H : context[curve_add (?a, ?b, ?c) (?d, ?e, ?ff)] |- _ =>
+          let r := fresh "ca" in
+          set (r := curve_add (a, b, c) (d, e, ff)) in H;
+          let Heq := fresh "Hca_eq" in
+          destruct r as [[? ?] ?] eqn:Heq;
+          symmetry in Heq
+        end.
+        Transparent curve_add.
         (* Call 9: curve_add(P, P, P) — P = 2P *)
-        9: gcall_clean HCurveAddDouble.
+        gcall_clean HCurveAddDouble.
+        (* Destruct curve_add let-binding before call 10 *)
+        Opaque curve_add.
+        repeat match goal with
+        | H : context[curve_add (?a, ?b, ?c) (?d, ?e, ?ff)] |- _ =>
+          let r := fresh "ca" in
+          set (r := curve_add (a, b, c) (d, e, ff)) in H;
+          let Heq := fresh "Hca_eq" in
+          destruct r as [[? ?] ?] eqn:Heq;
+          symmetry in Heq
+        end.
+        Transparent curve_add.
         (* Call 10: curve_add(phi, phi, phi) — phi = 2*phi *)
-        10: gcall_clean HCurveAddDouble.
+        gcall_clean HCurveAddDouble.
 
         (* === Loop invariant restoration === *)
-        (* Admit impl1 residues and sep precondition leftovers *)
-        all: try match goal with
-        | |- Lift1Prop.impl1 _ _ => admit
-        | |- (_ ⋆ _) _ => admit
-        end.
+        Redirect "/tmp/glv_after_calls" Show.
         (* Provide the decreasing variant *)
         exists (vi - 1)%nat. unfold Markers.split.
         (* Establish vi > 0 before splitting — needed in both branches *)
@@ -1161,9 +1252,9 @@ Section GLV_Shamir_Generic.
         2: { lia. }
         (* Provide the loop invariant *)
         unfold glv_loop_inv. subst. split. { reflexivity. }
-        (* Destruct curve_add let-bindings — keep equations for algebraic goals *)
+        (* Destruct call 10's curve_add let-binding in Hrem4 *)
         Opaque curve_add.
-        repeat match goal with
+        match goal with
         | H : context[curve_add (?a, ?b, ?c) (?d, ?e, ?ff)] |- _ =>
           let r := fresh "ca" in
           set (r := curve_add (a, b, c) (d, e, ff)) in H;
@@ -1172,26 +1263,20 @@ Section GLV_Shamir_Generic.
           symmetry in Heq
         end.
         Transparent curve_add.
-        (* Provide existentials with concrete F values from destruct.
-           Variable mapping (from Coq auto-naming — most recent hyp first):
-           - f, f0, f1    = Phi result (call 10: curve_add_double)
-           - f2, f3, f4   = P result (call 9: curve_add_double)
-           - f5, f6, f7   = Out result (call 8: curve_add_inplace)
-           - f8, f9, f10  = Out result (call 5: curve_add_inplace, overwritten)
-           - x6, x7, x8   = Aux (cmov_alt call 7, preserved by call 8)
-           - x0/x2         = k1/k2 words, x/x1 = cond1/cond2 *)
-        exists f5, f6, f7, f2, f3, f4, f, f0, f1, x6, x7, x8.
+        (* Variable mapping (from auto-naming):
+           - f2, f3, f4   = Out final (call 8 curve_add_inplace, = f11,f12,f13 = ca1)
+           - f8, f9, f10  = P doubled (call 9 curve_add_double)
+           - f14, f15, f16 = Phi doubled (call 10 curve_add_double)
+           - x6, x7, x8   = Aux (cmov_alt call 7)
+           - x0/x2 = k1/k2 words, x/x1 = cond1/cond2 *)
+        exists f2, f3, f4, f8, f9, f10, f14, f15, f16, x6, x7, x8.
         exists x0, x2, x, x1, (word.add iw_i (word.of_Z 1)).
         (* Split the big conjunction *)
         repeat split.
-        (* Sep: use Hrem4 (on m8) + ecancel to resolve frame evar *)
+        (* Sep: unfold Point3, use ecancel_assumption_fast on Hrem4 (m8) *)
         all: try match goal with |- (_ ⋆ _) ?m =>
           unfold Point3;
-          refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m
-            ltac:(match goal with H : _ m |- _ => exact H end));
-          cancel;
-          repeat ecancel_step_by_implication;
-          cbn [seps]; exact (impl1_refl _)
+          ecancel_assumption_fast
         end.
         (* Locals *)
         all: try resolve_map_get.
@@ -1221,7 +1306,7 @@ Section GLV_Shamir_Generic.
                   rewrite Z.mod_small by
                     (pose proof (word.unsigned_range iw_i); lia);
                   pose proof (word.unsigned_range iw_i); lia).
-        (* Nat arithmetic: (vi-1)%nat = Z.to_nat(glv_iterations - (129 - (Z.of_nat vi - 1))) *)
+        (* Nat arithmetic *)
         all: try (
           cbv [glv_iterations];
           replace (Z.of_nat vi - 1) with (Z.of_nat (vi - 1)) by
@@ -1229,34 +1314,78 @@ Section GLV_Shamir_Generic.
           replace (129 - (129 - Z.of_nat (vi - 1))) with (Z.of_nat (vi - 1)) by
             (pose proof (word.unsigned_range iw_i); lia);
           rewrite Nat2Z.id; reflexivity).
-        (* Remaining: 4 goals — accumulator, doubling P, doubling Phi, sep.
-           Solve doublings first (they resolve evars that help sep). *)
-        (* Doubling P: resolve evar ?X3 := Px_i via unfold+reflexivity *)
+        (* Remaining: accumulator, P doubling, Phi doubling *)
+        (* P doubling: (f8, f9, f10) = scmul_glv (2^...) P *)
         2: { change scmul_glv with (scmul Fzero Fone curve_add) in Hp_i.
-             assert (Hca0_val : ca0 = curve_add (Px_i, Py_i, Pz_i) (Px_i, Py_i, Pz_i))
-               by (unfold ca0; reflexivity).
-             rewrite Hca_eq0, Hca0_val, Hp_i.
+             rewrite Hca_eq2, Hp_i.
              replace (129 - (Z.of_nat vi - 1)) with ((129 - Z.of_nat vi) + 1) by lia.
              symmetry.
              apply scmul_pow2_succ; try assumption;
              pose proof (word.unsigned_range iw_i); lia. }
-        (* Doubling Phi: resolve evar ?X4 := Phix_i via unfold+reflexivity *)
+        (* Phi doubling: (f14, f15, f16) = scmul_glv (2^...) Phi *)
         2: { change scmul_glv with (scmul Fzero Fone curve_add) in Hphi_i.
-             assert (Hca_val : ca = curve_add (Phix_i, Phiy_i, Phiz_i) (Phix_i, Phiy_i, Phiz_i))
-               by (unfold ca; reflexivity).
-             rewrite Hca_eq, Hca_val, Hphi_i.
+             unfold ca in Hca_eq4.
+             rewrite Hca_eq4, Hphi_i.
              replace (129 - (Z.of_nat vi - 1)) with ((129 - Z.of_nat vi) + 1) by lia.
              symmetry.
              apply scmul_pow2_succ; try assumption;
              pose proof (word.unsigned_range iw_i); lia. }
-        (* Resolve remaining curve_add evars for accumulator + sep *)
-        all: try (assert (Hca1_val : ca1 = curve_add (f8, f9, f10) (x6, x7, x8))
-                    by (unfold ca1; reflexivity)).
-        all: try (assert (Hca2_val : ca2 = curve_add (Outx_i, Outy_i, Outz_i) (x3, x4, x5))
-                    by (unfold ca2; reflexivity)).
-        (* Accumulator + Sep: 2 remaining goals *)
-        Redirect "/tmp/glv_final10" Show.
-        all: admit. }
+        (* Accumulator: (f2, f3, f4) = curve_add (scmul k1' P) (scmul k2' Phi) *)
+        (* Rewrite through the equation chain to expose the curve_add structure *)
+        rewrite Hca_eq0, Hca_eq3. unfold ca1.
+        rewrite Hca_eq, Hca_eq1. unfold ca0.
+        (* Now: curve_add (curve_add (Outx_i,...) (x3,x4,x5)) (x6,x7,x8) = ... *)
+        change scmul_glv with (scmul Fzero Fone curve_add) in *.
+        rewrite Hout_i.
+        (* Connect cmov_alt outputs to scmul: x3x4x5 = scmul b1 P_i, x6x7x8 = scmul b2 Phi_i *)
+        set (iter := 129 - Z.of_nat vi) in *.
+        (* Connect condition bits to Z.b2z form *)
+        assert (Hb1 : word.unsigned x =
+                Z.b2z (Z.testbit (eval glv_scalar_words k1_words) iter)).
+        { rewrite <- H1, Hk1_i.
+          apply Z_shiftr_mod2_b2z; [|unfold iter; pose proof (word.unsigned_range iw_i); lia].
+          exact (eval_nonneg_2 _). }
+        assert (Hb2 : word.unsigned x1 =
+                Z.b2z (Z.testbit (eval glv_scalar_words k2_words) iter)).
+        { rewrite <- H5, Hk2_i.
+          apply Z_shiftr_mod2_b2z; [|unfold iter; pose proof (word.unsigned_range iw_i); lia].
+          exact (eval_nonneg_2 _). }
+        (* Case analysis on bit values to show (x3,x4,x5) = scmul b1 P_i *)
+        assert (Hcmov1 : (x3, x4, x5) =
+          scmul Fzero Fone curve_add
+            (Z.to_nat (Z.b2z (Z.testbit (eval glv_scalar_words k1_words) iter)))
+            (Px_i, Py_i, Pz_i)).
+        { destruct (word.unsigned x =? 1) eqn:Hbit1.
+          - (* bit = 1: scmul 1 P_i = P_i *)
+            apply Z.eqb_eq in Hbit1.
+            replace (Z.b2z _) with 1 by (rewrite <- Hb1; symmetry; exact Hbit1).
+            simpl. rewrite curve_add_id_r. rewrite H7, H9, H10. reflexivity.
+          - (* bit = 0: scmul 0 P_i = id *)
+            assert (Hx0 : word.unsigned x = 0).
+            { pose proof (Z.mod_pos_bound (eval glv_scalar_words k1w_i) 2 ltac:(lia)).
+              rewrite H1 in *. apply Z.eqb_neq in Hbit1. lia. }
+            replace (Z.b2z _) with 0 by (rewrite <- Hb1; symmetry; exact Hx0).
+            simpl. rewrite H7, H9, H10. reflexivity. }
+        assert (Hcmov2 : (x6, x7, x8) =
+          scmul Fzero Fone curve_add
+            (Z.to_nat (Z.b2z (Z.testbit (eval glv_scalar_words k2_words) iter)))
+            (Phix_i, Phiy_i, Phiz_i)).
+        { destruct (word.unsigned x1 =? 1) eqn:Hbit2.
+          - apply Z.eqb_eq in Hbit2.
+            replace (Z.b2z _) with 1 by (rewrite <- Hb2; symmetry; exact Hbit2).
+            simpl. rewrite curve_add_id_r. rewrite H11, H13, H14. reflexivity.
+          - assert (Hx10 : word.unsigned x1 = 0).
+            { pose proof (Z.mod_pos_bound (eval glv_scalar_words k2w_i) 2 ltac:(lia)).
+              rewrite H5 in *. apply Z.eqb_neq in Hbit2. lia. }
+            replace (Z.b2z _) with 0 by (rewrite <- Hb2; symmetry; exact Hx10).
+            simpl. rewrite H11, H13, H14. reflexivity. }
+        rewrite Hcmov1, Hcmov2, Hp_i, Hphi_i.
+        replace (129 - (Z.of_nat vi - 1)) with (iter + 1) by (unfold iter; lia).
+        eapply glv_loop_step; unfold iter in *.
+        all: try (pose proof (word.unsigned_range iw_i); lia).
+        all: try reflexivity.
+        all: try assumption.
+        all: exact (eval_nonneg_2 _). }
 
       { (* FALSE branch: iter >= 129, i.e. vi = 0 *)
         intro Hcond.
@@ -1375,7 +1504,7 @@ Section GLV_Shamir_Generic.
         change Compilation2.FElem with FElem in Hrest_auxx.
         unfold Point3 in Hrest_auxx.
         ecancel_assumption. } }
-  Admitted.
+  Qed.
 
 End GLV_Shamir_Generic.
 
