@@ -1249,7 +1249,12 @@ Section GLV_Shamir_Generic.
              symmetry.
              apply scmul_pow2_succ; try assumption;
              pose proof (word.unsigned_range iw_i); lia. }
-        (* Sep + Accumulator: remaining 2 goals *)
+        (* Resolve remaining curve_add evars for accumulator + sep *)
+        all: try (assert (Hca1_val : ca1 = curve_add (f8, f9, f10) (x6, x7, x8))
+                    by (unfold ca1; reflexivity)).
+        all: try (assert (Hca2_val : ca2 = curve_add (Outx_i, Outy_i, Outz_i) (x3, x4, x5))
+                    by (unfold ca2; reflexivity)).
+        (* Accumulator + Sep: 2 remaining goals *)
         Redirect "/tmp/glv_final10" Show.
         all: admit. }
 
