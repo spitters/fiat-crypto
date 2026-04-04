@@ -1140,56 +1140,84 @@ Section GLV_Shamir_Generic.
         | |- (_ ⋆ _) _ => admit
         end.
         (* Provide the decreasing variant *)
-        exists (vi - 1)%nat. unfold Markers.split. split.
-        2: { assert (Hvi_gt0 : (vi > 0)%nat).
-             { rewrite (@word.unsigned_b2w _ _ word_ok) in Hne.
-               pose proof (@word.unsigned_ltu _ _ word_ok iw_i (word.of_Z glv_iterations)) as Hltu.
-               destruct (word.ltu iw_i (word.of_Z glv_iterations)) eqn:Eb;
-                 [| exfalso; apply Hne; cbn; reflexivity].
-               symmetry in Hltu; apply Z.ltb_lt in Hltu.
-               rewrite Hiter_val, word.unsigned_of_Z in Hltu.
-               cbv [glv_iterations] in Hltu. unfold word.wrap in Hltu.
-               destruct (width_cases) as [Hw|Hw]; rewrite Hw in Hltu;
-                 (change (129 mod 2 ^ 32) with 129 in Hltu
-                  || change (129 mod 2 ^ 64) with 129 in Hltu); lia. }
-             lia. }
+        exists (vi - 1)%nat. unfold Markers.split.
+        (* Establish vi > 0 before splitting — needed in both branches *)
+        assert (Hvi_gt0 : (vi > 0)%nat).
+        { rewrite (@word.unsigned_b2w _ _ word_ok) in Hne.
+          pose proof (@word.unsigned_ltu _ _ word_ok iw_i (word.of_Z glv_iterations)) as Hltu.
+          destruct (word.ltu iw_i (word.of_Z glv_iterations)) eqn:Eb;
+            [| exfalso; apply Hne; cbn; reflexivity].
+          symmetry in Hltu; apply Z.ltb_lt in Hltu.
+          rewrite Hiter_val, word.unsigned_of_Z in Hltu.
+          cbv [glv_iterations] in Hltu. unfold word.wrap in Hltu.
+          destruct (width_cases) as [Hw|Hw]; rewrite Hw in Hltu;
+            (change (129 mod 2 ^ 32) with 129 in Hltu
+             || change (129 mod 2 ^ 64) with 129 in Hltu); lia. }
+        split.
+        2: { lia. }
         (* Provide the loop invariant *)
         unfold glv_loop_inv. subst. split. { reflexivity. }
-        (* Provide existentials — explicit witnesses for k1/k2/iter,
-           eexists for F values (Out/P/Phi/Aux) and word values (c1/c2) *)
-        do 12 eexists.    (* Outx..Auxz : F — let unification handle *)
-        exists x0, x2.   (* k1_words, k2_words — from shift_scalar *)
-        do 2 eexists.     (* c1, c2 : word *)
-        exists (word.add iw_i (word.of_Z 1)). (* iter_word *)
-        (* STRATEGY: split conjunction, solve sep FIRST to instantiate evars,
-           then solve algebraic + structural goals *)
+        (* Destruct curve_add let-bindings in hyps with curve_add opaque *)
+        Opaque curve_add.
+        repeat match goal with
+        | H : context[curve_add (?a, ?b, ?c) (?d, ?e, ?ff)] |- _ =>
+          let r := fresh "ca" in
+          set (r := curve_add (a, b, c) (d, e, ff)) in H;
+          destruct r as [[? ?] ?]
+        end.
+        Transparent curve_add.
+        (* Provide existentials with concrete F values from destruct.
+           Variable mapping (from Coq auto-naming — most recent hyp first):
+           - f, f0, f1    = Phi result (call 10: curve_add_double)
+           - f2, f3, f4   = P result (call 9: curve_add_double)
+           - f5, f6, f7   = Out result (call 8: curve_add_inplace)
+           - f8, f9, f10  = Out result (call 5: curve_add_inplace, overwritten)
+           - x6, x7, x8   = Aux (cmov_alt call 7, preserved by call 8)
+           - x0/x2         = k1/k2 words, x/x1 = cond1/cond2 *)
+        exists f5, f6, f7, f2, f3, f4, f, f0, f1, x6, x7, x8.
+        exists x0, x2, x, x1, (word.add iw_i (word.of_Z 1)).
+        (* Split the big conjunction *)
         repeat split.
-        (* Sep: solve first to instantiate F-valued evars *)
-        all: try (unfold Point3; ecancel_assumption_impl).
+        (* Sep: ecancel resolves ?R02 frame evar by absorbing unmatched conjuncts *)
+        all: try match goal with |- (_ ⋆ _) _ =>
+          unfold Point3; ecancel_assumption_impl
+        end.
         (* Locals *)
         all: try resolve_map_get.
-        (* Scalar shifts: eval x0 = Z.shiftr k1 iter', eval x2 = Z.shiftr k2 iter' *)
-        (* Need 0 <= 129 - Z.of_nat vi, i.e. vi <= 129 *)
-        assert (Hvi_bound : (vi <= 129)%nat) by
-          (pose proof (Znat.Nat2Z.is_nonneg vi);
-           pose proof (word.unsigned_range iw_i);
-           lia).
-        all: try (symmetry; rewrite <- H0; rewrite Hk1_i;
-                  apply (shiftr_from_div2 _ _ (129 - Z.of_nat vi));
-                  [lia | reflexivity]).
-        all: try (symmetry; rewrite <- H4; rewrite Hk2_i;
-                  apply (shiftr_from_div2 _ _ (129 - Z.of_nat vi));
-                  [lia | reflexivity]).
+        (* Normalize Z.of_nat (vi-1) to Z.of_nat vi - 1 in all goals *)
+        all: try (rewrite (Nat2Z.inj_sub vi 1) by lia;
+                  change (Z.of_nat 1) with 1%Z).
+        (* Scalar shifts: use transitivity + shiftr_from_div2 *)
+        all: try (
+          transitivity (Z.shiftr (eval glv_scalar_words k1_words) ((129 - Z.of_nat vi) + 1));
+          [rewrite <- H0, Hk1_i;
+           apply (shiftr_from_div2 _ _ (129 - Z.of_nat vi));
+           [pose proof (word.unsigned_range iw_i); lia | reflexivity]
+          | replace ((129 - Z.of_nat vi) + 1) with (129 - (Z.of_nat vi - 1)) by lia;
+            reflexivity]).
+        all: try (
+          transitivity (Z.shiftr (eval glv_scalar_words k2_words) ((129 - Z.of_nat vi) + 1));
+          [rewrite <- H4, Hk2_i;
+           apply (shiftr_from_div2 _ _ (129 - Z.of_nat vi));
+           [pose proof (word.unsigned_range iw_i); lia | reflexivity]
+          | replace ((129 - Z.of_nat vi) + 1) with (129 - (Z.of_nat vi - 1)) by lia;
+            reflexivity]).
         (* Word arithmetic *)
         all: try (rewrite word.unsigned_add; rewrite Hiter_val;
                   rewrite word.unsigned_of_Z_1; unfold word.wrap;
                   destruct (width_cases) as [Hw|Hw]; rewrite Hw;
                   change (1 mod 2 ^ 32) with 1; change (1 mod 2 ^ 64) with 1;
-                  rewrite Z.mod_small by lia; lia).
-        (* Nat arithmetic *)
-        all: try (replace (129 - (129 - Z.of_nat (vi - 1)))
-                    with (Z.of_nat (vi - 1)) by lia;
-                  rewrite Nat2Z.id; reflexivity).
+                  rewrite Z.mod_small by
+                    (pose proof (word.unsigned_range iw_i); lia);
+                  pose proof (word.unsigned_range iw_i); lia).
+        (* Nat arithmetic: (vi-1)%nat = Z.to_nat(glv_iterations - (129 - (Z.of_nat vi - 1))) *)
+        all: try (
+          cbv [glv_iterations];
+          replace (Z.of_nat vi - 1) with (Z.of_nat (vi - 1)) by
+            (rewrite Nat2Z.inj_sub by lia; change (Z.of_nat 1) with 1%Z; ring);
+          replace (129 - (129 - Z.of_nat (vi - 1))) with (Z.of_nat (vi - 1)) by
+            (pose proof (word.unsigned_range iw_i); lia);
+          rewrite Nat2Z.id; reflexivity).
         (* Convert scmul_glv to scmul *)
         all: try (change scmul_glv with (scmul Fzero Fone curve_add)).
         (* Doubling *)
@@ -1197,6 +1225,7 @@ Section GLV_Shamir_Generic.
                   [intros [[]]; apply curve_add_id_r |
                    intros [[]]; apply curve_add_id_l |
                    exact curve_add_assoc | lia]).
+        Redirect "/tmp/glv_final8" Show.
         all: admit. }
 
       { (* FALSE branch: iter >= 129, i.e. vi = 0 *)
