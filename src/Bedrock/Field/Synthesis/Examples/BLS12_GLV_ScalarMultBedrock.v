@@ -1093,10 +1093,13 @@ Section GLV_Shamir_Generic.
           end;
           idtac.
 
-        (* === Process all 10 loop body calls ===
-           Each gcall creates an impl1 residue goal. We skip these using N: focusing
-           and solve them all at the end. The continuation goal number increases by 1
-           after each call. *)
+        (* === Process all 10 loop body calls === *)
+
+        (* Flatten the right-associated sep from store_word_of_sep and
+           unfold Point3 so that ecancel can match individual FElems.
+           This is critical for resolving frame evars during gcall. *)
+        unfold Point3 in Hsep_iter.
+        flatten_seps.
 
         (* Call 1: shift_scalar(cond1, pk1) *)
         gcall_explicit HShiftScalar a_cond1 pk1 c1_i k1w_i.
@@ -1157,13 +1160,15 @@ Section GLV_Shamir_Generic.
         2: { lia. }
         (* Provide the loop invariant *)
         unfold glv_loop_inv. subst. split. { reflexivity. }
-        (* Destruct curve_add let-bindings in hyps with curve_add opaque *)
+        (* Destruct curve_add let-bindings — keep equations for algebraic goals *)
         Opaque curve_add.
         repeat match goal with
         | H : context[curve_add (?a, ?b, ?c) (?d, ?e, ?ff)] |- _ =>
           let r := fresh "ca" in
           set (r := curve_add (a, b, c) (d, e, ff)) in H;
-          destruct r as [[? ?] ?]
+          let Heq := fresh "Hca_eq" in
+          destruct r as [[? ?] ?] eqn:Heq;
+          symmetry in Heq
         end.
         Transparent curve_add.
         (* Provide existentials with concrete F values from destruct.
@@ -1178,9 +1183,14 @@ Section GLV_Shamir_Generic.
         exists x0, x2, x, x1, (word.add iw_i (word.of_Z 1)).
         (* Split the big conjunction *)
         repeat split.
-        (* Sep: ecancel resolves ?R02 frame evar by absorbing unmatched conjuncts *)
-        all: try match goal with |- (_ ⋆ _) _ =>
-          unfold Point3; ecancel_assumption_impl
+        (* Sep: use Hrem4 (on m8) + ecancel to resolve frame evar *)
+        all: try match goal with |- (_ ⋆ _) ?m =>
+          unfold Point3;
+          refine (Morphisms.subrelation_refl Lift1Prop.impl1 _ _ _ m
+            ltac:(match goal with H : _ m |- _ => exact H end));
+          cancel;
+          repeat ecancel_step_by_implication;
+          cbn [seps]; exact (impl1_refl _)
         end.
         (* Locals *)
         all: try resolve_map_get.
