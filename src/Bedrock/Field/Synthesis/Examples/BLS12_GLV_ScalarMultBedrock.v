@@ -1009,6 +1009,7 @@ Section GLV_Shamir_Generic.
                 Hiter_val Hv_eq Hne
                 m_iter mi Hsep_iter Hsep_i
                 Px Py Pz Phix Phiy Phiz R tr
+                curve_add_id_r curve_add_id_l curve_add_assoc curve_add_comm
                 mem_ok word_ok locals_ok env_ok ext_spec_ok.
 
         (* Memory optimization: clear stale sep hypotheses after each call.
@@ -1228,14 +1229,28 @@ Section GLV_Shamir_Generic.
           replace (129 - (129 - Z.of_nat (vi - 1))) with (Z.of_nat (vi - 1)) by
             (pose proof (word.unsigned_range iw_i); lia);
           rewrite Nat2Z.id; reflexivity).
-        (* Convert scmul_glv to scmul *)
-        all: try (change scmul_glv with (scmul Fzero Fone curve_add)).
-        (* Doubling *)
-        all: try (eapply eq_sym; eapply (scmul_pow2_succ Fzero Fone curve_add);
-                  [intros [[]]; apply curve_add_id_r |
-                   intros [[]]; apply curve_add_id_l |
-                   exact curve_add_assoc | lia]).
-        Redirect "/tmp/glv_final8" Show.
+        (* Remaining: 4 goals — accumulator, doubling P, doubling Phi, sep.
+           Solve doublings first (they resolve evars that help sep). *)
+        (* Doubling P: resolve evar ?X3 := Px_i via unfold+reflexivity *)
+        2: { change scmul_glv with (scmul Fzero Fone curve_add) in Hp_i.
+             assert (Hca0_val : ca0 = curve_add (Px_i, Py_i, Pz_i) (Px_i, Py_i, Pz_i))
+               by (unfold ca0; reflexivity).
+             rewrite Hca_eq0, Hca0_val, Hp_i.
+             replace (129 - (Z.of_nat vi - 1)) with ((129 - Z.of_nat vi) + 1) by lia.
+             symmetry.
+             apply scmul_pow2_succ; try assumption;
+             pose proof (word.unsigned_range iw_i); lia. }
+        (* Doubling Phi: resolve evar ?X4 := Phix_i via unfold+reflexivity *)
+        2: { change scmul_glv with (scmul Fzero Fone curve_add) in Hphi_i.
+             assert (Hca_val : ca = curve_add (Phix_i, Phiy_i, Phiz_i) (Phix_i, Phiy_i, Phiz_i))
+               by (unfold ca; reflexivity).
+             rewrite Hca_eq, Hca_val, Hphi_i.
+             replace (129 - (Z.of_nat vi - 1)) with ((129 - Z.of_nat vi) + 1) by lia.
+             symmetry.
+             apply scmul_pow2_succ; try assumption;
+             pose proof (word.unsigned_range iw_i); lia. }
+        (* Sep + Accumulator: remaining 2 goals *)
+        Redirect "/tmp/glv_final10" Show.
         all: admit. }
 
       { (* FALSE branch: iter >= 129, i.e. vi = 0 *)
