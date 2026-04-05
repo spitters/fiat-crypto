@@ -3494,19 +3494,15 @@ void bls24_Fp2_opp(br_word_t out, br_word_t x) {
 }
 void bls24_Fp2_add(br_word_t out, br_word_t inx, br_word_t iny) {
   br_word_t allocx, allocy;
-  uint8_t _br_stackalloc_allocx[128] = {0}; allocx = (br_word_t)&_br_stackalloc_allocx;
-  uint8_t _br_stackalloc_allocy[128] = {0}; allocy = (br_word_t)&_br_stackalloc_allocy;
-  bls24_Fp2_felem_copy(allocx, inx);
-  bls24_Fp2_felem_copy(allocy, iny);
+  allocx = inx;
+  allocy = iny;
   bls24_509_add(out, allocx, allocy);
   bls24_509_add(out+64, allocx+64, allocy+64);
 }
 void bls24_Fp2_sub(br_word_t out, br_word_t inx, br_word_t iny) {
   br_word_t allocx, allocy;
-  uint8_t _br_stackalloc_allocx[128] = {0}; allocx = (br_word_t)&_br_stackalloc_allocx;
-  uint8_t _br_stackalloc_allocy[128] = {0}; allocy = (br_word_t)&_br_stackalloc_allocy;
-  bls24_Fp2_felem_copy(allocx, inx);
-  bls24_Fp2_felem_copy(allocy, iny);
+  allocx = inx;
+  allocy = iny;
   bls24_509_sub(out, allocx, allocy);
   bls24_509_sub(out+64, allocx+64, allocy+64);
 }
@@ -3564,19 +3560,15 @@ void bls24_Fp4_opp(br_word_t out, br_word_t x) {
 }
 void bls24_Fp4_add(br_word_t out, br_word_t inx, br_word_t iny) {
   br_word_t allocx, allocy;
-  uint8_t _br_stackalloc_allocx[0x100] = {0}; allocx = (br_word_t)&_br_stackalloc_allocx;
-  uint8_t _br_stackalloc_allocy[0x100] = {0}; allocy = (br_word_t)&_br_stackalloc_allocy;
-  bls24_Fp4_felem_copy(allocx, inx);
-  bls24_Fp4_felem_copy(allocy, iny);
+  allocx = inx;
+  allocy = iny;
   bls24_Fp2_add(out, allocx, allocy);
   bls24_Fp2_add(out+128, allocx+128, allocy+128);
 }
 void bls24_Fp4_sub(br_word_t out, br_word_t inx, br_word_t iny) {
   br_word_t allocx, allocy;
-  uint8_t _br_stackalloc_allocx[0x100] = {0}; allocx = (br_word_t)&_br_stackalloc_allocx;
-  uint8_t _br_stackalloc_allocy[0x100] = {0}; allocy = (br_word_t)&_br_stackalloc_allocy;
-  bls24_Fp4_felem_copy(allocx, inx);
-  bls24_Fp4_felem_copy(allocy, iny);
+  allocx = inx;
+  allocy = iny;
   bls24_Fp2_sub(out, allocx, allocy);
   bls24_Fp2_sub(out+128, allocx+128, allocy+128);
 }
@@ -3634,19 +3626,15 @@ void bls24_Fp8_opp(br_word_t out, br_word_t x) {
 }
 void bls24_Fp8_add(br_word_t out, br_word_t inx, br_word_t iny) {
   br_word_t allocx, allocy;
-  uint8_t _br_stackalloc_allocx[0x200] = {0}; allocx = (br_word_t)&_br_stackalloc_allocx;
-  uint8_t _br_stackalloc_allocy[0x200] = {0}; allocy = (br_word_t)&_br_stackalloc_allocy;
-  bls24_Fp8_felem_copy(allocx, inx);
-  bls24_Fp8_felem_copy(allocy, iny);
+  allocx = inx;
+  allocy = iny;
   bls24_Fp4_add(out, allocx, allocy);
   bls24_Fp4_add(out+0x100, allocx+0x100, allocy+0x100);
 }
 void bls24_Fp8_sub(br_word_t out, br_word_t inx, br_word_t iny) {
   br_word_t allocx, allocy;
-  uint8_t _br_stackalloc_allocx[0x200] = {0}; allocx = (br_word_t)&_br_stackalloc_allocx;
-  uint8_t _br_stackalloc_allocy[0x200] = {0}; allocy = (br_word_t)&_br_stackalloc_allocy;
-  bls24_Fp8_felem_copy(allocx, inx);
-  bls24_Fp8_felem_copy(allocy, iny);
+  allocx = inx;
+  allocy = iny;
   bls24_Fp4_sub(out, allocx, allocy);
   bls24_Fp4_sub(out+0x100, allocx+0x100, allocy+0x100);
 }
@@ -3715,20 +3703,16 @@ void bls24_Fp24_opp(br_word_t out, br_word_t x) {
 }
 void bls24_Fp24_add(br_word_t out, br_word_t inx, br_word_t iny) {
   br_word_t allocx, allocy;
-  uint8_t _br_stackalloc_allocx[0x600] = {0}; allocx = (br_word_t)&_br_stackalloc_allocx;
-  uint8_t _br_stackalloc_allocy[0x600] = {0}; allocy = (br_word_t)&_br_stackalloc_allocy;
-  bls24_Fp24_felem_copy(allocx, inx);
-  bls24_Fp24_felem_copy(allocy, iny);
+  allocx = inx;
+  allocy = iny;
   bls24_Fp8_add(out, allocx, allocy);
   bls24_Fp8_add(out+0x200, allocx+0x200, allocy+0x200);
   bls24_Fp8_add(out+0x400, allocx+0x400, allocy+0x400);
 }
 void bls24_Fp24_sub(br_word_t out, br_word_t inx, br_word_t iny) {
   br_word_t allocx, allocy;
-  uint8_t _br_stackalloc_allocx[0x600] = {0}; allocx = (br_word_t)&_br_stackalloc_allocx;
-  uint8_t _br_stackalloc_allocy[0x600] = {0}; allocy = (br_word_t)&_br_stackalloc_allocy;
-  bls24_Fp24_felem_copy(allocx, inx);
-  bls24_Fp24_felem_copy(allocy, iny);
+  allocx = inx;
+  allocy = iny;
   bls24_Fp8_sub(out, allocx, allocy);
   bls24_Fp8_sub(out+0x200, allocx+0x200, allocy+0x200);
   bls24_Fp8_sub(out+0x400, allocx+0x400, allocy+0x400);
@@ -4108,3 +4092,4 @@ void bls24_final_exp(br_word_t out, br_word_t f, br_word_t gamma_fp4, br_word_t 
   bls24_final_exp_easy(easy_result, f, gamma_fp4_p4, gamma_fp8_p4, gamma_fp24_p4_1, gamma_fp24_p4_2);
   bls24_final_exp_hard(out, easy_result, gamma_fp4, gamma_fp8, gamma_fp24_1, gamma_fp24_2, gamma_fp4_p2, gamma_fp8_p2, gamma_fp24_p2_1, gamma_fp24_p2_2, gamma_fp4_p4, gamma_fp8_p4, gamma_fp24_p4_1, gamma_fp24_p4_2);
 }
+

@@ -15,17 +15,31 @@ import sys
 import re
 
 SAFE_FNS = {
+    # BLS12-381
     'bls12_Fp2_add', 'bls12_Fp2_sub', 'bls12_Fp2_opp',
     'bls12_Fp2_mul_xi', 'bls12_Fp2_conjugate',
     'bls12_Fp6_add', 'bls12_Fp6_sub', 'bls12_Fp6_opp',
     'bls12_Fp6_felem_copy',
     'bls12_Fp12_add', 'bls12_Fp12_sub', 'bls12_Fp12_opp',
     'bls12_Fp12_felem_copy', 'bls12_Fp12_conjugate',
+    # BLS24-509: componentwise ops (safe for copy elimination)
+    'bls24_Fp2_add', 'bls24_Fp2_sub', 'bls24_Fp2_opp',
+    'bls24_Fp2_felem_copy', 'bls24_Fp2_mul_xi',
+    'bls24_Fp4_add', 'bls24_Fp4_sub', 'bls24_Fp4_opp',
+    'bls24_Fp4_felem_copy', 'bls24_Fp4_mul_by_v',
+    'bls24_Fp8_add', 'bls24_Fp8_sub', 'bls24_Fp8_opp',
+    'bls24_Fp8_felem_copy', 'bls24_Fp8_mul_by_w',
+    'bls24_Fp24_add', 'bls24_Fp24_sub', 'bls24_Fp24_opp',
+    'bls24_Fp24_felem_copy', 'bls24_fp24_conjugate',
 }
 
 COPY_FNS = {
     'bls12_felem_copy', 'bls12_Fp2_felem_copy',
     'bls12_Fp6_felem_copy', 'bls12_Fp12_felem_copy',
+    # BLS24-509
+    'bls24_509_felem_copy', 'bls24_Fp2_felem_copy',
+    'bls24_Fp4_felem_copy', 'bls24_Fp8_felem_copy',
+    'bls24_Fp24_felem_copy',
 }
 
 def transform_function(lines):
@@ -74,7 +88,7 @@ def transform(text):
     lines = text.split('\n')
     result = []
 
-    func_def = re.compile(r'^static\s+\w+\s+(\w+)\s*\([^)]*\)\s*\{')
+    func_def = re.compile(r'^(?:static\s+)?void\s+(\w+)\s*\([^)]*\)\s*\{')
     i = 0
 
     while i < len(lines):
