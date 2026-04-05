@@ -12,12 +12,12 @@
     matching the Gallina [shamir_mult 128 k1 k2 P phi_P zero].
 
     Prerequisites (all compile under Rocq 9):
-    - BLS12_377_GLV_ScalarMult.v   -- Gallina shamir_mult + correctness
-    - BLS12_377_Endomorphism.v     -- omega, lambda constants
-    - BLS12_377_GLV_Decompose.v    -- k1 = k mod lambda, k2 = k div lambda
-    - ScalarMult.v             -- existing scalar mult (pattern) scalar mult (pattern)
+    - BLS12_GLV_ScalarMult.v   -- Gallina shamir_mult + correctness
+    - BLS12_Endomorphism.v     -- omega, lambda constants
+    - BLS12_GLV_Decompose.v    -- k1 = k mod lambda, k2 = k div lambda
+    - ScalarMult.v             -- existing 256-bit scalar mult (pattern)
     - LoopBody.v               -- per-iteration body pattern
-    - BLS12_377_G1.v               -- BLS12 curve_add (ladderstep)
+    - BLS12_G1.v               -- BLS12 curve_add (ladderstep)
 *)
 
 From Stdlib Require Import ZArith Lia.
@@ -79,6 +79,7 @@ Section GLV_Shamir_Generic.
   Existing Instance felem_alloc.
 
   Context (curve_add_name : string).
+  Context (curve_double_name : string).
 
   Context (Hbounds_eq : loose_bounds = tight_bounds).
   Context (three_b : felem).
@@ -90,7 +91,7 @@ Section GLV_Shamir_Generic.
   (* GLV scalars are 2-word (128-bit) bignums on a 64-bit machine *)
   Let glv_scalar_words : nat := 2.
 
-  (* 128 iterations: max(bits(k1), bits(k2)) where k1 < lambda < 2^127
+  (* 128 iterations: max(bits(k1), bits(k2)) where k1 < lambda < 2^128
      and k2 <= lambda+1 < 2^128 *)
   Let glv_iterations : Z := 128.
 
@@ -295,18 +296,14 @@ Section GLV_Shamir_Generic.
                   expr.var "outz"; expr.var "auxz";
                   expr.var "outx"; expr.var "outy"; expr.var "outz"]);
 
-          (* Double P: px = 2*px via curve_add(px, px) *)
-          coq:(cmd.call [] curve_add_name
-                 [expr.var "px"; expr.var "px";
-                  expr.var "py"; expr.var "py";
-                  expr.var "pz"; expr.var "pz";
+          (* Double P: px = 2*px via curve_double(px, px) *)
+          coq:(cmd.call [] curve_double_name
+                 [expr.var "px"; expr.var "py"; expr.var "pz";
                   expr.var "px"; expr.var "py"; expr.var "pz"]);
 
-          (* Double phi(P): phix = 2*phix via curve_add(phix, phix) *)
-          coq:(cmd.call [] curve_add_name
-                 [expr.var "phix"; expr.var "phix";
-                  expr.var "phiy"; expr.var "phiy";
-                  expr.var "phiz"; expr.var "phiz";
+          (* Double phi(P): phix = 2*phix via curve_double(phix, phix) *)
+          coq:(cmd.call [] curve_double_name
+                 [expr.var "phix"; expr.var "phiy"; expr.var "phiz";
                   expr.var "phix"; expr.var "phiy"; expr.var "phiz"])
         }
       ))).
@@ -563,13 +560,13 @@ Section GLV_Shamir_Generic.
                ⋆ FElem (Some tight_bounds) pZo Zo' ⋆ FElem (Some tight_bounds) pX2 X2'
                ⋆ FElem (Some tight_bounds) pY2 Y2' ⋆ FElem (Some tight_bounds) pZ2 Z2'
                ⋆ R0) m')))
-      (* Aliased curve_add: all same (in-place doubling) *)
-      (HCurveAddDouble : forall pX pY pZ
+      (* Dedicated in-place doubling: curve_double(P, P) *)
+      (HCurveDouble : forall pX pY pZ
          (X Y Z : F) R0 tr0 m0,
          (FElem (Some tight_bounds) pX X ⋆ FElem (Some tight_bounds) pY Y
           ⋆ FElem (Some tight_bounds) pZ Z ⋆ R0) m0 ->
-         WeakestPrecondition.call functions curve_add_name tr0 m0
-           [pX; pX; pY; pY; pZ; pZ; pX; pY; pZ]
+         Semantics.call functions curve_double_name tr0 m0
+           [pX; pY; pZ; pX; pY; pZ]
            (fun tr' m' rets => rets = [] /\ (tr0 = tr' /\
               let '(Xo, Yo, Zo) := curve_add (X, Y, Z) (X, Y, Z) in
               (FElem (Some tight_bounds) pX Xo ⋆ FElem (Some tight_bounds) pY Yo
@@ -1064,7 +1061,7 @@ Section GLV_Shamir_Generic.
            matter. Everything from Phase 1-3 is dead weight. *)
         (* Aggressive cleanup: keep only what the 10 gcalls need. *)
         clear - functions HStoreZero HShiftScalar HCmovAlt
-                HCurveAddInplace HCurveAddDouble
+                HCurveAddInplace HCurveDouble
                 pOutx pOuty pOutz pPx pPy pPz pPhix pPhiy pPhiz pk1 pk2
                 a_auxx a_auxy a_auxz a_cond1 a_cond2 a_iter
                 vi li
@@ -1217,7 +1214,7 @@ Section GLV_Shamir_Generic.
         end.
         Transparent curve_add.
         (* Call 9: curve_add(P, P, P) — P = 2P *)
-        gcall_clean HCurveAddDouble.
+        gcall_clean HCurveDouble.
         (* Destruct curve_add let-binding before call 10 *)
         Opaque curve_add.
         repeat match goal with
@@ -1230,7 +1227,7 @@ Section GLV_Shamir_Generic.
         end.
         Transparent curve_add.
         (* Call 10: curve_add(phi, phi, phi) — phi = 2*phi *)
-        gcall_clean HCurveAddDouble.
+        gcall_clean HCurveDouble.
 
         (* === Loop invariant restoration === *)
         Redirect "/tmp/glv_after_calls" Show.
@@ -1529,7 +1526,7 @@ End GLV_Shamir_Generic.
 
     The full program would link:
     - bls12_377_glv_shamir
-    - curve_add (= bls377_G1_add from BLS12_377_G1.v)
+    - curve_add (= bls377_G1_add from BLS12_G1.v)
     - store_zero
     - group_cmov_alt (= cmov_alt_func from CondMoveGroup.v)
     - shift_scalar (= shift_scalar from BignumShift.v, scalar_words:=2)
