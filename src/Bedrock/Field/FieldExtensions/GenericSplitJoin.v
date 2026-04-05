@@ -192,6 +192,53 @@ Section QuadraticSplitJoin.
       rewrite Hlen1'. rewrite <- (@word.ring_morph_mul _ _ word_ok). exact Ha2.
   Qed.
 
+  (** Framed split: given (QE_FElem p x * R) m, produce
+      (Base_FElem p (fst x) * (Base_FElem (p+off) (snd x) * R)) m. *)
+  Lemma qe_raw_FElem_split_in_sep pout (out : list word) (R : mem -> Prop) m :
+    (@FElem _ QE_fp _ _ _ _ QE_repr pout out * R)%sep m ->
+    (@FElem _ base_fp _ _ _ _ base_repr pout (qe_fst out) *
+     (@FElem _ base_fp _ _ _ _ base_repr (word.add pout base_offset_word)
+             (qe_snd out) * R))%sep m.
+  Proof.
+    intros [m1 [m2 [[Heq Hd] [Hqe HR]]]].
+    pose proof (qe_raw_FElem_split pout out m1 Hqe)
+      as [ma [mb [[Heq2 Hd2] [Ha Hb]]]].
+    subst m1.
+    pose proof (proj1 (Properties.map.disjoint_putmany_l _ _ _) Hd) as [Hd_a Hd_b].
+    exists ma, (map.putmany mb m2).
+    split; [split |].
+    { subst m. rewrite Properties.map.putmany_assoc. reflexivity. }
+    { apply Properties.map.disjoint_putmany_r. split; [exact Hd2 | exact Hd_a]. }
+    split; [exact Ha |].
+    exists mb, m2.
+    split; [split; [reflexivity | exact Hd_b] |].
+    split; [exact Hb | exact HR].
+  Qed.
+
+  (** Framed join: given (Base_FElem p a * (Base_FElem (p+off) b * R)) m
+      plus length witnesses, produce (QE_FElem p (a++b) * R) m. *)
+  Lemma qe_raw_FElem_join_in_sep pout (a b : list word) (R : mem -> Prop) m :
+    length a = base_size ->
+    length b = base_size ->
+    (@FElem _ base_fp _ _ _ _ base_repr pout a *
+     (@FElem _ base_fp _ _ _ _ base_repr (word.add pout base_offset_word) b * R))%sep m ->
+    (@FElem _ QE_fp _ _ _ _ QE_repr pout (a ++ b) * R)%sep m.
+  Proof.
+    intros Hla Hlb [ma [mr1 [[Heq1 Hd1] [Ha Hr1]]]].
+    destruct Hr1 as [mb [mr2 [[Heq2 Hd2] [Hb HR]]]].
+    subst mr1.
+    pose proof (proj1 (Properties.map.disjoint_putmany_r _ _ _) Hd1) as [Hd_ab Hd_ar].
+    exists (map.putmany ma mb), mr2.
+    split; [split |].
+    { subst m. rewrite Properties.map.putmany_assoc. reflexivity. }
+    { apply Properties.map.disjoint_putmany_l. split; [exact Hd_ar |exact Hd2]. }
+    split.
+    - apply (qe_raw_FElem_join pout a b (map.putmany ma mb) Hla Hlb).
+      exists ma, mb. split; [split; [reflexivity | exact Hd_ab] |].
+      split; [exact Ha | exact Hb].
+    - exact HR.
+  Qed.
+
 End QuadraticSplitJoin.
 
 (* ================================================================ *)
@@ -372,6 +419,87 @@ Section CubicSplitJoin.
       split; [exact Ha0 |].
       rewrite Hlen0'. rewrite <- (@word.ring_morph_mul _ _ word_ok).
       exact Harray12.
+  Qed.
+
+  (** Framed split: given (CE_FElem p x * R) m, produce
+      (Base_FElem p (c0 x) * (Base_FElem (p+off) (c1 x) *
+       (Base_FElem (p+2*off) (c2 x) * R))) m. *)
+  Lemma ce_raw_FElem_split_in_sep pout (out : list word) (R : mem -> Prop) m :
+    (@FElem _ CE_fp _ _ _ _ CE_repr pout out * R)%sep m ->
+    (@FElem _ base_fp _ _ _ _ base_repr pout (ce_c0 out) *
+     (@FElem _ base_fp _ _ _ _ base_repr (word.add pout base_offset_word)
+             (ce_c1 out) *
+      (@FElem _ base_fp _ _ _ _ base_repr
+              (word.add pout (word.of_Z (2 * base_offset)))
+              (ce_c2 out) * R)))%sep m.
+  Proof.
+    intros [mce [mR [[HeqM HdM] [Hce HR]]]].
+    pose proof (ce_raw_FElem_split pout out mce Hce)
+      as [m0 [m12 [Hsp012 [H0 H12]]]].
+    destruct Hsp012 as [Heq012 Hd012].
+    destruct H12 as [m1 [m2 [Hsp12 [H1 H2]]]].
+    destruct Hsp12 as [Heq12 Hd12].
+    subst m12 mce m.
+    (* Derive disjointness facts *)
+    pose proof (proj1 (Properties.map.disjoint_putmany_l _ _ _) HdM) as [Hd0R Hd12R].
+    pose proof (proj1 (Properties.map.disjoint_putmany_l _ _ _) Hd12R) as [Hd1R Hd2R].
+    pose proof (proj1 (Properties.map.disjoint_putmany_r _ _ _) Hd012) as [Hd01 Hd02].
+    (* Rebuild 4-way framed sep *)
+    exists m0, (map.putmany m1 (map.putmany m2 mR)).
+    split; [split |].
+    { rewrite !Properties.map.putmany_assoc. reflexivity. }
+    { apply Properties.map.disjoint_putmany_r. split; [exact Hd01 |].
+      apply Properties.map.disjoint_putmany_r. split; [exact Hd02 | exact Hd0R]. }
+    split; [exact H0 |].
+    exists m1, (map.putmany m2 mR).
+    split; [split; [reflexivity |] |].
+    { apply Properties.map.disjoint_putmany_r. split; [exact Hd12 | exact Hd1R]. }
+    split; [exact H1 |].
+    exists m2, mR.
+    split; [split; [reflexivity | exact Hd2R] |].
+    split; [exact H2 | exact HR].
+  Qed.
+
+  (** Framed join: given 3 Base_FElems at consecutive offsets + R,
+      produce (CE_FElem p (c0++c1++c2) * R) m. *)
+  Lemma ce_raw_FElem_join_in_sep pout (c0v c1v c2v : list word) (R : mem -> Prop) m :
+    length c0v = base_size ->
+    length c1v = base_size ->
+    length c2v = base_size ->
+    (@FElem _ base_fp _ _ _ _ base_repr pout c0v *
+     (@FElem _ base_fp _ _ _ _ base_repr (word.add pout base_offset_word) c1v *
+      (@FElem _ base_fp _ _ _ _ base_repr
+              (word.add pout (word.of_Z (2 * base_offset)))
+              c2v * R)))%sep m ->
+    (@FElem _ CE_fp _ _ _ _ CE_repr pout (c0v ++ c1v ++ c2v) * R)%sep m.
+  Proof.
+    intros Hl0 Hl1 Hl2 [m0 [mr0 [[Heq0 Hd0] [H0 Hr0]]]].
+    destruct Hr0 as [m1 [mr1 [[Heq1 Hd1] [H1 Hr1]]]].
+    destruct Hr1 as [m2 [mr2 [[Heq2 Hd2] [H2 HR]]]].
+    subst mr0 mr1.
+    (* Derive all pairwise disjointness from nested putmany *)
+    pose proof (proj1 (Properties.map.disjoint_putmany_r _ _ _) Hd0) as [Hd01 Hd0_2r].
+    pose proof (proj1 (Properties.map.disjoint_putmany_r _ _ _) Hd0_2r) as [Hd02 Hd0r].
+    pose proof (proj1 (Properties.map.disjoint_putmany_r _ _ _) Hd1) as [Hd12 Hd1r].
+    (* Build 3-way bare sep for ce_raw_FElem_join *)
+    set (mce := map.putmany m0 (map.putmany m1 m2)).
+    assert (Hbare : (@FElem _ base_fp _ _ _ _ base_repr pout c0v *
+      (@FElem _ base_fp _ _ _ _ base_repr (word.add pout base_offset_word) c1v *
+       @FElem _ base_fp _ _ _ _ base_repr
+              (word.add pout (word.of_Z (2 * base_offset))) c2v))%sep mce).
+    { exists m0, (map.putmany m1 m2).
+      split; [split; [reflexivity |] |].
+      { apply Properties.map.disjoint_putmany_r. split; [exact Hd01 | exact Hd02]. }
+      split; [exact H0 |].
+      exists m1, m2. split; [split; [reflexivity | exact Hd12] |].
+      split; [exact H1 | exact H2]. }
+    pose proof (ce_raw_FElem_join pout c0v c1v c2v mce Hl0 Hl1 Hl2 Hbare) as Hce.
+    exists mce, mr2.
+    split; [split |].
+    { subst mce m. rewrite !Properties.map.putmany_assoc. reflexivity. }
+    { subst mce. apply Properties.map.disjoint_putmany_l. split; [exact Hd0r |].
+      apply Properties.map.disjoint_putmany_l. split; [exact Hd1r | exact Hd2]. }
+    split; [exact Hce | exact HR].
   Qed.
 
 End CubicSplitJoin.

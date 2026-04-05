@@ -354,7 +354,7 @@ Section BLS24_MillerLoop.
        inverse of f. For a specification-level implementation, we use
        Fp24 opp on c1 of the cubic (unitary inverse for (p^12-1) result). *)
 
-    Let fp24_conj_body (f_var : string) : Syntax.cmd.cmd :=
+    Local Definition fp24_conj_body (f_var : string) : Syntax.cmd.cmd :=
       cmd_seq_list [
         (* For unitary f: conj(c0, c1, c2) = (c0, -c1, c2) *)
         cmd.call [] (AbstractField.opp (F:=Fp8))

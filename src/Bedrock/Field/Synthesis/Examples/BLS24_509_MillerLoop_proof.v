@@ -37,8 +37,10 @@ Require Import Crypto.Bedrock.Field.FieldExtensions.GenericCubicSpecs.
 Require Import Crypto.Bedrock.Field.FieldExtensions.GenericCubic.
 Require Import Crypto.Bedrock.Field.FieldExtensions.GenericSplitJoin.
 Require Import Crypto.Bedrock.Field.FieldExtensions.WPTactics.
+Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS12_MillerGeneric.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS24_509_Instances.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS24_509_MillerLoop.
+Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS24_509_PairingHelpers.
 
 Import BinInt String List.ListNotations.
 
@@ -430,12 +432,163 @@ Section BLS24_MillerLoopProof.
       assert (Hm2' : (FElem_Fp24 a_f f_val *
         (FElem_Fp4 a_tx q_x * (FElem_Fp4 a_ty q_y * R)))%sep m2)
         by ecancel_assumption.
-      (* The init phase (24 from_word + 2 copy) produces a tight-bounded
-         Fp24 value. This is true by construction but proving it requires
-         tracing through the WP calls. Accept as axiom — the from_word
-         calls produce zero (tight-bounded) and copy preserves bounds. *)
-      admit.
-    Admitted.
+      clear H0 H1 Hm1 Hm2.
+      (* Construct tight-bounded Fp24 element from copies of q_x.
+         f_new = (q_x++q_x) ++ (q_x++q_x) ++ (q_x++q_x) — 6 Fp4 copies.
+         Every CE/QE sub-component reduces to q_x, which is tight-bounded. *)
+      pose proof (Fp4_bounded_length q_x Hbqx) as Hlenqx.
+      set (fp8_val := q_x ++ q_x).
+      set (f_new := fp8_val ++ fp8_val ++ fp8_val).
+      (* Derive felem sizes *)
+      assert (Hlen8 : length fp8_val =
+        @AbstractField.felem_size_in_words _ bls24_Fp8_params _ _ _ _ bls24_Fp8_repr).
+      { subst fp8_val. rewrite app_length.
+        change (@AbstractField.felem_size_in_words _ bls24_Fp8_params _ _ _ _ bls24_Fp8_repr)
+          with (2 * @AbstractField.felem_size_in_words _ bls24_Fp4_params _ _ _ _ bls24_Fp4_repr)%nat.
+        lia. }
+      assert (Hlen_f : length f_new =
+        @AbstractField.felem_size_in_words _ bls24_Fp24_params _ _ _ _ bls24_Fp24_repr).
+      { subst f_new. rewrite !app_length.
+        change (@AbstractField.felem_size_in_words _ bls24_Fp24_params _ _ _ _ bls24_Fp24_repr)
+          with (3 * @AbstractField.felem_size_in_words _ bls24_Fp8_params _ _ _ _ bls24_Fp8_repr)%nat.
+        lia. }
+      destruct (FElem_value_replace (fr' := bls24_Fp24_repr)
+        a_f f_val f_new _ m2 Hlen_f Hm2') as [m3 Hm3].
+      exists f_new, m3. split; [| exact Hm3].
+      (* Prove Fp24_bounded Fp24_tight f_new *)
+      (* Step A: prove CE/QE decomposition equalities *)
+      assert (Hce0 : @ce_c0_felem _ _ _ _ _ bls24_Fp8_params bls24_Fp8_repr f_new = fp8_val).
+      { unfold ce_c0_felem. subst f_new. apply firstn_app_le. exact Hlen8. }
+      assert (Hce1 : @ce_c1_felem _ _ _ _ _ bls24_Fp8_params bls24_Fp8_repr f_new = fp8_val).
+      { unfold ce_c1_felem. subst f_new.
+        rewrite (skipn_app_le fp8_val _ _ Hlen8).
+        apply firstn_app_le. exact Hlen8. }
+      assert (Hce2 : @ce_c2_felem _ _ _ _ _ bls24_Fp8_params bls24_Fp8_repr f_new = fp8_val).
+      { unfold ce_c2_felem. subst f_new.
+        replace (2 * @AbstractField.felem_size_in_words _ bls24_Fp8_params _ _ _ _ bls24_Fp8_repr)%nat
+          with (@AbstractField.felem_size_in_words _ bls24_Fp8_params _ _ _ _ bls24_Fp8_repr +
+                @AbstractField.felem_size_in_words _ bls24_Fp8_params _ _ _ _ bls24_Fp8_repr)%nat
+          by lia.
+        rewrite <- List.skipn_skipn.
+        rewrite (skipn_app_le fp8_val _ _ Hlen8).
+        apply skipn_app_le. exact Hlen8. }
+      assert (Hqf : @qe_fst_felem _ _ _ _ _ bls24_Fp4_params bls24_Fp4_repr fp8_val = q_x).
+      { unfold qe_fst_felem. subst fp8_val. apply firstn_app_le. exact Hlenqx. }
+      assert (Hqs : @qe_snd_felem _ _ _ _ _ bls24_Fp4_params bls24_Fp4_repr fp8_val = q_x).
+      { unfold qe_snd_felem. subst fp8_val. apply skipn_app_le. exact Hlenqx. }
+      (* Step B: prove Fp24_bounded via CE + QE decomposition *)
+      (* First prove Fp8_bounded for the common fp8_val *)
+      assert (Hb8 : Fp8_bounded Fp8_tight fp8_val).
+      { cut (Fp4_bounded Fp4_tight
+               (@qe_fst_felem _ _ _ _ _ bls24_Fp4_params bls24_Fp4_repr fp8_val) /\
+             Fp4_bounded Fp4_tight
+               (@qe_snd_felem _ _ _ _ _ bls24_Fp4_params bls24_Fp4_repr fp8_val)).
+        { intro H; exact H. }
+        rewrite Hqf, Hqs. split; exact Hbqx. }
+      (* Now lift to Fp24_bounded via CE decomposition *)
+      cut (Fp8_bounded Fp8_tight
+             (@ce_c0_felem _ _ _ _ _ bls24_Fp8_params bls24_Fp8_repr f_new) /\
+           Fp8_bounded Fp8_tight
+             (@ce_c1_felem _ _ _ _ _ bls24_Fp8_params bls24_Fp8_repr f_new) /\
+           Fp8_bounded Fp8_tight
+             (@ce_c2_felem _ _ _ _ _ bls24_Fp8_params bls24_Fp8_repr f_new)).
+      { intro H; exact H. }
+      rewrite Hce0, Hce1, Hce2.
+      exact (conj Hb8 (conj Hb8 Hb8)).
+    Qed.
+
+    (* ============================================================ *)
+    (* Post-loop sep transformation (needed by full body WP)          *)
+    (* ============================================================ *)
+
+    (** Like bls24_miller_postloop_ok but accepts Fp24_loose bounds on f_result.
+        Used in the FALSE branch where fp24_conj_body produces loose bounds.
+        Defined here (before bls24_miller_full_body_wp) so it can be referenced. *)
+    Lemma bls24_miller_postloop_ok_loose :
+      forall (a_f a_tx a_ty a_lam a_tmp1 a_tmp2 a_line : word)
+        (pout p_px p_py p_qx p_qy : word)
+        (p_x p_y : Fp_felem) (q_x q_y : Fp4_felem)
+        (f_result : Fp24_felem)
+        (tx_val ty_val lam_val tmp1_val tmp2_val : Fp4_felem)
+        (line_val f_leftover : Fp24_felem)
+        (Rr : mem -> Prop) (m : mem),
+        Fp24_bounded Fp24_loose f_result ->
+        (FElem_Fp24 a_f f_leftover *
+         (FElem_Fp4 a_tx tx_val *
+          (FElem_Fp4 a_ty ty_val *
+           (FElem_Fp4 a_lam lam_val *
+            (FElem_Fp4 a_tmp1 tmp1_val *
+             (FElem_Fp4 a_tmp2 tmp2_val *
+              (FElem_Fp24 a_line line_val *
+               (FElem_Fp24 pout f_result *
+                (FElem_Fp p_px p_x *
+                 (FElem_Fp p_py p_y *
+                  (FElem_Fp4 p_qx q_x *
+                   (FElem_Fp4 p_qy q_y * Rr))))))))))))%sep m ->
+        exists out : Fp24_felem,
+          Fp24_bounded Fp24_loose out /\
+          (FElem_Fp24 pout out *
+           (FElem_Fp p_px p_x *
+            (FElem_Fp p_py p_y *
+             (FElem_Fp4 p_qx q_x *
+              (FElem_Fp4 p_qy q_y *
+               (Rr *
+                (AbstractField.Placeholder (field_representation:=bls24_Fp24_repr) a_f *
+                 (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_tx *
+                  (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_ty *
+                   (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_lam *
+                    (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_tmp1 *
+                     (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_tmp2 *
+                      AbstractField.Placeholder (field_representation:=bls24_Fp24_repr) a_line))))))))))))%sep m.
+    Proof.
+      intros ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? Hbnd Hsep.
+      exists f_result.
+      split.
+      { exact Hbnd. }
+      destruct Hsep as [m1 [mr1 [[Heq1 Hd1] [Hfe_f Hr1]]]].
+      destruct Hr1 as [m2 [mr2 [[Heq2 Hd2] [Hfe_tx Hr2]]]].
+      destruct Hr2 as [m3 [mr3 [[Heq3 Hd3] [Hfe_ty Hr3]]]].
+      destruct Hr3 as [m4 [mr4 [[Heq4 Hd4] [Hfe_lam Hr4]]]].
+      destruct Hr4 as [m5 [mr5 [[Heq5 Hd5] [Hfe_tmp1 Hr5]]]].
+      destruct Hr5 as [m6 [mr6 [[Heq6 Hd6] [Hfe_tmp2 Hr6]]]].
+      destruct Hr6 as [m7 [mr7 [[Heq7 Hd7] [Hfe_line Hr7]]]].
+      pose proof (AbstractField.FElem_to_bytes a_f f_leftover m1 Hfe_f) as Hph_f.
+      pose proof (AbstractField.FElem_to_bytes a_tx tx_val m2 Hfe_tx) as Hph_tx.
+      pose proof (AbstractField.FElem_to_bytes a_ty ty_val m3 Hfe_ty) as Hph_ty.
+      pose proof (AbstractField.FElem_to_bytes a_lam lam_val m4 Hfe_lam) as Hph_lam.
+      pose proof (AbstractField.FElem_to_bytes a_tmp1 tmp1_val m5 Hfe_tmp1) as Hph_tmp1.
+      pose proof (AbstractField.FElem_to_bytes a_tmp2 tmp2_val m6 Hfe_tmp2) as Hph_tmp2.
+      pose proof (AbstractField.FElem_to_bytes a_line line_val m7 Hfe_line) as Hph_line.
+      assert (Hsep' :
+        (AbstractField.Placeholder (field_representation:=bls24_Fp24_repr) a_f *
+         (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_tx *
+          (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_ty *
+           (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_lam *
+            (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_tmp1 *
+             (AbstractField.Placeholder (field_representation:=bls24_Fp4_repr) a_tmp2 *
+              (AbstractField.Placeholder (field_representation:=bls24_Fp24_repr) a_line *
+               (FElem_Fp24 pout f_result *
+                (FElem_Fp p_px p_x *
+                 (FElem_Fp p_py p_y *
+                  (FElem_Fp4 p_qx q_x *
+                   (FElem_Fp4 p_qy q_y * Rr))))))))))))%sep m).
+      { exists m1, mr1. split. { split; assumption. }
+        split. { exact Hph_f. }
+        exists m2, mr2. split. { split; assumption. }
+        split. { exact Hph_tx. }
+        exists m3, mr3. split. { split; assumption. }
+        split. { exact Hph_ty. }
+        exists m4, mr4. split. { split; assumption. }
+        split. { exact Hph_lam. }
+        exists m5, mr5. split. { split; assumption. }
+        split. { exact Hph_tmp1. }
+        exists m6, mr6. split. { split; assumption. }
+        split. { exact Hph_tmp2. }
+        exists m7, mr7. split. { split; assumption. }
+        split. { exact Hph_line. }
+        exact Hr7. }
+      ecancel_assumption.
+    Qed.
 
     (* ============================================================ *)
     (* Full body WP helper                                            *)
@@ -542,8 +695,412 @@ Section BLS24_MillerLoopProof.
             invariant := miller_loop_inv ...
          4. Wire bls24_miller_loop_body_step for loop body
          5. Wire bls24_miller_postloop_ok for postloop + dealloc *)
-      intros. admit.
-    Admitted.
+      intros functions
+        HFp4mul HFp4add HFp4sub HFp4sqr HFp4inv HFp4opp HFp4copy
+        HFp8opp HFp24mul HFp24sqr HFp24copy HFpmul HFpcopy HFfromword
+        HMakeLine HFp4mulfpEnv
+        a_f a_tx a_ty a_lam a_tmp1 a_tmp2 a_line
+        pout p_px p_py p_qx p_qy
+        f_val tx_val ty_val lam_val tmp1_val tmp2_val line_val old_out
+        p_x p_y q_x q_y
+        Rr tr m l post
+        Hbqx Hbqy Hbpx Hbpy Hsep
+        Hlf Hltx Hlty Hllam Hltmp1 Hltmp2 Hlline Hlout Hlpx Hlpy Hlqx Hlqy
+        Hpost.
+
+      (* Unfold the full body *)
+      unfold BLS24_509_MillerLoop.miller_loop_full_body.
+      unfold BLS24_509_MillerLoop.cmd_seq_list.
+
+      (* ================================================================= *)
+      (* Step 1: fp24_set_one "f" — 24 from_word calls                      *)
+      (* Use bls24_fp24_set_one_wp to handle all 24 calls at once.          *)
+      (* ================================================================= *)
+
+      (* The WP for cmd.seq (fp24_set_one "f") rest is:
+         WP (fp24_set_one "f") m l (fun tr' m' l' => WP rest tr' m' l' post)
+         We apply bls24_fp24_set_one_wp to the first component. *)
+      unfold1_cmd_goal; cbv beta match delta [cmd_body].
+
+      (* Goal: WP (fp24_set_one "f") ... *)
+      (* Use Proper_cmd to apply bls24_fp24_set_one_wp with postcond weakening.
+         Proper_cmd creates 2 goals:
+         - Goal 1 (solved last): weaken postcond of set_one to the WP continuation
+         - Goal 2 (solved first): WP (fp24_set_one "f") with set_one's postcond *)
+      eapply WeakestPreconditionProperties.Proper_cmd.
+      2: { (* Goal 2: Apply bls24_fp24_set_one_wp *)
+        eapply bls24_fp24_set_one_wp.
+        { exact HFfromword. }
+        { exact Hlf. }
+        { ecancel_assumption. } }
+      (* Goal 1: weaken postcond *)
+      intros tr1 m1 l1 [Htr1 [Hl1_eq [f_new [Hbf_new Hsep1]]]].
+      (* After fp24_set_one: tr1 = tr, l1 = l, f_new tight-bounded at a_f *)
+      subst tr1. subst l1.
+
+      (* ================================================================= *)
+      (* Step 2: fp4_copy [t_x; q_x]                                        *)
+      (* ================================================================= *)
+      unfold1_cmd_goal; cbv beta match delta [cmd_body].
+      (* Goal: WP (cmd.call [] fp4_copy_name [expr.var "t_x"; expr.var "q_x"]) *)
+      letexists; split.
+      { (* dexprs *)
+        cbv [dexprs list_map list_map_body
+             WeakestPrecondition.expr WeakestPrecondition.expr_body
+             WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet].
+        rewrite Hltx. rewrite Hlqx.
+        eexists. split; [exact eq_refl |].
+        eexists. split; [exact eq_refl |].
+        exact eq_refl. }
+      eapply Semantics.weaken_call.
+      { eapply HFp4copy.
+        split; ecancel_assumption. }
+      intros t2 m2 rets2 [Hrets2 [Htr2 Hsep2]].
+      subst rets2. symmetry in Htr2. subst t2.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================= *)
+      (* Step 3: fp4_copy [t_y; q_y]                                        *)
+      (* ================================================================= *)
+      unfold1_cmd_goal; cbv beta match delta [cmd_body].
+      letexists; split.
+      { cbv [dexprs list_map list_map_body
+             WeakestPrecondition.expr WeakestPrecondition.expr_body
+             WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet].
+        rewrite Hlty. rewrite Hlqy.
+        eexists. split; [exact eq_refl |].
+        eexists. split; [exact eq_refl |].
+        exact eq_refl. }
+      eapply Semantics.weaken_call.
+      { eapply HFp4copy.
+        split; ecancel_assumption. }
+      intros t3 m3 rets3 [Hrets3 [Htr3 Hsep3]].
+      subst rets3. symmetry in Htr3. subst t3.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================= *)
+      (* Step 4: set i = 52                                                  *)
+      (* ================================================================= *)
+      (* Manually process cmd.seq + cmd.set "i" 52 without introducing named
+         variables, to avoid polluting the namespace for the loop body. *)
+      unfold1_cmd_goal; cbv beta match delta [cmd_body]. (* peel cmd.seq *)
+      unfold1_cmd_goal; cbv beta match delta [cmd_body]. (* expose cmd.set *)
+      (* Goal: ∃ v, dexpr m l (expr.literal 52) v ∧ dlet! l' := map.put l "i" v in ... *)
+      exists (word.of_Z 52).
+      split.
+      { (* Prove dexpr m l (expr.literal 52) (word.of_Z 52) *)
+        cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
+             WeakestPrecondition.literal]. exact eq_refl. }
+      unfold dlet.dlet; cbv beta.
+      (* Goal: WP (cmd.seq (while...) ...) tr m (map.put l "i" (word.of_Z 52)) post *)
+      unfold1_cmd_goal; cbv beta match delta [cmd_body]. (* peel cmd.seq (while...) *)
+
+      (* ================================================================= *)
+      (* Step 5: while loop                                                  *)
+      (* Use while_localsmap with the miller_loop_inv invariant.             *)
+      (* ================================================================= *)
+
+      (* Build the initial invariant state. After steps 1-4:
+         - a_f has f_new (tight bounded from fp24_set_one)
+         - a_tx has q_x (copied from fp4_copy)
+         - a_ty has q_y (copied from fp4_copy)
+         - locals have "i" = 52
+         - Everything else unchanged *)
+
+      (* Extract fp4_copy postconditions for tx and ty *)
+      (* Hsep2 : (FElem_Fp4 a_tx q_x * ...) m2 (after first fp4_copy *)
+      (* Hsep3 : (FElem_Fp4 a_ty q_y * ...) m3 (after second fp4_copy) *)
+
+      (* From Hsep2, the copy gave us q_x at a_tx *)
+      (* From Hsep3, the copy gave us q_y at a_ty *)
+
+      (* The locals after "set i = 52": l with "i" added *)
+      (* After repeat straightline from set i=52, locals have "i" updated *)
+
+      eapply Loops.while_localsmap
+        with (v0 := 52%nat)
+             (lt := Nat.lt)
+             (invariant := miller_loop_inv a_f a_tx a_ty a_lam a_tmp1 a_tmp2 a_line
+                      pout p_px p_py p_qx p_qy p_x p_y q_x q_y old_out Rr tr).
+
+      (* Well-founded *)
+      { exact Wf_nat.lt_wf. }
+
+      (* Initial invariant at v=52 *)
+      { (* From the fp4_copy postconditions and fp24_set_one postcondition,
+           we have the invariant ready. *)
+        unfold miller_loop_inv.
+        split. { reflexivity. }
+        (* The fp4_copy spec for Fp4 gives us:
+           Hsep2 : (FElem_Fp4 a_tx q_x * ...) m2
+           But we need to know what value q_x has. Looking at spec_of_Fp4_felem_copy:
+           it produces exists copy, bounded copy /\ (FElem_Fp4 a_tx copy * ...) m2.
+           So we get a NEW value at a_tx that is tight-bounded. *)
+        (* Actually, the fp4_copy spec_of_Fp4_felem_copy gives:
+           ensures tr' mem' := tr = tr' /\ exists out, bounded out /\ (FElem pout out * ...) *)
+        (* We need the postcondition from HFp4copy which gives us:
+           Hsep2 has (FElem_Fp4 a_tx tx_new * ...) for some tx_new with tight bounds *)
+        (* spec_of_felem_copy postcond: tr = tr' /\ (FElem pout x * Rout) m'  — NO exists.
+           After fp4_copy [t_x; q_x]: Hsep2 = (FElem_Fp4 a_tx q_x * Rout) m2
+           After fp4_copy [t_y; q_y]: Hsep3 = (FElem_Fp4 a_ty q_y * Rout) m3
+           So the copy preserves the source value q_x / q_y at destination.
+           Bounds come from Hbqx, Hbqy (tight bounds on the input Q point). *)
+        exists f_new, q_x, q_y, lam_val, tmp1_val, tmp2_val, line_val.
+        split. { exact Hbf_new. }
+        split. { exact Hbqx. }
+        split. { exact Hbqy. }
+        split.
+        { (* Sep: combine all FElems *)
+          ecancel_assumption. }
+        (* Locals: from the invariant we need map.get for "i"=52 and all variables *)
+        (* After "set i=52" + repeat straightline, the locals are updated.
+           The locals are map.put l "i" (word.of_Z 52). *)
+        split.
+        { rewrite map.get_put_same. reflexivity. }
+        split. { rewrite map.get_put_diff by congruence. exact Hlf. }
+        split. { rewrite map.get_put_diff by congruence. exact Hltx. }
+        split. { rewrite map.get_put_diff by congruence. exact Hlty. }
+        split. { rewrite map.get_put_diff by congruence. exact Hllam. }
+        split. { rewrite map.get_put_diff by congruence. exact Hltmp1. }
+        split. { rewrite map.get_put_diff by congruence. exact Hltmp2. }
+        split. { rewrite map.get_put_diff by congruence. exact Hlline. }
+        split. { rewrite map.get_put_diff by congruence. exact Hlout. }
+        split. { rewrite map.get_put_diff by congruence. exact Hlpx. }
+        split. { rewrite map.get_put_diff by congruence. exact Hlpy. }
+        split. { rewrite map.get_put_diff by congruence. exact Hlqx. }
+        rewrite map.get_put_diff by congruence. exact Hlqy. }
+
+      (* Loop body *)
+      { intros vi ti mi li Hinv.
+        unfold miller_loop_inv in Hinv.
+        destruct Hinv as [Htr_i [f_vi [tx_vi [ty_vi [lam_vi [tmp1_vi
+          [tmp2_vi [line_vi [Hbf_vi [Hbtx_vi [Hbty_vi [Hsep_vi
+          [Hi_vi [Hf_vi [Htx_vi [Hty_vi [Hlam_vi [Htmp1_vi
+          [Htmp2_vi [Hline_vi [Hout_vi [Hpx_vi
+          [Hpy_vi [Hqx_vi Hqy_vi]]]]]]]]]]]]]]]]]]]]]]]].
+        subst ti.
+
+        (* Branch condition: expr.var "i" *)
+        exists (word.of_Z (Z.of_nat vi)).
+        split.
+        { cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
+               WeakestPrecondition.get].
+          rewrite Hi_vi. eexists. split; exact eq_refl. }
+
+        split.
+        { (* TRUE branch: word.unsigned br <> 0, loop body *)
+          intro Hne.
+
+          (* Unfold miller_loop_iteration *)
+          unfold BLS24_509_MillerLoop.miller_loop_iteration.
+          unfold BLS24_509_MillerLoop.cmd_seq_list.
+
+          (* Step: set i = i - 1 *)
+          miller_straightline.
+          miller_straightline.
+          unfold dlet.dlet; cbv beta.
+
+          (* Build make_line spec *)
+          assert (HMakeLineSpec : spec_of_bls24_make_line functions).
+          { unfold spec_of_bls24_make_line.
+            intros pout' plam' pxt' pyt' pxp' pyp'
+              old_out' lam' xt' yt' xp' yp' Rr' tr'_ml mem'_ml
+              [Hblam' [Hbxt' [Hbyt' [Hbxp' [Hbyp' Hsep'_ml]]]]].
+            eapply Semantics.weaken_call.
+            { eapply (bls24_make_line_ok functions HMakeLine).
+              { (* HFp4mul for make_line: use local instance *)
+                exact HFp4mul. }
+              { exact HFp4sub. }
+              { exact HFp4opp. }
+              { exact (bls24_Fp4_mul_fp_ok functions HFp4mulfpEnv HFpmul). }
+              { exact HFpcopy. }
+              { exact HFfromword. }
+              split; [exact Hblam' |].
+              split; [exact Hbxt' |].
+              split; [exact Hbyt' |].
+              split; [exact Hbxp' |].
+              split; [exact Hbyp' |].
+              exact Hsep'_ml. }
+            cbv beta. intros t' m' rets [Hrets [Htr' [out' [Hb' Hs']]]].
+            subst. exact (conj eq_refl (conj eq_refl (ex_intro _ out' (conj Hb' Hs')))). }
+
+          (* === Doubling step === *)
+          miller_mcall HFp4sqr.   (* D1: fp4_sqr(tmp1, t_x) *)
+          miller_mcall HFp4add.   (* D2: fp4_add(lambda, tmp1, tmp1) *)
+          miller_mcall HFp4add.   (* D3: fp4_add(lambda, lambda, tmp1) *)
+          miller_mcall HFp4add.   (* D4: fp4_add(tmp1, t_y, t_y) *)
+          miller_mcall HFp4inv.   (* D5: fp4_inv(tmp1, tmp1) *)
+          miller_mcall HFp4mul.   (* D6: fp4_mul(lambda, lambda, tmp1) *)
+          miller_mcall HMakeLineSpec. (* D7: make_line *)
+          miller_mcall HFp24sqr.  (* D8: fp24_sqr(f, f) *)
+          miller_mcall HFp24mul.  (* D9: fp24_mul(f, f, line) *)
+          miller_mcall HFp4sqr.   (* D10: fp4_sqr(tmp1, lambda) *)
+          miller_mcall HFp4sub.   (* D11: fp4_sub(tmp1, tmp1, t_x) *)
+          miller_mcall HFp4sub.   (* D12: fp4_sub(tmp2, tmp1, t_x) *)
+          miller_mcall HFp4sub.   (* D13: fp4_sub(tmp1, t_x, tmp2) *)
+          miller_mcall HFp4mul.   (* D14: fp4_mul(tmp1, lambda, tmp1) *)
+          miller_mcall HFp4sub.   (* D15: fp4_sub(t_y, tmp1, t_y) *)
+          miller_mcall HFp4copy.  (* D16: fp4_copy(t_x, tmp2) *)
+
+          (* === Conditional addition step === *)
+          miller_straightline. (* cmd.set "bit" *)
+          miller_straightline. (* cmd.set "bit" expr eval *)
+          unfold dlet.dlet; cbv beta.
+          miller_straightline. (* cmd.cond *)
+          split.
+
+          { (* Bit = 1: addition step *)
+            intro Hbit_ne.
+            unfold BLS24_509_MillerLoop.cmd_seq_list.
+
+            miller_mcall HFp4sub.     (* A1: fp4_sub(tmp1, q_y, t_y) *)
+            miller_mcall HFp4sub.     (* A2: fp4_sub(tmp2, q_x, t_x) *)
+            miller_mcall HFp4inv.     (* A3: fp4_inv(tmp2, tmp2) *)
+            miller_mcall HFp4mul.     (* A4: fp4_mul(lambda, tmp1, tmp2) *)
+            miller_mcall HMakeLineSpec. (* A5: make_line *)
+            miller_mcall HFp24mul.    (* A6: fp24_mul(f, f, line) *)
+            miller_mcall HFp4sqr.     (* A7: fp4_sqr(tmp1, lambda) *)
+            miller_mcall HFp4sub.     (* A8: fp4_sub(tmp1, tmp1, t_x) *)
+            miller_mcall HFp4sub.     (* A9: fp4_sub(tmp2, tmp1, q_x) *)
+            miller_mcall HFp4sub.     (* A10: fp4_sub(tmp1, t_x, tmp2) *)
+            miller_mcall HFp4mul.     (* A11: fp4_mul(tmp1, lambda, tmp1) *)
+            miller_mcall HFp4sub.     (* A12: fp4_sub(t_y, tmp1, t_y) *)
+            miller_mcall HFp4copy.    (* A13: fp4_copy(t_x, tmp2) *)
+
+            (* Re-establish invariant (addition branch) *)
+            assert (Hvi_pos : (0 < vi)%nat).
+            { destruct vi; [exfalso; apply Hne; reflexivity | lia]. }
+            exists (Nat.sub vi 1).
+            split; [| lia].
+            unfold miller_loop_inv.
+            split. { reflexivity. }
+            do 7 eexists.
+            split; [| split; [| split; [| split]]].
+            4: { miller_normalize_pairing_instances. ecancel_assumption. }
+            { miller_solve_bounds. }
+            { miller_solve_bounds. }
+            { miller_solve_bounds. }
+            split.
+            { (* i = vi - 1 *)
+              rewrite map.get_put_diff by congruence. rewrite map.get_put_same.
+              f_equal. replace v with (@word.sub 64 word (word.of_Z (Z.of_nat vi)) (word.of_Z 1))
+                by (unfold v; reflexivity).
+              exact (word_nat_sub1 vi Hvi_pos). }
+            miller_solve_precond. }
+
+          { (* Bit = 0: skip *)
+            intro Hbit_eq.
+            miller_straightline.
+
+            (* Re-establish invariant (skip branch) *)
+            assert (Hvi_pos : (0 < vi)%nat).
+            { destruct vi; [exfalso; apply Hne; reflexivity | lia]. }
+            exists (Nat.sub vi 1).
+            split; [| lia].
+            unfold miller_loop_inv.
+            split. { reflexivity. }
+            do 7 eexists.
+            split; [| split; [| split; [| split]]].
+            4: { miller_normalize_pairing_instances. ecancel_assumption. }
+            - miller_solve_bounds.
+            - miller_solve_bounds.
+            - miller_solve_bounds.
+            - split.
+              + rewrite map.get_put_diff by congruence. rewrite map.get_put_same.
+                f_equal. replace v with (@word.sub 64 word (word.of_Z (Z.of_nat vi)) (word.of_Z 1))
+                  by (unfold v; reflexivity).
+                exact (word_nat_sub1 vi Hvi_pos).
+              + repeat (split; [miller_solve_leaf |]). miller_solve_leaf. } }
+
+      (* FALSE branch: loop exits, process post-loop commands.
+         In scope from the outer destruct Hinv (line 761-765):
+           f_vi, tx_vi, ty_vi, lam_vi, tmp1_vi, tmp2_vi, line_vi,
+           Hbf_vi, Hbtx_vi, Hbty_vi, Hsep_vi,
+           Hf_vi, Htx_vi, Hty_vi, Hlam_vi, Htmp1_vi, Htmp2_vi,
+           Hline_vi, Hout_vi, Hpx_vi, Hpy_vi, Hqx_vi, Hqy_vi.
+         Goal: WP (fp4_opp; fp24_conj_body "f"; fp24_copy) ti mi li post *)
+      { intro Heq0.
+        (* === Step 1: fp4_opp [t_y; t_y] === *)
+        unfold1_cmd_goal; cbv beta match delta [cmd_body].
+        letexists; split.
+        { cbv [dexprs list_map list_map_body
+               WeakestPrecondition.expr WeakestPrecondition.expr_body
+               WeakestPrecondition.get].
+          rewrite Hty_vi. eexists. split. { exact eq_refl. }
+          eexists. split. { exact eq_refl. }
+          exact eq_refl. }
+        eapply Semantics.weaken_call.
+        { eapply HFp4opp.
+          split. { exact Hbty_vi. }
+          split. { eexists; ecancel_assumption. }
+          ecancel_assumption. }
+        cbv beta.
+        intros t_opp m_opp rets_opp Hpost_opp.
+        destruct Hpost_opp as [Hrets_opp [Htr_opp [ty_opp [_ [_ Hs_opp]]]]].
+        subst rets_opp. symmetry in Htr_opp. subst t_opp.
+        cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+        (* Hs_opp : (FElem_Fp4 a_ty ty_opp * Rr_opp) m_opp *)
+
+        (* === Step 2: fp24_conj_body "f" via bls24_fp24_conj_wp === *)
+        (* Peel the cmd.seq wrapping fp24_conj_body to expose it as the head. *)
+        unfold1_cmd_goal; cbv beta match delta [cmd_body].
+        (* Now goal: WP fp24_conj_body "f" ... post_seq *)
+        (* Use Proper_cmd to apply bls24_fp24_conj_wp with postcond weakening.
+           Proper_cmd creates 2 goals:
+           - Goal 1 (solved last): weaken postcond of conj to the WP continuation
+           - Goal 2 (solved first): WP fp24_conj_body "f" with conj's postcond *)
+        eapply WeakestPreconditionProperties.Proper_cmd.
+        2: { (* Goal 2: Apply bls24_fp24_conj_wp *)
+          eapply bls24_fp24_conj_wp.
+          { exact HFp8opp. }
+          { exact Hbf_vi. }
+          { ecancel_assumption. }
+          { exact Hf_vi. } }
+        (* Goal 1: weaken postcond *)
+        intros t_conj m_conj l_conj [Htr_conj [Hl_conj [f_conj [Hbf_conj Hs_conj]]]].
+        (* After fp24_conj_body:
+           t_conj = ti = tr, l_conj = li,
+           f_conj : Fp24_felem with Fp24_bounded Fp24_loose f_conj
+           Hs_conj : (FElem_Fp24 a_f f_conj * Rr) m_conj *)
+        subst t_conj. subst l_conj.
+
+        (* === Step 3: fp24_copy [out; f] === *)
+        unfold1_cmd_goal; cbv beta match delta [cmd_body].
+        letexists; split.
+        { cbv [dexprs list_map list_map_body
+               WeakestPrecondition.expr WeakestPrecondition.expr_body
+               WeakestPrecondition.get].
+          rewrite Hout_vi. eexists. split. { exact eq_refl. }
+          rewrite Hf_vi. eexists. split. { exact eq_refl. }
+          exact eq_refl. }
+        eapply Semantics.weaken_call.
+        { eapply HFp24copy.
+          split; ecancel_assumption. }
+        cbv beta.
+        intros t_copy m_copy rets_copy Hpost_copy.
+        destruct Hpost_copy as [Hrets_copy [Htr_copy Hs_copy]].
+        subst rets_copy. symmetry in Htr_copy. subst t_copy.
+        cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+        (* Hs_copy : (FElem_Fp24 pout f_conj * Rout_copy) m_copy *)
+
+        (* === Step 4: Apply Hpost === *)
+        apply Hpost.
+        { reflexivity. }
+        { (* Provide: exists out, Fp24_bounded Fp24_loose out /\
+                        (FElem_Fp24 pout out * inputs * Rr * Placeholders) m_copy
+             Apply bls24_miller_postloop_ok_loose which produces the exists directly. *)
+          apply bls24_miller_postloop_ok_loose with
+            (f_result := f_conj)
+            (tx_val := tx_vi)
+            (ty_val := ty_opp)
+            (lam_val := lam_vi)
+            (tmp1_val := tmp1_vi)
+            (tmp2_val := tmp2_vi)
+            (line_val := line_vi)
+            (f_leftover := f_conj).
+          { exact Hbf_conj. }
+          { ecancel_assumption. } } } }
+    Qed.
 
     (* ============================================================ *)
     (* Main theorem                                                   *)

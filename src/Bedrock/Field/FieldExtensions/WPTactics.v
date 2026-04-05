@@ -522,6 +522,21 @@ Qed.
     string comparison. For deep locals maps (20+ puts), this avoids
     the O(n) congruence chain. *)
 
+(** ** sep_extract_ecancel — robust ecancel for deeply nested seps.
+    Falls back to ecancel_assumption_impl first, then manual search. *)
+Ltac sep_extract_ecancel :=
+  first
+  [ SeparationLogic.ecancel_assumption_impl
+  | match goal with
+    | Hsep : (_ * _)%sep ?m |- (_ * _)%sep ?m =>
+      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ Hsep);
+      clear Hsep; SeparationLogic.ecancel
+    | Hsep : (_ * _)%sep ?m |- (_ * _)%sep ?m2 =>
+      unify m m2;
+      refine (Lift1Prop.subrelation_iff1_impl1 _ _ _ _ _ Hsep);
+      clear Hsep; SeparationLogic.ecancel
+    end ].
+
 Ltac resolve_map_get_fast :=
   lazymatch goal with
   | |- map.get (map.put ?m ?k ?v) ?k' = Some ?e =>
