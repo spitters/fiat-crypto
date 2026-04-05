@@ -117,13 +117,24 @@ Section WNAFShamir.
       rewrite !mul_mul.
       (* Rewrite firstn (S n) *)
       rewrite !weighted_sum_firstn_succ.
-      replace (w1 + d1 * p)%Z with (p * d1 + w1)%Z by (subst p; lia).
-      replace (w2 + d2 * p)%Z with (p * d2 + w2)%Z by (subst p; lia).
+      subst d1 d2 w1 w2 p.
+      replace (weighted_sum (firstn n ds1) 0 + nth n ds1 0 * 2 ^ Z.of_nat n)%Z
+        with (2 ^ Z.of_nat n * nth n ds1 0 + weighted_sum (firstn n ds1) 0)%Z by lia.
+      replace (weighted_sum (firstn n ds2) 0 + nth n ds2 0 * 2 ^ Z.of_nat n)%Z
+        with (2 ^ Z.of_nat n * nth n ds2 0 + weighted_sum (firstn n ds2) 0)%Z by lia.
       rewrite !mul_add.
-      (* AC rearrangement of 5 group terms — same terms, different order *)
-      (* TODO: debug exact tactic via MCP *)
-      admit.
-  Admitted.
+      (* AC rearrangement of 5 group terms *)
+      rewrite <- !add_assoc.
+      rewrite (add_assoc (mul (2 ^ Z.of_nat n * nth n ds2 0) Phi)
+                         (mul (weighted_sum (firstn n ds1) 0) P)
+                         (mul (weighted_sum (firstn n ds2) 0) Phi)).
+      rewrite (add_comm (mul (2 ^ Z.of_nat n * nth n ds2 0) Phi)
+                        (mul (weighted_sum (firstn n ds1) 0) P)).
+      rewrite <- (add_assoc (mul (weighted_sum (firstn n ds1) 0) P)
+                            (mul (2 ^ Z.of_nat n * nth n ds2 0) Phi)
+                            (mul (weighted_sum (firstn n ds2) 0) Phi)).
+      reflexivity.
+  Qed.
 
   (* -- Main theorem -- *)
 
