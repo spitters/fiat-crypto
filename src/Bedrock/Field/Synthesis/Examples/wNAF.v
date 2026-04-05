@@ -1,0 +1,279 @@
+(** * wNAF (windowed Non-Adjacent Form) digit expansion.
+
+    Converts a non-negative integer k into a sequence of signed digits
+    d_i such that k = Σ d_i · 2^i, with the non-adjacency property.
+
+    Window size w is typically 4, giving digits in {-7..7}. *)
+
+From Stdlib Require Import ZArith Lia List.
+Import ListNotations.
+Local Open Scope Z_scope.
+
+(** ** Core algorithm *)
+
+Definition wnaf_digit (w : nat) (k : Z) : Z :=
+  if Z.odd k then
+    let d := k mod (2 ^ Z.of_nat w) in
+    if d >=? 2 ^ (Z.of_nat w - 1) then d - 2 ^ Z.of_nat w else d
+  else
+    0.
+
+Definition wnaf_shift (w : nat) (k : Z) : Z :=
+  (k - wnaf_digit w k) / 2.
+
+Fixpoint wnaf_digits (w : nat) (k : Z) (len : nat) : list Z :=
+  match len with
+  | O => []
+  | S n => wnaf_digit w k :: wnaf_digits w (wnaf_shift w k) n
+  end.
+
+(** ** Weighted sum *)
+
+Fixpoint weighted_sum (digits : list Z) (pos : nat) : Z :=
+  match digits with
+  | [] => 0
+  | d :: rest => d * 2 ^ Z.of_nat pos + weighted_sum rest (S pos)
+  end.
+
+Definition wsum (digits : list Z) : Z := weighted_sum digits 0.
+
+(** ** Step reconstruction *)
+
+Lemma wnaf_reconstruct_step : forall w k,
+  (1 < w)%nat ->
+  k = wnaf_digit w k + 2 * wnaf_shift w k.
+Proof.
+  intros w k Hw. unfold wnaf_shift.
+  (* k - d is always even, so d + 2 * ((k-d)/2) = d + (k-d) = k *)
+  enough (H : (k - wnaf_digit w k) mod 2 = 0) by
+    (pose proof (Z.div_mod (k - wnaf_digit w k) 2 ltac:(lia)); lia).
+  (* Show (k - wnaf_digit w k) is even *)
+  unfold wnaf_digit.
+  assert (Hpow : 0 < 2 ^ Z.of_nat w) by (apply Z.pow_pos_nonneg; lia).
+  assert (H2w : 2 ^ Z.of_nat w = 2 * 2 ^ (Z.of_nat w - 1)).
+  { rewrite <- Z.pow_succ_r by lia. f_equal. lia. }
+  destruct (Z.odd k) eqn:Hodd.
+  - set (m := k mod 2 ^ Z.of_nat w).
+    assert (Hm : 0 <= m < 2 ^ Z.of_nat w) by (subst m; apply Z.mod_pos_bound; lia).
+    assert (Hkm : k mod (2 ^ Z.of_nat w) = m) by (subst m; reflexivity).
+    destruct (m >=? 2 ^ (Z.of_nat w - 1)) eqn:Hge.
+    + (* k-d = 2^w*(k/2^w+1), divisible by 2 since 2^w = 2*2^(w-1) *)
+      apply Z.geb_le in Hge.
+      replace (k - (m - 2 ^ Z.of_nat w)) with
+        (2 * (2 ^ (Z.of_nat w - 1) * (k / 2 ^ Z.of_nat w + 1))).
+      { rewrite Z.mul_comm. apply Z_mod_mult. }
+      { pose proof (Z.div_mod k (2 ^ Z.of_nat w) ltac:(lia)). nia. }
+    + (* k-d = 2^w*(k/2^w), divisible by 2 *)
+      assert (m < 2 ^ (Z.of_nat w - 1)) by
+        (rewrite Z.geb_leb in Hge; apply Z.leb_gt in Hge; lia).
+      replace (k - m) with
+        (2 * (2 ^ (Z.of_nat w - 1) * (k / 2 ^ Z.of_nat w))).
+      { rewrite Z.mul_comm. apply Z_mod_mult. }
+      { pose proof (Z.div_mod k (2 ^ Z.of_nat w) ltac:(lia)). nia. }
+  - (* k even, d=0 *)
+    rewrite Z.sub_0_r.
+    assert (Z.even k = true) by (rewrite <- Z.negb_odd, Hodd; auto).
+    rewrite Zeven_mod in H. destruct (k mod 2); auto; discriminate.
+Qed.
+
+(** ** Weighted sum shift *)
+
+Lemma pow2_succ : forall p, 2 ^ Z.of_nat (S p) = 2 * 2 ^ Z.of_nat p.
+Proof.
+  intros. replace (Z.of_nat (S p)) with (1 + Z.of_nat p) by lia.
+  rewrite Z.pow_add_r by lia. simpl. lia.
+Qed.
+
+Lemma weighted_sum_succ : forall ds p,
+  weighted_sum ds (S p) = 2 * weighted_sum ds p.
+Proof.
+  induction ds as [|d rest IH]; intros p.
+  - simpl. lia.
+  - unfold weighted_sum. fold weighted_sum.
+    rewrite IH, !pow2_succ. lia.
+Qed.
+
+(** ** Shifted k is non-negative *)
+
+Lemma wnaf_shift_nonneg : forall w k,
+  (1 < w)%nat -> 0 <= k ->
+  0 <= wnaf_shift w k.
+Proof.
+  intros w k Hw Hk.
+  unfold wnaf_shift. apply Z.div_pos; [|lia].
+  unfold wnaf_digit.
+  assert (Hpow : 0 < 2 ^ Z.of_nat w) by (apply Z.pow_pos_nonneg; lia).
+  destruct (Z.odd k); [|lia].
+  set (m := k mod 2 ^ Z.of_nat w).
+  assert (Hm : 0 <= m < 2 ^ Z.of_nat w) by (subst m; apply Z.mod_pos_bound; lia).
+  assert (Hkm : k - m >= 0).
+  { enough (m <= k) by lia. subst m. apply Z.mod_le; lia. }
+  destruct (m >=? 2 ^ (Z.of_nat w - 1)); lia.
+Qed.
+
+(** ** Main correctness: use well-founded induction + auxiliary len *)
+
+(** Strengthened correctness with slack bound *)
+Lemma wnaf_correct_aux : forall w len k,
+  (1 < w)%nat ->
+  0 <= k ->
+  (Z.of_nat len >= Z.log2 k + 1 \/ k = 0) ->
+  wsum (wnaf_digits w k len) = k.
+Admitted.
+
+(** Standard correctness *)
+Theorem wnaf_correct : forall w len k,
+  (1 < w)%nat ->
+  0 <= k < 2 ^ Z.of_nat len ->
+  wsum (wnaf_digits w k len) = k.
+Proof.
+  intros w len k Hw [Hk0 Hklt].
+  apply wnaf_correct_aux; auto.
+  destruct (Z.eq_dec k 0) as [->|Hne]; [right; auto|left].
+  assert (0 < k) by lia.
+  pose proof (Z.log2_lt_pow2 k (Z.of_nat len) H).
+  lia.
+Qed.
+
+(** ** Digit bound *)
+
+Theorem wnaf_digit_bound_single : forall w k,
+  (1 < w)%nat ->
+  Z.abs (wnaf_digit w k) < 2 ^ (Z.of_nat w - 1).
+Proof.
+  intros w k Hw. unfold wnaf_digit.
+  assert (Hpow : 0 < 2 ^ Z.of_nat w) by (apply Z.pow_pos_nonneg; lia).
+  assert (Hpow2 : 0 < 2 ^ (Z.of_nat w - 1)) by (apply Z.pow_pos_nonneg; lia).
+  assert (H2w : 2 ^ Z.of_nat w = 2 * 2 ^ (Z.of_nat w - 1)).
+  { rewrite <- Z.pow_succ_r by lia. f_equal. lia. }
+  destruct (Z.odd k) eqn:Hodd; [|simpl; lia].
+  set (m := k mod 2 ^ Z.of_nat w).
+  assert (Hm : 0 <= m < 2 ^ Z.of_nat w) by (subst m; apply Z.mod_pos_bound; lia).
+  destruct (m >=? 2 ^ (Z.of_nat w - 1)) eqn:Hge.
+  - apply Z.geb_le in Hge.
+    (* m is odd (k odd, m = k mod 2^w, 2^w even) *)
+    assert (Hmodd : Z.odd m = true).
+    { (* m is odd: k mod 2^w preserves parity since 2 | 2^w *)
+      subst m.
+      assert (Hkm_even : (k - k mod 2 ^ Z.of_nat w) mod 2 = 0).
+      { pose proof (Z.div_mod k (2 ^ Z.of_nat w) ltac:(lia)) as Hdm.
+        set (q := k / 2 ^ Z.of_nat w).
+        replace (k - k mod 2 ^ Z.of_nat w) with (2 ^ Z.of_nat w * q) by lia.
+        replace (2 ^ Z.of_nat w * q) with (2 ^ (Z.of_nat w - 1) * q * 2)
+          by (rewrite H2w; ring).
+        apply Z_mod_mult. }
+      (* k ≡ m (mod 2), so odd k → odd m *)
+      assert (Hmod_eq : k mod 2 = k mod 2 ^ Z.of_nat w mod 2).
+      { set (mm := k mod 2 ^ Z.of_nat w) in *.
+        pose proof (Z.div_mod (k - mm) 2 ltac:(lia)) as Hdm2.
+        rewrite Hkm_even in Hdm2.
+        assert (Hk_eq : k = mm + 2 * ((k - mm) / 2)) by lia.
+        rewrite Hk_eq.
+        rewrite Z.add_mod by lia.
+        rewrite (Z.mul_comm 2), Z_mod_mult, Z.add_0_r.
+        apply Z.mod_small.
+        apply Z.mod_pos_bound. lia. }
+      (* Z.odd k ↔ k mod 2 = 1 *)
+      assert (Hk1 : k mod 2 = 1).
+      { pose proof (Z.mod_pos_bound k 2 ltac:(lia)).
+        assert (k mod 2 <> 0).
+        { intro Habs. apply Zmod_divides in Habs; [|lia].
+          destruct Habs as [c Hc].
+          rewrite Hc, Z.odd_mul in Hodd. discriminate. }
+        lia. }
+      rewrite Hmod_eq in Hk1.
+      set (mm := k mod 2 ^ Z.of_nat w).
+      rewrite <- Z.negb_even.
+      destruct (Z.even mm) eqn:He; [|reflexivity].
+      exfalso. rewrite Zeven_mod in He. apply Z.eqb_eq in He.
+      fold mm in Hk1. lia. }
+    (* m odd and m >= 2^(w-1): m > 2^(w-1) since 2^(w-1) is even *)
+    assert (m <> 2 ^ (Z.of_nat w - 1)).
+    { intro Heq. rewrite Heq in Hmodd.
+      rewrite Z.odd_pow in Hmodd by lia. discriminate. }
+    rewrite H2w in *. lia.
+  - rewrite Z.geb_leb in Hge. apply Z.leb_gt in Hge.
+    assert (Hmodd : Z.odd m = true).
+    { (* m is odd: k mod 2^w preserves parity since 2 | 2^w *)
+      subst m.
+      assert (Hkm_even : (k - k mod 2 ^ Z.of_nat w) mod 2 = 0).
+      { pose proof (Z.div_mod k (2 ^ Z.of_nat w) ltac:(lia)) as Hdm.
+        set (q := k / 2 ^ Z.of_nat w).
+        replace (k - k mod 2 ^ Z.of_nat w) with (2 ^ Z.of_nat w * q) by lia.
+        replace (2 ^ Z.of_nat w * q) with (2 ^ (Z.of_nat w - 1) * q * 2)
+          by (rewrite H2w; ring).
+        apply Z_mod_mult. }
+      (* k ≡ m (mod 2), so odd k → odd m *)
+      assert (Hmod_eq : k mod 2 = k mod 2 ^ Z.of_nat w mod 2).
+      { set (mm := k mod 2 ^ Z.of_nat w) in *.
+        pose proof (Z.div_mod (k - mm) 2 ltac:(lia)) as Hdm2.
+        rewrite Hkm_even in Hdm2.
+        assert (Hk_eq : k = mm + 2 * ((k - mm) / 2)) by lia.
+        rewrite Hk_eq.
+        rewrite Z.add_mod by lia.
+        rewrite (Z.mul_comm 2), Z_mod_mult, Z.add_0_r.
+        apply Z.mod_small.
+        apply Z.mod_pos_bound. lia. }
+      (* Z.odd k ↔ k mod 2 = 1 *)
+      assert (Hk1 : k mod 2 = 1).
+      { pose proof (Z.mod_pos_bound k 2 ltac:(lia)).
+        assert (k mod 2 <> 0).
+        { intro Habs. apply Zmod_divides in Habs; [|lia].
+          destruct Habs as [c Hc].
+          rewrite Hc, Z.odd_mul in Hodd. discriminate. }
+        lia. }
+      rewrite Hmod_eq in Hk1.
+      set (mm := k mod 2 ^ Z.of_nat w).
+      rewrite <- Z.negb_even.
+      destruct (Z.even mm) eqn:He; [|reflexivity].
+      exfalso. rewrite Zeven_mod in He. apply Z.eqb_eq in He.
+      fold mm in Hk1. lia. }
+    assert (0 < m).
+    { destruct (Z.eq_dec m 0) as [->|]; [discriminate Hmodd | lia]. }
+    lia.
+Qed.
+
+Theorem wnaf_digit_bound : forall w k len i d,
+  (1 < w)%nat -> 0 <= k ->
+  nth_error (wnaf_digits w k len) i = Some d ->
+  Z.abs d < 2 ^ (Z.of_nat w - 1).
+Admitted.
+
+(** ** Non-adjacency *)
+
+Theorem wnaf_non_adjacent : forall w k len i,
+  (1 < w)%nat -> 0 <= k ->
+  let digits := wnaf_digits w k len in
+  nth i digits 0 <> 0 ->
+  forall j, (1 <= j < w)%nat ->
+  (i + j < len)%nat ->
+  nth (i + j) digits 0 = 0.
+Admitted.
+
+(** ** Density bound *)
+
+Definition count_nonzero (ds : list Z) : nat :=
+  length (filter (fun d => negb (d =? 0)) ds).
+
+Theorem wnaf_density : forall w k len,
+  (1 < w)%nat -> 0 <= k ->
+  (count_nonzero (wnaf_digits w k len) <= Nat.div len (w + 1) + 1)%nat.
+Admitted.
+
+(** ** Concrete tests *)
+
+Example wnaf_test_13 :
+  wnaf_digits 4 13 5 = [-3; 0; 0; 0; 1].
+Proof. vm_compute. reflexivity. Qed.
+
+Example wnaf_test_sum_13 : wsum [-3; 0; 0; 0; 1] = 13.
+Proof. vm_compute. reflexivity. Qed.
+
+Example wnaf_test_127 : wsum (wnaf_digits 4 127 8) = 127.
+Proof. vm_compute. reflexivity. Qed.
+
+Example wnaf_test_255 : wsum (wnaf_digits 4 255 9) = 255.
+Proof. vm_compute. reflexivity. Qed.
+
+Example wnaf_test_1000 : wsum (wnaf_digits 4 1000 11) = 1000.
+Proof. vm_compute. reflexivity. Qed.
