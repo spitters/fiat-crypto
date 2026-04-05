@@ -388,19 +388,61 @@ Section WNAF_GLV.
         destruct (curve_add (Oxi, Oyi, Ozi) (Oxi, Oyi, Ozi)) as [[Ox' Oy'] Oz'] eqn:Hca_dbl.
 
         (* Remaining loop body: load d1, cond d1, load d2, cond d2, iter++ *)
-        (* This is very complex. Admit the entire remaining loop body. *)
-        (* The proof would process:
-           1. cmd.set d1 (load ...) — needs digits_k1 in R to be an array
-           2. cmd.cond d1 — branches on nonzero
-              a. Nonzero: compute table index, felem_copy x3, opp if negative, curve_add
-              b. Zero: skip
-           3. cmd.set d2 (load ...) — same for dk2
-           4. cmd.cond d2 — same structure
-           5. cmd.set iter (iter+1)
-           6. Restore invariant with weighted_sum_firstn_succ *)
+        (* Strategy: use weaken_cmd to separate the WP execution from the
+           invariant restoration.  The WP part (digit processing + iter++)
+           is admitted; the algebraic invariant step is fully proved. *)
 
-        (* Provide the decreasing variant *)
-        admit. }
+        set (d1_val := nth iter dk1 0).
+        set (d2_val := nth iter dk2 0).
+        set (iter' := S iter).
+
+        eapply weaken_cmd with (post1 := fun t m l =>
+          exists Ox'' Oy'' Oz'' Ax'' Ay'' Az'' iw',
+          (Ox'', Oy'', Oz'') = curve_add
+            (scmul_glv (Z.to_nat (weighted_sum (firstn iter' dk1) 0)) (Px, Py, Pz))
+            (scmul_glv (Z.to_nat (weighted_sum (firstn iter' dk2) 0)) (Phix, Phiy, Phiz))
+          /\ (Point3 (Some tight_bounds) pOx pOy pOz Ox'' Oy'' Oz''
+              ⋆ Point3 (Some tight_bounds) pAx pAy pAz Ax'' Ay'' Az'' ⋆ R) m
+          /\ map.get l "outx" = Some pOx /\ map.get l "outy" = Some pOy
+          /\ map.get l "outz" = Some pOz /\ map.get l "auxx" = Some pAx
+          /\ map.get l "auxy" = Some pAy /\ map.get l "auxz" = Some pAz
+          /\ map.get l "iter" = Some iw'
+          /\ word.unsigned iw' = Z.of_nat iter'
+          /\ t = tr).
+
+        { (* === WP for load d1, cond d1, load d2, cond d2, iter++ === *)
+          (* This requires:
+             - digits_k1/digits_k2 pointers in locals (not yet in invariant)
+             - Word arrays for dk1/dk2 in memory (not yet in sep frame R)
+             - table_P/table_Phi pointers and table data in memory
+             - Specs for felem_copy and opp in the function environment
+             TODO: strengthen wnaf_inv to track digit array / table pointers
+             and their memory contents, then step through each command. *)
+          admit. }
+
+        (* === Invariant restoration: post1 implies loop postcondition === *)
+        intros t_post m_post l_post Hpost.
+        destruct Hpost as (Ox_ & Oy_ & Oz_ & Ax_ & Ay_ & Az_ & iw_
+          & Hout_ & Hsep_ & Hl_ox_ & Hl_oy_ & Hl_oz_
+          & Hl_ax_ & Hl_ay_ & Hl_az_
+          & Hl_iter_ & Hiw_ & Htr_).
+        subst t_post.
+
+        (* Provide the decreasing variant: vi - 1 *)
+        exists (vi - 1)%nat. split.
+
+        - (* wnaf_inv holds at step iter' = S iter = 129 - (vi-1) *)
+          unfold wnaf_inv.
+          replace (129 - (vi - 1))%nat with iter' by (subst iter iter'; lia).
+          exists Ox_, Oy_, Oz_, Ax_, Ay_, Az_, iw_.
+          repeat split; try assumption.
+          (* v = Z.to_nat(wnaf_iters - word.unsigned iw_) *)
+          subst iter iter'.
+          rewrite Hiw_.
+          unfold wnaf_iters. lia.
+
+        - (* vi - 1 < vi *)
+          lia. }
 
       { (* === FALSE branch: vi = 0, loop done === *)
         intro Hcond.
