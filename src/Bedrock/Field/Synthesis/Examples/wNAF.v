@@ -277,9 +277,100 @@ Theorem wnaf_digit_bound : forall w k len i d,
   (1 < w)%nat -> 0 <= k ->
   nth_error (wnaf_digits w k len) i = Some d ->
   Z.abs d < 2 ^ (Z.of_nat w - 1).
-Admitted.
+Proof.
+  intros w k0 len. revert k0. induction len as [|n IH]; intros k i d Hw Hk Hnth.
+  - simpl in Hnth. destruct i; discriminate.
+  - simpl in Hnth. destruct i as [|i'].
+    + simpl in Hnth. injection Hnth as <-. apply wnaf_digit_bound_single. exact Hw.
+    + simpl in Hnth. apply IH with (k0 := wnaf_shift w k) (i := i'); auto.
+      apply wnaf_shift_nonneg; auto.
+Qed.
 
 (** ** Non-adjacency *)
+
+Lemma wnaf_digit_not_zero_odd : forall w k,
+  wnaf_digit w k <> 0 -> Z.odd k = true.
+Proof.
+  intros w k H. unfold wnaf_digit in H.
+  destruct (Z.odd k); [reflexivity | exfalso; apply H; reflexivity].
+Qed.
+
+Lemma wnaf_shift_even : forall w k,
+  Z.odd k = false -> wnaf_shift w k = k / 2.
+Proof.
+  intros w k Hodd. unfold wnaf_shift, wnaf_digit. rewrite Hodd.
+  rewrite Z.sub_0_r. reflexivity.
+Qed.
+
+Lemma shift_div_pow2_wm1 : forall w k,
+  (1 < w)%nat -> wnaf_digit w k <> 0 ->
+  (2 ^ Z.of_nat (w - 1) | wnaf_shift w k).
+Proof.
+  intros w k Hw Hd.
+  assert (Hodd : Z.odd k = true) by (apply wnaf_digit_not_zero_odd in Hd; exact Hd).
+  unfold wnaf_shift.
+  assert (Hpow : 0 < 2 ^ Z.of_nat w) by (apply Z.pow_pos_nonneg; lia).
+  assert (H2w : 2 ^ Z.of_nat w = 2 * 2 ^ Z.of_nat (w - 1)).
+  { replace (Z.of_nat w) with (1 + Z.of_nat (w - 1)) by lia.
+    rewrite Z.pow_add_r by lia. simpl. lia. }
+  assert (Hdiv : (2 ^ Z.of_nat w | k - wnaf_digit w k)).
+  { unfold wnaf_digit. rewrite Hodd.
+    set (m := k mod 2 ^ Z.of_nat w).
+    destruct (m >=? 2 ^ (Z.of_nat w - 1)) eqn:Hge.
+    - replace (k - (m - 2 ^ Z.of_nat w)) with (k - m + 2 ^ Z.of_nat w) by lia.
+      subst m. exists (k / 2 ^ Z.of_nat w + 1).
+      pose proof (Z.div_mod k (2 ^ Z.of_nat w) ltac:(lia)). lia.
+    - subst m. exists (k / 2 ^ Z.of_nat w).
+      pose proof (Z.div_mod k (2 ^ Z.of_nat w) ltac:(lia)). lia. }
+  destruct Hdiv as [q Hq]. exists q.
+  rewrite H2w in Hq.
+  assert (0 < 2 ^ Z.of_nat (w - 1)) by (apply Z.pow_pos_nonneg; lia).
+  Z.div_mod_to_equations. nia.
+Qed.
+
+Lemma pow2_divides_even : forall m k,
+  (1 <= m)%nat -> (2 ^ Z.of_nat m | k) -> Z.odd k = false.
+Proof.
+  intros m k Hm [q Hq].
+  replace (Z.of_nat m) with (1 + Z.of_nat (m - 1)) in Hq by lia.
+  rewrite Z.pow_add_r in Hq by lia. simpl in Hq.
+  rewrite Hq. rewrite Z.odd_mul.
+  rewrite Bool.andb_false_iff. right.
+  destruct (2 ^ Z.of_nat (m - 1)); simpl; auto.
+Qed.
+
+Lemma pow2_div_half : forall m k,
+  (1 <= m)%nat -> (2 ^ Z.of_nat m | k) -> (2 ^ Z.of_nat (m - 1) | k / 2).
+Proof.
+  intros m k Hm [q Hq]. exists q.
+  replace (Z.of_nat m) with (1 + Z.of_nat (m - 1)) in Hq by lia.
+  rewrite Z.pow_add_r in Hq by lia.
+  rewrite Hq. simpl (2 ^ 1). rewrite Z.mul_assoc.
+  assert (0 < 2 ^ Z.of_nat (m - 1)) by (apply Z.pow_pos_nonneg; lia).
+  Z.div_mod_to_equations. nia.
+Qed.
+
+Lemma zero_digits_from_pow2_div : forall w len k m,
+  (1 < w)%nat -> 0 <= k ->
+  (1 <= m)%nat -> (2 ^ Z.of_nat m | k) ->
+  forall j, (j < m)%nat -> (j < len)%nat ->
+  nth j (wnaf_digits w k len) 0 = 0.
+Proof.
+  intros w len k m Hw Hk Hm Hdiv.
+  revert k m Hk Hm Hdiv.
+  induction len as [|n IHn]; intros k m Hk Hm Hdiv j Hj Hjlen.
+  - lia.
+  - simpl. destruct j as [|j'].
+    + simpl. unfold wnaf_digit.
+      rewrite (pow2_divides_even m k Hm Hdiv). reflexivity.
+    + simpl. apply (IHn (wnaf_shift w k) (m - 1)%nat).
+      * apply wnaf_shift_nonneg; auto.
+      * lia.
+      * rewrite (wnaf_shift_even w k (pow2_divides_even m k Hm Hdiv)).
+        apply pow2_div_half; auto.
+      * lia.
+      * lia.
+Qed.
 
 Theorem wnaf_non_adjacent : forall w k len i,
   (1 < w)%nat -> 0 <= k ->
@@ -288,7 +379,26 @@ Theorem wnaf_non_adjacent : forall w k len i,
   forall j, (1 <= j < w)%nat ->
   (i + j < len)%nat ->
   nth (i + j) digits 0 = 0.
-Admitted.
+Proof.
+  intros w k len. revert k.
+  induction len as [|n IHn]; intros k i Hw Hk digits Hdi j Hj Hjlen; subst digits.
+  - simpl in *. lia.
+  - simpl wnaf_digits in *. destruct i as [|i'].
+    + (* i = 0: nonzero digit is wnaf_digit w k *)
+      simpl (nth 0 _ _) in Hdi.
+      assert (Hdiv : (2 ^ Z.of_nat (w - 1) | wnaf_shift w k))
+        by (apply shift_div_pow2_wm1; auto).
+      replace j with (S (j - 1)) by lia.
+      simpl (nth (0 + S _) _ _).
+      apply (zero_digits_from_pow2_div w n (wnaf_shift w k) (w - 1)%nat);
+        [exact Hw | apply wnaf_shift_nonneg; auto | lia | exact Hdiv | lia | lia].
+    + (* i > 0: reduce to tail *)
+      simpl (nth (S i') _ _) in Hdi.
+      replace (S i' + j)%nat with (S (i' + j))%nat by lia.
+      simpl (nth (S _) _ _).
+      apply (IHn (wnaf_shift w k) i' Hw (wnaf_shift_nonneg w k Hw Hk)).
+      exact Hdi. exact Hj. lia.
+Qed.
 
 (** ** Density bound *)
 
