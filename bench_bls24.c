@@ -82,8 +82,6 @@ void bls24_509_from_word(br_word_t out, br_word_t w) {
 }
 
 /* bls24_509_inv: modular inverse via Fermat's little theorem. */
-void bls24_509_mul(br_word_t out, br_word_t in0, br_word_t in1);
-void bls24_509_square(br_word_t out, br_word_t x);
 void bls24_509_inv(br_word_t out, br_word_t x) {
     /* p - 2, 509 bits, little-endian 64-bit limbs.
        p     = 0x155556FFFF39CA9B...A13D118DB8BFD2AB
