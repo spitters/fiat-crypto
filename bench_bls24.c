@@ -124,23 +124,9 @@ void bls24_509_inv(br_word_t out, br_word_t x) {
 /* Include the Rocq-extracted C code */
 #include "bls24_509_pairing.c"
 
-/* Fp4/Fp8 inv: use Fermat inversion via extracted mul/sqr.
-   For the QE tower: inv(a,b) = (a*norm_inv, -b*norm_inv)
-   where norm = a^2 - nr*b^2. This is what the bedrock2 code calls. */
-void bls24_Fp4_inv(br_word_t out, br_word_t x) {
-    /* Placeholder: a^(p^4-2) via repeated squaring */
-    uint8_t tmp[256], sq[256], res[256];
-    memcpy(res, (void*)x, 256);
-    /* Just do 1000 squares as a placeholder — NOT correct, just for benchmarking throughput */
-    for (int i = 0; i < 1000; i++) bls24_Fp4_square((br_word_t)res, (br_word_t)res);
-    memcpy((void*)out, res, 256);
-}
-void bls24_Fp8_inv(br_word_t out, br_word_t x) {
-    uint8_t res[512];
-    memcpy(res, (void*)x, 512);
-    for (int i = 0; i < 1000; i++) bls24_Fp8_square((br_word_t)res, (br_word_t)res);
-    memcpy((void*)out, res, 512);
-}
+/* Fp2/Fp4/Fp8 inversions via norm-based approach (compute norm in
+   sub-field, invert there, multiply back).  Defined in bls24_inv.c. */
+#include "bls24_inv.c"
 
 /* ======================================================================
    Timing infrastructure
