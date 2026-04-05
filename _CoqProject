@@ -326,7 +326,9 @@ src/Bedrock/Group/CurveAdd/CondMoveGroup.v
 src/Bedrock/Group/CurveAdd/CurveAdd.v
 src/Bedrock/Group/CurveAdd/CurveAddAlt.v
 src/Bedrock/Group/CurveAdd/LoopBody.v
+src/Bedrock/Group/CurveAdd/PointAddMixed.v
 src/Bedrock/Group/CurveAdd/PointDouble.v
+src/Bedrock/Group/CurveAdd/PointNegate.v
 src/Bedrock/Group/CurveAdd/ScalarMult.v
 src/Bedrock/Group/CurveAdd/ScalarMultAlt.v
 src/Bedrock/Group/CurveAdd/StorePointAtInfinity.v
@@ -334,6 +336,7 @@ src/Bedrock/Group/CurveAdd/StoreZero.v
 src/Bedrock/Group/CurveAdd/StoreZeroGSpec.v
 src/Bedrock/Group/CurveAdd/Test.v
 src/Bedrock/Group/CurveAdd/TestFp2.v
+src/Bedrock/Group/CurveAdd/WNAFTable.v
 src/Bedrock/Group/CurveAdd/scalarmultest.v
 src/Bedrock/Group/ScalarMult/CSwap.v
 src/Bedrock/Group/ScalarMult/LadderStep.v
