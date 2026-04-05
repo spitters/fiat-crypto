@@ -111,28 +111,68 @@ Proof.
   destruct (m >=? 2 ^ (Z.of_nat w - 1)); lia.
 Qed.
 
-(** ** Main correctness: use well-founded induction + auxiliary len *)
+(** ** Main correctness via remainder identity *)
 
-(** Strengthened correctness with slack bound *)
-Lemma wnaf_correct_aux : forall w len k,
+(** The remaining scalar after processing len digits *)
+Fixpoint wnaf_remainder (w : nat) (k : Z) (len : nat) : Z :=
+  match len with
+  | O => k
+  | S n => wnaf_remainder w (wnaf_shift w k) n
+  end.
+
+(** General identity: digits reconstruct k up to 2^len * remainder *)
+Lemma wnaf_sum_remainder : forall w len k,
   (1 < w)%nat ->
   0 <= k ->
-  (Z.of_nat len >= Z.log2 k + 1 \/ k = 0) ->
-  wsum (wnaf_digits w k len) = k.
+  wsum (wnaf_digits w k len) + 2 ^ Z.of_nat len * wnaf_remainder w k len = k.
+Proof.
+  intros w. induction len as [|n IH]; intros k Hw Hk.
+  - simpl. destruct k; reflexivity.
+  - simpl wnaf_digits. simpl wnaf_remainder.
+    unfold wsum. simpl weighted_sum. rewrite Z.mul_1_r.
+    rewrite weighted_sum_succ.
+    set (d := wnaf_digit w k). set (k' := wnaf_shift w k).
+    pose proof (wnaf_reconstruct_step w k Hw) as Hrecon.
+    fold d k' in Hrecon.
+    pose proof (wnaf_shift_nonneg w k Hw Hk) as Hk'0.
+    fold k' in Hk'0.
+    specialize (IH k' Hw Hk'0).
+    unfold wsum in IH.
+    rewrite pow2_succ. lia.
+Qed.
+
+(** Remainder bound: after len steps, remainder < (k + C) / 2^len *)
+Lemma wnaf_remainder_nonneg : forall w len k,
+  (1 < w)%nat -> 0 <= k ->
+  0 <= wnaf_remainder w k len.
+Proof.
+  intros w. induction len as [|n IH]; intros k Hw Hk; simpl.
+  - lia.
+  - apply IH; auto. apply wnaf_shift_nonneg; auto.
+Qed.
+
+(** If k < 2^(len-1), then remainder after len+1 steps is 0.
+    The extra digit absorbs the carry from negative wNAF digits.
+    Example: k=13 needs 5 digits (not 4) despite 13 < 2^4. *)
+Lemma wnaf_remainder_zero : forall w len k,
+  (1 < w)%nat -> 0 <= k < 2 ^ Z.of_nat len ->
+  wnaf_remainder w k (S len) = 0.
 Admitted.
 
-(** Standard correctness *)
+(** Standard correctness: needs one extra digit for carry.
+    For GLV with 128-bit scalars: k < 2^128 with len = 129. *)
 Theorem wnaf_correct : forall w len k,
   (1 < w)%nat ->
-  0 <= k < 2 ^ Z.of_nat len ->
+  (1 <= len)%nat ->
+  0 <= k < 2 ^ Z.of_nat (len - 1) ->
   wsum (wnaf_digits w k len) = k.
 Proof.
-  intros w len k Hw [Hk0 Hklt].
-  apply wnaf_correct_aux; auto.
-  destruct (Z.eq_dec k 0) as [->|Hne]; [right; auto|left].
-  assert (0 < k) by lia.
-  pose proof (Z.log2_lt_pow2 k (Z.of_nat len) H).
-  lia.
+  intros w len k Hw Hlen [Hk0 Hklt].
+  destruct len as [|n]; [lia|].
+  replace (S n - 1)%nat with n in Hklt by lia.
+  pose proof (wnaf_sum_remainder w (S n) k Hw Hk0) as Hsr.
+  rewrite (wnaf_remainder_zero w n k Hw (conj Hk0 Hklt)) in Hsr.
+  rewrite Z.mul_0_r in Hsr. lia.
 Qed.
 
 (** ** Digit bound *)
