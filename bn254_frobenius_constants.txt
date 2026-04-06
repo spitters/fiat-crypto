@@ -1,0 +1,374 @@
+================================================================================
+BN254 Frobenius Constants
+================================================================================
+p = 21888242871839275222246405745257275088696311157297823662689037894645226208583
+p (hex) = 0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47
+xi = (9, 1)
+R = 2^256
+
+xi^((p^2-1)/3) = (21888242871839275220042445260109153167277707414472061641714758635765020556616, 0)
+
+--- Frobenius pi^1 (x -> x^p) ---
+p^1 mod 6 = 1
+  gamma_1_1 = xi^{1*(p^1-1)/6} in Fp2:
+    value = (8376118865763821496583973867626364092589906065868298776909617916018768340080,
+             16469823323077808223889137241176536799009286646108169935659301613961712198316)
+    Montgomery re: ['0xaf9ba69633144907', '0xca6b1d7387afb78a', '0x11bded5ef08a2087', '0x02f34d751a1f3a7c']
+    Montgomery im: ['0xa222ae234c492d72', '0xd00f02a4565de15b', '0xdc2ff3a253dfc926', '0x10a75716b3899551']
+
+  gamma_1_2 = xi^{2*(p^1-1)/6} in Fp2:
+    value = (21575463638280843010398324269430826099269044274347216827212613867836435027261,
+             10307601595873709700152284273816112264069230130616436755625194854815875713954)
+    Montgomery re: ['0xb5773b104563ab30', '0x347f91c8a9aa6454', '0x7a007127242e0991', '0x1956bcd8118214ec']
+    Montgomery im: ['0x6e849f1ea0aa4757', '0xaa1c7b6d89f89141', '0xb6e713cdfae0ca3a', '0x26694fbb4e82ebc3']
+
+  gamma_1_3 = xi^{3*(p^1-1)/6} in Fp2:
+    value = (2821565182194536844548159561693502659359617185244120367078079554186484126554,
+             3505843767911556378687030309984248845540243509899259641013678093033130930403)
+    Montgomery re: ['0xe4bbdd0c2936b629', '0xbb30f162e133bacb', '0x31a9d1b6f9645366', '0x253570bea500f8dd']
+    Montgomery im: ['0xa1d77ce45ffe77c7', '0x07affd117826d1db', '0x6d16bd27bb7edc6b', '0x2c87200285defecc']
+
+  gamma_1_4 = xi^{4*(p^1-1)/6} in Fp2:
+    value = (2581911344467009335267311115468803099551665605076196740867805258568234346338,
+             19937756971775647987995932169929341994314640652964949448313374472400716661030)
+    Montgomery re: ['0x7361d77f843abe92', '0xa5bb2bd3273411fb', '0x9c941f314b3e2399', '0x15df9cddbb9fd3ec']
+    Montgomery im: ['0x5dddfd154bd8c949', '0x62cb29a5a4445b60', '0x37bc870a0c7dd2b9', '0x24830a9d3171f0fd']
+
+  gamma_1_5 = xi^{5*(p^1-1)/6} in Fp2:
+    value = (685108087231508774477564247770172212460312782337200605669322048753928464687,
+             8447204650696766136447902020341177575205426561248465145919723016860428151883)
+    Montgomery re: ['0xc970692f41690fe7', '0xe240342127694b0b', '0x32bee66b83c459e8', '0x12aabced0ab08841']
+    Montgomery im: ['0x0d485d2340aebfa9', '0x05193418ab2fcc57', '0xd3b0a40b8a4910f5', '0x2f21ebb535d2925a']
+
+--- Frobenius pi^2 (x -> x^{p^2}) ---
+p^2 mod 6 = 1
+  gamma_2_1 = xi^{1*(p^2-1)/6} in Fp2:
+    value = (21888242871839275220042445260109153167277707414472061641714758635765020556617,
+             0)
+    Montgomery re: ['0xca8d800500fa1bf2', '0xf0c5d61468b39769', '0x0e201271ad0d4418', '0x04290f65bad856e6']
+    Montgomery im: ['0x0000000000000000', '0x0000000000000000', '0x0000000000000000', '0x0000000000000000']
+
+  gamma_2_2 = xi^{2*(p^2-1)/6} in Fp2:
+    value = (21888242871839275220042445260109153167277707414472061641714758635765020556616,
+             0)
+    Montgomery re: ['0x3350c88e13e80b9c', '0x7dce557cdb5e56b9', '0x6001b4b8b615564a', '0x2682e617020217e0']
+    Montgomery im: ['0x0000000000000000', '0x0000000000000000', '0x0000000000000000', '0x0000000000000000']
+
+  gamma_2_3 = xi^{3*(p^2-1)/6} in Fp2:
+    value = (21888242871839275222246405745257275088696311157297823662689037894645226208582,
+             0)
+    Montgomery re: ['0x68c3488912edefaa', '0x8d087f6872aabf4f', '0x51e1a24709081231', '0x2259d6b14729c0fa']
+    Montgomery im: ['0x0000000000000000', '0x0000000000000000', '0x0000000000000000', '0x0000000000000000']
+
+  gamma_2_4 = xi^{4*(p^2-1)/6} in Fp2:
+    value = (2203960485148121921418603742825762020974279258880205651966,
+             0)
+    Montgomery re: ['0x71930c11d782e155', '0xa6bb947cffbe3323', '0xaa303344d4741444', '0x2c3b3f0d26594943']
+    Montgomery im: ['0x0000000000000000', '0x0000000000000000', '0x0000000000000000', '0x0000000000000000']
+
+  gamma_2_5 = xi^{5*(p^2-1)/6} in Fp2:
+    value = (2203960485148121921418603742825762020974279258880205651967,
+             0)
+    Montgomery re: ['0x08cfc388c494f1ab', '0x19b315148d1373d4', '0x584e90fdcb6c0213', '0x09e1685bdf2f8849']
+    Montgomery im: ['0x0000000000000000', '0x0000000000000000', '0x0000000000000000', '0x0000000000000000']
+
+--- Frobenius pi^3 (x -> x^{p^3}) ---
+p^3 mod 6 = 1
+  gamma_3_1 = xi^{1*(p^3-1)/6} in Fp2:
+    value = (11697423496358154304825782922584725312912383441159505038794027105778954184319,
+             303847389135065887422783454877609941456349188919719272345083954437860409601)
+    Montgomery re: ['0x365316184e46d97d', '0x0af7129ed4c96d9f', '0x659da72fca1009b5', '0x08116d8983a20d23']
+    Montgomery im: ['0xb1df4af7c39c1939', '0x3d9f02878a73bf7f', '0x9b2220928caf0ae0', '0x26684515eff054a6']
+
+  gamma_3_2 = xi^{2*(p^3-1)/6} in Fp2:
+    value = (3772000881919853776433695186713858239009073593817195771773381919316419345261,
+             2236595495967245188281701248203181795121068902605861227855261137820944008926)
+    Montgomery re: ['0xc9af22f716ad6bad', '0xb311782a4aa662b2', '0x19eeaf64e248c7f4', '0x20273e77e3439f82']
+    Montgomery im: ['0xacc02860f7ce93ac', '0x3933d5817ba76b4c', '0x69e6188b446c8467', '0x0a46036d4417cc55']
+
+  gamma_3_3 = xi^{3*(p^3-1)/6} in Fp2:
+    value = (19066677689644738377698246183563772429336693972053703295610958340458742082029,
+             18382399103927718843559375435273026243156067647398564021675359801612095278180)
+    Montgomery re: ['0x5764af0aaf46471e', '0xdc50792e873e0fc1', '0x86a673ff881d04f6', '0x0b2eddb43c30a74c']
+    Montgomery im: ['0x9a490f32787e8580', '0x8fd16d7ff04af8b1', '0x4b39888ec6027bf2', '0x03dd2e705b52a15d']
+
+  gamma_3_4 = xi^{4*(p^3-1)/6} in Fp2:
+    value = (5324479202449903542726783395506214481928257762400643279780343368557297135718,
+             16208900380737693084919495127334387981393726419856888799917914180988844123039)
+    Montgomery re: ['0x448a93a57b6762df', '0xbfd62df528fdeadf', '0xd858f5d00e9bd47a', '0x06b03d4d3476ec58']
+    Montgomery im: ['0x2b19daf4bcc936d1', '0xa1a54e7a56f4299f', '0xb533eee05adeaef1', '0x170c812b84dda0b2']
+
+  gamma_3_5 = xi^{5*(p^3-1)/6} in Fp2:
+    value = (8941241848238582420466759817324047081148088512956452953208002715982955420483,
+             10338197737521362862238855242243140895517409139741313354160881284257516364953)
+    Montgomery re: ['0xe0bc4b2275cf559f', '0xc238b945c154e60f', '0x803982a5929a7d5e', '0x15ce052df7e4a37e']
+    Montgomery im: ['0x2d28efbdbf3799a7', '0x9b097e3c1ad60773', '0x982d4113af4a535b', '0x24e18991e3056063']
+
+================================================================================
+Verifications
+================================================================================
+xi^p = (9, 21888242871839275222246405745257275088696311157297823662689037894645226208582)
+conj(xi) = (9, 21888242871839275222246405745257275088696311157297823662689037894645226208582)
+PASS: xi^p = conj(xi) = (9, p-1)
+gamma_1_1^6 = (7474034151359752514913406839843947591262155029321208079942598305488613827322, 1601578746719946967481444322823703055270461791997401731416271065461845820140)
+xi^(p-1) = (7474034151359752514913406839843947591262155029321208079942598305488613827322, 1601578746719946967481444322823703055270461791997401731416271065461845820140)
+PASS: gamma_1_1^6 = xi^{p-1}
+PASS: gamma_1_j = gamma_1_1^j for j=2..5
+PASS: All pi^2 constants are in Fp (imaginary part = 0)
+PASS: gamma_2_3 = -1
+
+================================================================================
+Rocq/Bedrock2 Output (Montgomery form, 4x64-bit LE limbs)
+================================================================================
+
+(* ============================================================== *)
+(* Frobenius p^2 constant loaders for BN254                       *)
+(* Values are in Montgomery form (R = 2^256), 4x64-bit LE limbs  *)
+(* ============================================================== *)
+
+    (* gamma1_p2 = xi^{(p^2-1)/3} *)
+    Definition bn254_load_gamma1_p2 : function_t :=
+      ("bn254_load_gamma1_p2",
+       (["out"], []:list String.string,
+        store_fp2_real_only "out"
+          0x3350c88e13e80b9c 0x7dce557cdb5e56b9
+          0x6001b4b8b615564a 0x2682e617020217e0)).
+
+    (* gamma2_p2 = xi^{2(p^2-1)/3} *)
+    Definition bn254_load_gamma2_p2 : function_t :=
+      ("bn254_load_gamma2_p2",
+       (["out"], []:list String.string,
+        store_fp2_real_only "out"
+          0x71930c11d782e155 0xa6bb947cffbe3323
+          0xaa303344d4741444 0x2c3b3f0d26594943)).
+
+    (* w_frob_p2_c1 = xi^{(p^2-1)/6} *)
+    Definition bn254_load_w_frob_p2_c1 : function_t :=
+      ("bn254_load_w_frob_p2_c1",
+       (["out"], []:list String.string,
+        store_fp2_real_only "out"
+          0xca8d800500fa1bf2 0xf0c5d61468b39769
+          0x0e201271ad0d4418 0x04290f65bad856e6)).
+
+
+(* ============================================================== *)
+(* Frobenius p constant loaders for BN254                         *)
+(* ============================================================== *)
+
+    (* gamma1 = xi^{(p-1)/3} *)
+    Definition bn254_load_gamma1 : function_t :=
+      ("bn254_load_gamma1",
+       (["out"], []:list String.string,
+        store_fp2_full "out"
+          0xb5773b104563ab30 0x347f91c8a9aa6454
+          0x7a007127242e0991 0x1956bcd8118214ec
+          0x6e849f1ea0aa4757 0xaa1c7b6d89f89141
+          0xb6e713cdfae0ca3a 0x26694fbb4e82ebc3)).
+
+    (* gamma2 = xi^{2(p-1)/3} *)
+    Definition bn254_load_gamma2 : function_t :=
+      ("bn254_load_gamma2",
+       (["out"], []:list String.string,
+        store_fp2_full "out"
+          0x7361d77f843abe92 0xa5bb2bd3273411fb
+          0x9c941f314b3e2399 0x15df9cddbb9fd3ec
+          0x5dddfd154bd8c949 0x62cb29a5a4445b60
+          0x37bc870a0c7dd2b9 0x24830a9d3171f0fd)).
+
+    (* w_frob_c1 = xi^{(p-1)/6} *)
+    Definition bn254_load_w_frob_c1 : function_t :=
+      ("bn254_load_w_frob_c1",
+       (["out"], []:list String.string,
+        store_fp2_full "out"
+          0xaf9ba69633144907 0xca6b1d7387afb78a
+          0x11bded5ef08a2087 0x02f34d751a1f3a7c
+          0xa222ae234c492d72 0xd00f02a4565de15b
+          0xdc2ff3a253dfc926 0x10a75716b3899551)).
+
+
+(* ============================================================== *)
+(* Frobenius p^3 constant loaders for BN254                       *)
+(* ============================================================== *)
+
+    (* w_frob_p3_c1 = xi^{(p^3-1)/6} *)
+    Definition bn254_load_w_frob_p3_c1 : function_t :=
+      ("bn254_load_w_frob_p3_c1",
+       (["out"], []:list String.string,
+        store_fp2_full "out"
+          0x365316184e46d97d 0x0af7129ed4c96d9f
+          0x659da72fca1009b5 0x08116d8983a20d23
+          0xb1df4af7c39c1939 0x3d9f02878a73bf7f
+          0x9b2220928caf0ae0 0x26684515eff054a6)).
+
+    (* gamma1_p3 = xi^{(p^3-1)/3} *)
+    Definition bn254_load_gamma1_p3 : function_t :=
+      ("bn254_load_gamma1_p3",
+       (["out"], []:list String.string,
+        store_fp2_full "out"
+          0xc9af22f716ad6bad 0xb311782a4aa662b2
+          0x19eeaf64e248c7f4 0x20273e77e3439f82
+          0xacc02860f7ce93ac 0x3933d5817ba76b4c
+          0x69e6188b446c8467 0x0a46036d4417cc55)).
+
+    (* gamma2_p3 = xi^{2(p^3-1)/3} *)
+    Definition bn254_load_gamma2_p3 : function_t :=
+      ("bn254_load_gamma2_p3",
+       (["out"], []:list String.string,
+        store_fp2_full "out"
+          0x448a93a57b6762df 0xbfd62df528fdeadf
+          0xd858f5d00e9bd47a 0x06b03d4d3476ec58
+          0x2b19daf4bcc936d1 0xa1a54e7a56f4299f
+          0xb533eee05adeaef1 0x170c812b84dda0b2)).
+
+
+================================================================================
+Raw values (non-Montgomery) for cross-checking with gnark-crypto
+================================================================================
+
+--- pi constants ---
+gamma_{1,1} = xi^{(p-1)/6}:
+  re = 8376118865763821496583973867626364092589906065868298776909617916018768340080
+  im = 16469823323077808223889137241176536799009286646108169935659301613961712198316
+  re (hex) = 0x1284b71c2865a7dfe8b99fdd76e68b605c521e08292f2176d60b35dadcc9e470
+  im (hex) = 0x246996f3b4fae7e6a6327cfe12150b8e747992778eeec7e5ca5cf05f80f362ac
+
+gamma_{1,2} = xi^{(p-1)/3}:
+  re = 21575463638280843010398324269430826099269044274347216827212613867836435027261
+  im = 10307601595873709700152284273816112264069230130616436755625194854815875713954
+  re (hex) = 0x2fb347984f7911f74c0bec3cf559b143b78cc310c2c3330c99e39557176f553d
+  im (hex) = 0x16c9e55061ebae204ba4cc8bd75a079432ae2a1d0b7c9dce1665d51c640fcba2
+
+gamma_{1,3} = xi^{(p-1)/2}:
+  re = 2821565182194536844548159561693502659359617185244120367078079554186484126554
+  im = 3505843767911556378687030309984248845540243509899259641013678093033130930403
+  re (hex) = 0x063cf305489af5dcdc5ec698b6e2f9b9dbaae0eda9c95998dc54014671a0135a
+  im (hex) = 0x07c03cbcac41049a0704b5a7ec796f2b21807dc98fa25bd282d37f632623b0e3
+
+gamma_{1,4} = xi^{2(p-1)/3}:
+  re = 2581911344467009335267311115468803099551665605076196740867805258568234346338
+  im = 19937756971775647987995932169929341994314640652964949448313374472400716661030
+  re (hex) = 0x05b54f5e64eea80180f3c0b75a181e84d33365f7be94ec72848a1f55921ea762
+  im (hex) = 0x2c145edbe7fd8aee9f3a80b03b0b1c923685d2ea1bdec763c13b4711cd2b8126
+
+gamma_{1,5} = xi^{5(p-1)/6}:
+  re = 685108087231508774477564247770172212460312782337200605669322048753928464687
+  im = 8447204650696766136447902020341177575205426561248465145919723016860428151883
+  re (hex) = 0x0183c1e74f798649e93a3661a4353ff4425c459b55aa1bd32ea2c810eab7692f
+  im (hex) = 0x12acf2ca76fd0675a27fb246c7729f7db080cb99678e2ac024c6b8ee6e0c2c4b
+
+--- pi^2 constants ---
+gamma_{2,1} = xi^{(p^2-1)/6}:
+  re = 21888242871839275220042445260109153167277707414472061641714758635765020556617
+  im = 0
+  re (hex) = 0x30644e72e131a0295e6dd9e7e0acccb0c28f069fbb966e3de4bd44e5607cfd49
+  im (hex) = 0x0000000000000000000000000000000000000000000000000000000000000000
+
+gamma_{2,2} = xi^{(p^2-1)/3}:
+  re = 21888242871839275220042445260109153167277707414472061641714758635765020556616
+  im = 0
+  re (hex) = 0x30644e72e131a0295e6dd9e7e0acccb0c28f069fbb966e3de4bd44e5607cfd48
+  im (hex) = 0x0000000000000000000000000000000000000000000000000000000000000000
+
+gamma_{2,3} = xi^{(p^2-1)/2}:
+  re = 21888242871839275222246405745257275088696311157297823662689037894645226208582
+  im = 0
+  re (hex) = 0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd46
+  im (hex) = 0x0000000000000000000000000000000000000000000000000000000000000000
+
+gamma_{2,4} = xi^{2(p^2-1)/3}:
+  re = 2203960485148121921418603742825762020974279258880205651966
+  im = 0
+  re (hex) = 0x000000000000000059e26bcea0d48bacd4f263f1acdb5c4f5763473177fffffe
+  im (hex) = 0x0000000000000000000000000000000000000000000000000000000000000000
+
+gamma_{2,5} = xi^{5(p^2-1)/6}:
+  re = 2203960485148121921418603742825762020974279258880205651967
+  im = 0
+  re (hex) = 0x000000000000000059e26bcea0d48bacd4f263f1acdb5c4f5763473177ffffff
+  im (hex) = 0x0000000000000000000000000000000000000000000000000000000000000000
+
+--- pi^3 constants ---
+gamma_{3,1} = xi^{(p^3-1)/6}:
+  re = 11697423496358154304825782922584725312912383441159505038794027105778954184319
+  im = 303847389135065887422783454877609941456349188919719272345083954437860409601
+  re (hex) = 0x19dc81cfcc82e4bbefe9608cd0acaa90894cb38dbe55d24ae86f7d391ed4a67f
+  im (hex) = 0x00abf8b60be77d7306cbeee33576139d7f03a5e397d439ec7694aa2bf4c0c101
+
+gamma_{3,2} = xi^{(p^3-1)/3}:
+  re = 3772000881919853776433695186713858239009073593817195771773381919316419345261
+  im = 2236595495967245188281701248203181795121068902605861227855261137820944008926
+  re (hex) = 0x0856e078b755ef0abaff1c77959f25ac805ffd3d5d6942d37b746ee87bdcfb6d
+  im (hex) = 0x04f1de41b3d1766fa9f30e6dec26094f0fdf31bf98ff2631380cab2baaa586de
+
+gamma_{3,3} = xi^{(p^3-1)/2}:
+  re = 19066677689644738377698246183563772429336693972053703295610958340458742082029
+  im = 18382399103927718843559375435273026243156067647398564021675359801612095278180
+  re (hex) = 0x2a275b6d9896aa4cdbf17f1dca9e5ea3bbd689a3bea870f45fcc8ad066dce9ed
+  im (hex) = 0x28a411b634f09b8fb14b900e9507e9327600ecc7d8cf6ebab94d0cb3b2594c64
+
+gamma_{3,4} = xi^{2(p^3-1)/3}:
+  re = 5324479202449903542726783395506214481928257762400643279780343368557297135718
+  im = 16208900380737693084919495127334387981393726419856888799917914180988844123039
+  re (hex) = 0x0bc58c6611c08dab19bee0f7b5b2444ee633094575b06bcb0e1a92bc3ccbf066
+  im (hex) = 0x23d5e999e1910a12feb0f6ef0cd21d04a44a9e08737f96e55fe3ed9d730c239f
+
+gamma_{3,5} = xi^{5(p^3-1)/6}:
+  re = 8941241848238582420466759817324047081148088512956452953208002715982955420483
+  im = 10338197737521362862238855242243140895517409139741313354160881284257516364953
+  re (hex) = 0x13c49044952c0905711699fa3b4d3f692ed68098967c84a5ebde847076261b43
+  im (hex) = 0x16db366a59b1dd0b9fb1b2282a48633d3e2ddaea200280211f25041384282499
+
+
+================================================================================
+Additional cross-checks
+================================================================================
+gamma_2_2^3 = (1, 0)
+PASS: gamma_2_2^3 = 1 (cube root of unity)
+gamma_2_1^6 = (1, 0)
+PASS: gamma_2_1^6 = 1 (6th root of unity)
+PASS: gamma_2_1^2 = gamma_2_2
+
+================================================================================
+Helper definitions for BN254 (4x64-bit limb store functions)
+================================================================================
+
+    (* Helper: store an Fp2 constant = (real, 0) where real is 4 limbs *)
+    Local Definition store_fp2_real_only (v : string) (l0 l1 l2 l3 : Z) :=
+      cmd_seq_list [
+        cmd.store access_size.word (expr.var v) (expr.literal l0);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 8)) (expr.literal l1);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 16)) (expr.literal l2);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 24)) (expr.literal l3);
+        (* Imaginary part = 0 *)
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 32)) (expr.literal 0);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 40)) (expr.literal 0);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 48)) (expr.literal 0);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 56)) (expr.literal 0)
+      ].
+
+    Local Definition store_fp2_full (v : string)
+      (r0 r1 r2 r3 i0 i1 i2 i3 : Z) :=
+      cmd_seq_list [
+        cmd.store access_size.word (expr.var v) (expr.literal r0);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 8)) (expr.literal r1);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 16)) (expr.literal r2);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 24)) (expr.literal r3);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 32)) (expr.literal i0);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 40)) (expr.literal i1);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 48)) (expr.literal i2);
+        cmd.store access_size.word
+          (expr.op bopname.add (expr.var v) (expr.literal 56)) (expr.literal i3)
+      ].

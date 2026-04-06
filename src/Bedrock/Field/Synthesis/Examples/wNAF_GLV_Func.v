@@ -83,11 +83,16 @@ Section FuncBody.
       (* digit = 0: skip *)
       cmd.skip.
 
-  (** Main wNAF loop body *)
+  (** Main wNAF loop body — MSB-first (Horner evaluation).
+      iter is decremented FIRST so digit index goes 128, 127, ..., 0. *)
   Definition wnaf_loop_body
     (digits_k1 digits_k2 table_P table_Phi : string) : Syntax.cmd :=
     let word_size := expr.literal (Memory.bytes_per_word 64) in
     cmd.seq
+      (* iter-- (done first so iter indexes the current digit) *)
+      (cmd.set "iter"
+        (expr.op bopname.sub (expr.var "iter") (expr.literal 1)))
+    (cmd.seq
       (* Double accumulator *)
       (cmd.call [] curve_double_name
         [expr.var "outx"; expr.var "outy"; expr.var "outz";
@@ -107,14 +112,10 @@ Section FuncBody.
           (expr.load access_size.word
             (expr.op bopname.add (expr.var digits_k2)
               (expr.op bopname.mul (expr.var "iter") word_size))))
-        (cmd.seq
-          (* Process d2 with table_Phi *)
-          (process_one_digit "d2" table_Phi "auxx" "auxy" "auxz" "outx" "outy" "outz")
-          (* iter++ *)
-          (cmd.set "iter"
-            (expr.op bopname.add (expr.var "iter") (expr.literal 1))))))).
+        (* Process d2 with table_Phi *)
+        (process_one_digit "d2" table_Phi "auxx" "auxy" "auxz" "outx" "outy" "outz"))))).
 
-  (** Full function: init + while loop *)
+  (** Full function: init + while loop (counts DOWN from wnaf_iterations) *)
   Definition wnaf_glv_func_body
     (digits_k1 digits_k2 table_P table_Phi : string) : Syntax.cmd :=
     cmd.seq
@@ -122,10 +123,9 @@ Section FuncBody.
       (cmd.call [] store_zero_name
         [expr.var "outx"; expr.var "outy"; expr.var "outz"])
       (cmd.seq
-        (cmd.set "iter" (expr.literal 0))
+        (cmd.set "iter" (expr.literal wnaf_iterations))
         (cmd.while
-          (expr.op bopname.ltu (expr.var "iter")
-            (expr.literal wnaf_iterations))
+          (expr.op bopname.ltu (expr.literal 0) (expr.var "iter"))
           (wnaf_loop_body digits_k1 digits_k2 table_P table_Phi))).
 
 End FuncBody.

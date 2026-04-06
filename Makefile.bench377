@@ -1,0 +1,25 @@
+# BLS12-377 CryptOpt Benchmark Makefile
+CC = gcc
+CFLAGS = -O3 -march=native -w
+CRYPTOPT_DIR ?= $(HOME)/Claude/BLS/CryptOpt/generated/bls12_377/fiat
+
+# Find best asm by filename (highest ratio = best)
+CRYPTOPT_MUL ?= $(shell ls -1 $(CRYPTOPT_DIR)/fiat_bls12_377_p_mul/*.asm 2>/dev/null | sort -t_ -k2 -rn | head -1)
+CRYPTOPT_SQR ?= $(shell ls -1 $(CRYPTOPT_DIR)/fiat_bls12_377_p_square/*.asm 2>/dev/null | sort -t_ -k2 -rn | head -1)
+
+.PHONY: bench clean
+
+bench: bench_377_cryptopt
+	./bench_377_cryptopt
+
+/tmp/cryptopt_377_mul.o: $(CRYPTOPT_MUL)
+	nasm -f elf64 -o $@ $<
+
+/tmp/cryptopt_377_sqr.o: $(CRYPTOPT_SQR)
+	nasm -f elf64 -o $@ $<
+
+bench_377_cryptopt: bench_377_cryptopt.c bls377_pairing.c /tmp/cryptopt_377_mul.o /tmp/cryptopt_377_sqr.o
+	$(CC) $(CFLAGS) -I. -o $@ $< /tmp/cryptopt_377_mul.o /tmp/cryptopt_377_sqr.o
+
+clean:
+	rm -f bench_377_cryptopt /tmp/cryptopt_377_mul.o /tmp/cryptopt_377_sqr.o
