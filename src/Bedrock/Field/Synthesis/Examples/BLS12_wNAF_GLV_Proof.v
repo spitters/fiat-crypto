@@ -40,7 +40,6 @@ Section WNAF_GLV.
   Context (curve_add_comm : forall P Q, curve_add P Q = curve_add Q P).
   Let scmul_glv := scmul Fzero Fone curve_add.
 
-  (** Loop invariant *)
   Definition wnaf_inv
     (pOx pOy pOz pAx pAy pAz : word)
     (Px Py Pz Phix Phiy Phiz : F) (dk1 dk2 : list Z)
@@ -60,21 +59,14 @@ Section WNAF_GLV.
     /\ word.unsigned iw = Z.of_nat iter
     /\ v = Z.to_nat (129 - word.unsigned iw) /\ tr = t.
 
-  (** Main theorem — ADMITTED.
-      The proof structure is established:
-      1. store_zero init → identity accumulator
-      2. while_localsmap with wnaf_inv
-      3. Loop body: HLoopBody hypothesis (abstracted)
-      4. Post-loop: wsum = k via wnaf_correct
-
-      The remaining work is debugging the bedrock2 cmd unfolding
-      and stepping mechanics, which requires interactive MCP debugging. *)
   Theorem wnaf_glv_ok :
-    forall functions dk1 dk2 Px Py Pz Phix Phiy Phiz k1 k2
+    forall functions
+      (HStoreZero : @StoreZero.spec_of_store_zero
+         _ _ _ _ _ _ field_parameters field_representation functions)
+      dk1 dk2 Px Py Pz Phix Phiy Phiz k1 k2
       (Hlen1 : length dk1 = 129%nat) (Hlen2 : length dk2 = 129%nat)
       (Hk1 : wsum dk1 = k1) (Hk2 : wsum dk2 = k2)
       (Hk1nn : 0 <= k1) (Hk2nn : 0 <= k2)
-      (* Caller provides the loop body WP *)
       (HLoopBody : forall (iter_nat : nat) pOx pOy pOz pAx pAy pAz
          (Ox Oy Oz Ax Ay Az : F) R0 tr0 m0 l0,
          (iter_nat < 129)%nat ->
@@ -106,8 +98,7 @@ Section WNAF_GLV.
              /\ map.get l' "auxy" = Some pAy /\ map.get l' "auxz" = Some pAz
              /\ map.get l' "iter" = Some (word.of_Z (Z.of_nat (S iter_nat)))
              /\ tr0 = t')),
-    forall pOx pOy pOz pAx pAy pAz (Ox0 Oy0 Oz0 Ax0 Ay0 Az0 : F)
-           R tr m l,
+    forall pOx pOy pOz pAx pAy pAz (Ox0 Oy0 Oz0 Ax0 Ay0 Az0 : F) R tr m l,
     map.get l "outx" = Some pOx -> map.get l "outy" = Some pOy ->
     map.get l "outz" = Some pOz -> map.get l "auxx" = Some pAx ->
     map.get l "auxy" = Some pAy -> map.get l "auxz" = Some pAz ->
@@ -126,17 +117,56 @@ Section WNAF_GLV.
             ⋆ Point3 (Some tight_bounds) pAx pAy pAz Ax' Ay' Az' ⋆ R) m').
   Proof.
     intros.
-    (* The proof needs:
-       1. Unfold wnaf_glv_func_body to cmd.seq(store_zero, cmd.seq(set iter, while ...))
-       2. Step through store_zero + set_iter via straightline/manual WP
-       3. Apply Loops.while_localsmap with wnaf_inv
-       4. Use HLoopBody for the TRUE branch
-       5. Use wnaf_correct for the FALSE branch
+    unfold wnaf_glv_func_body.
 
-       Current blocker: unfold1_cmd_goal doesn't match the unfolded
-       wnaf_glv_func_body. Needs interactive MCP debugging to identify
-       the exact cmd structure after unfolding. *)
-    admit.
+    (* store_zero *)
+    unfold1_cmd_goal; cbv beta match delta [cmd_body].
+    letexists. split.
+    { cbv [dexprs list_map list_map_body
+           WeakestPrecondition.expr WeakestPrecondition.expr_body
+           WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet].
+      eexists; split; [exact H|]. eexists; split; [exact H0|].
+      eexists; split; [exact H1|]. exact eq_refl. }
+    eapply Semantics.weaken_call.
+    1: { eapply HStoreZero. ecancel_assumption_impl. }
+    intros t0 m0 rets0 [Hrets0 [Htr0 Hsep0]].
+    subst rets0. symmetry in Htr0. subst t0.
+    cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+    (* set iter = 0 *)
+    unfold1_cmd_goal; cbv beta match delta [cmd_body].
+    letexists. split.
+    { cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
+           WeakestPrecondition.literal dlet.dlet]. exact eq_refl. }
+
+    (* while loop *)
+    eapply Loops.while_localsmap
+      with (v0 := 129%nat) (lt := Nat.lt)
+           (invariant := wnaf_inv pOx pOy pOz pAx pAy pAz
+              Px Py Pz Phix Phiy Phiz dk1 dk2 R tr).
+    { exact lt_wf. }
+
+    (* Initial invariant *)
+    { unfold wnaf_inv. change (129 - 129)%nat with 0%nat.
+      simpl firstn. simpl weighted_sum.
+      exists Fzero, Fone, Fzero, Ax0, Ay0, Az0, (word.of_Z 0).
+      split.
+      - simpl Z.to_nat. unfold scmul_glv. simpl scmul.
+        rewrite curve_add_id_l. reflexivity.
+      - change CompilationAbstract.FElem with Compilation2.FElem in Hsep0.
+        repeat split; try ecancel_assumption_impl;
+        try (rewrite map.get_put_same; exact eq_refl);
+        try (rewrite map.get_put_diff by congruence; assumption).
+        + rewrite word.unsigned_of_Z_0. reflexivity.
+        + rewrite word.unsigned_of_Z_0. reflexivity. }
+
+    (* Loop body + post-loop: branch condition + TRUE/FALSE *)
+    (* The while_localsmap produces a goal with Markers.split
+       and expr evaluation. This needs careful matching of the
+       expr/Semantics.interp_binop structure. *)
+    (* ADMITTED: needs interactive MCP debugging for the exact
+       branch condition tactic sequence in this bedrock2 version. *)
+    all: admit.
   Admitted.
 
 End WNAF_GLV.
