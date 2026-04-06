@@ -73,7 +73,27 @@ Section Extract.
 
 End Extract.
 
+(* Apply stackalloc flattening to tower mul/sqr functions *)
+Require Import Crypto.Bedrock.Field.FieldExtensions.FlattenStackalloc.
+
+Definition bls24_flatten_targets : list String.string :=
+  ["bls24_Fp2_mul"; "bls24_Fp2_square";
+   "bls24_Fp4_mul"; "bls24_Fp4_square";
+   "bls24_Fp8_mul"; "bls24_Fp8_square";
+   "bls24_Fp24_mul"; "bls24_Fp24_square";
+   "bls24_Fp24_inv";
+   "bls24_Fp4_mul_by_v"; "bls24_Fp8_mul_by_w";
+   "bls24_Fp2_mul_xi"].
+
+Definition bls24_optimized_funcs :=
+  flatten_selected bls24_flatten_targets bls24_all_funcs.
+
+(* Extract both original and optimized *)
 Definition bls24_509_all_c :=
   Eval vm_compute in c_module bls24_all_funcs.
 
+Definition bls24_509_opt_c :=
+  Eval vm_compute in c_module bls24_optimized_funcs.
+
 Redirect "bls24_509_pairing" Eval cbv in bls24_509_all_c.
+Redirect "bls24_509_pairing_flat" Eval cbv in bls24_509_opt_c.
