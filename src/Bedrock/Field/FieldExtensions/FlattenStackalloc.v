@@ -11,6 +11,14 @@
  *)
 
 Require Import bedrock2.Syntax.
+Require Import bedrock2.Memory.
+Require Import coqutil.Map.Interface.
+Require Import coqutil.Map.Properties.
+Require Import coqutil.Map.OfListWord.
+Require Import coqutil.Word.Interface.
+Require Import coqutil.Word.Properties.
+Require Import coqutil.Word.Bitwidth.
+Require Import coqutil.Byte.
 From Stdlib Require Import String List ZArith Lia.
 Import ListNotations.
 Local Open Scope string_scope.
@@ -152,3 +160,69 @@ End FlattenAST.
  *   Definition bls24_optimized_c :=
  *     Eval vm_compute in c_module bls24_optimized_funcs.
  *)
+
+(* ================================================================ *)
+(* Part 4: Anybytes splitting/joining lemmas                        *)
+(* ================================================================ *)
+
+Section AnybytesLemmas.
+  Context {width: Z} {BW: Bitwidth width}
+          {word: word.word width} {mem: map.map word byte}
+          {word_ok: word.ok word} {mem_ok: map.ok mem}.
+
+  Lemma anybytes_split : forall (a : word) (n1 n2 : Z) (m : mem),
+    0 <= n1 -> 0 <= n2 ->
+    @Memory.anybytes _ word mem a (n1 + n2) m ->
+    exists m1 m2 : mem,
+      @Memory.anybytes _ word mem a n1 m1 /\
+      @Memory.anybytes _ word mem (word.add a (word.of_Z n1)) n2 m2 /\
+      map.split m m1 m2.
+  Proof.
+    intros a n1 n2 m Hn1 Hn2 [bs (Hm & Hlen & Hbound)].
+    set (bs1 := List.firstn (Z.to_nat n1) bs).
+    set (bs2 := List.skipn (Z.to_nat n1) bs).
+    assert (bs = (bs1 ++ bs2)%list) as Hbs
+      by (subst bs1 bs2; symmetry; apply List.firstn_skipn).
+    assert (Hlen1 : length bs1 = Z.to_nat n1).
+    { subst bs1. rewrite List.firstn_length. lia. }
+    assert (Hlen2 : length bs2 = Z.to_nat n2).
+    { subst bs2. rewrite List.skipn_length. lia. }
+    exists (map.of_list_word_at a bs1).
+    exists (map.of_list_word_at (word.add a (word.of_Z n1)) bs2).
+    refine (conj _ (conj _ _)).
+    - exists bs1. split; [reflexivity|]. split; lia.
+    - exists bs2. split; [reflexivity|]. split; lia.
+    - subst m. rewrite Hbs.
+      replace n1 with (Z.of_nat (length bs1)) in *
+        by (rewrite Hlen1; rewrite Z2Nat.id; lia).
+      apply map.split_comm.
+      rewrite map.of_list_word_at_app.
+      apply map.split_disjoint_putmany.
+      apply map.adjacent_arrays_disjoint. lia.
+  Qed.
+
+  Lemma anybytes_join : forall (a : word) (n1 n2 : Z) (m m1 m2 : mem),
+    0 <= n1 -> 0 <= n2 ->
+    n1 + n2 <= 2 ^ width ->
+    @Memory.anybytes _ word mem a n1 m1 ->
+    @Memory.anybytes _ word mem (word.add a (word.of_Z n1)) n2 m2 ->
+    map.split m m1 m2 ->
+    @Memory.anybytes _ word mem a (n1 + n2) m.
+  Proof.
+    intros a n1 n2 m m1 m2 Hn1 Hn2 Htotal
+           [bs1 (Hm1 & Hlen1 & Hbound1)]
+           [bs2 (Hm2 & Hlen2 & Hbound2)]
+           [Hsplit Hdisj].
+    exists (bs1 ++ bs2)%list.
+    split; [| split].
+    - subst m m1 m2.
+      rewrite map.of_list_word_at_app.
+      rewrite map.putmany_comm.
+      + f_equal. f_equal. f_equal. f_equal. lia.
+      + replace (Z.of_nat (length bs1)) with n1 by lia.
+        rewrite map.disjoint_comm. exact Hdisj.
+    - rewrite List.length_app. lia.
+    - rewrite List.length_app. lia.
+  Qed.
+
+End AnybytesLemmas.
