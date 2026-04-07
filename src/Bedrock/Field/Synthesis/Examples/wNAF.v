@@ -708,6 +708,38 @@ Proof.
       rewrite Nat.div_add by lia. lia.
 Qed.
 
+(** ** Non-negativity of weighted sum over skipn of wNAF digits.
+    For k in [0, 2^(len-1)), the weighted sum of the tail of wnaf_digits w k len
+    equals the remainder after n steps, which is always non-negative. *)
+Lemma weighted_sum_skipn_wnaf_nonneg : forall w k len n,
+  (1 < w)%nat ->
+  0 <= k < 2 ^ Z.of_nat (len - 1) ->
+  (n <= len)%nat ->
+  0 <= weighted_sum (skipn n (wnaf_digits w k len)) 0.
+Proof.
+  intros w k len n Hw [Hk0 Hklt] Hnlen.
+  destruct len as [|len'].
+  { (* len = 0: n = 0, skipn 0 of empty = empty, weighted_sum [] 0 = 0 *)
+    assert (n = 0%nat) by lia. subst n. simpl. lia. }
+  replace (S len' - 1)%nat with len' in Hklt by lia.
+  replace (S len') with (n + (S len' - n))%nat at 1 by lia.
+  rewrite skipn_wnaf_digits.
+  set (k' := wnaf_remainder w k n).
+  assert (Hk' : 0 <= k') by (subst k'; apply wnaf_remainder_nonneg; auto).
+  pose proof (wnaf_sum_remainder w (S len' - n) k' Hw Hk') as Hsr.
+  unfold wsum in Hsr.
+  assert (Hcomp : forall w0 k0 a b,
+    wnaf_remainder w0 (wnaf_remainder w0 k0 a) b =
+    wnaf_remainder w0 k0 (a + b)%nat).
+  { clear. intros w0 k0 a. revert k0. induction a; intros; simpl; auto. }
+  unfold k' in Hsr. rewrite Hcomp in Hsr.
+  replace (n + (S len' - n))%nat with (S len') in Hsr by lia.
+  pose proof (wnaf_remainder_zero w len' k Hw (conj Hk0 Hklt)) as Hrz.
+  rewrite Hrz in Hsr.
+  rewrite Z.mul_0_r, Z.add_0_r in Hsr.
+  fold k' in Hsr. rewrite Hsr. exact Hk'.
+Qed.
+
 (** ** Concrete tests *)
 
 Example wnaf_test_13 :

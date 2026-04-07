@@ -22,6 +22,7 @@ Section WNAFShamir.
   Context (mul_distr_add : forall n P Q, mul n (add P Q) = add (mul n P) (mul n Q)).
   Context (mul_zero_r : forall n, mul n zero = zero).
 
+  Declare Scope G_scope.
   Local Infix "+" := add : G_scope.
   Local Infix "*" := mul : G_scope.
   Local Open Scope G_scope.
