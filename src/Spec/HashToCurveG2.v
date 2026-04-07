@@ -100,16 +100,63 @@ Definition fp2_of_Z (re im : Z) : Fp2 := (of_Z re, of_Z im).
 (** * Fp2 sqrt and is_square                                            *)
 (* ================================================================== *)
 
-(** For Fp2 over BLS12-381 (p ≡ 3 mod 4), sqrt has a closed-form
-    using the Adj algorithm. We axiomatize it here; an explicit
-    formula is in RFC 9380 §F.2.1.2.
+(** Fp-level is_square via Euler criterion: x is a QR iff
+    x^((p-1)/2) = 1 (or x = 0). *)
+Definition legendre_exp : Z := Eval vm_compute in ((p - 1) / 2).
 
-    fp2_is_square(a): true iff a is a quadratic residue in Fp2. *)
-Parameter fp2_is_square : Fp2 -> bool.
+Definition fp_is_square (x : Fp) : bool :=
+  let e := F.pow x (Z.to_N legendre_exp) in
+  if fp_eqb e 1f then true
+  else if fp_eqb x 0f then true
+  else false.
 
-(** fp2_sqrt(a): some y with y² = a if a is a QR; otherwise
-    output is unspecified (the caller checks is_square first). *)
-Parameter fp2_sqrt : Fp2 -> Fp2.
+(** Fp sqrt via x^((p+1)/4), valid since p ≡ 3 (mod 4). *)
+Definition sqrt_exp_fp : Z := Eval vm_compute in ((p + 1) / 4).
+
+Definition fp_sqrt (x : Fp) : Fp := F.pow x (Z.to_N sqrt_exp_fp).
+
+(** is_square for Fp2 uses the norm: an Fp2 element (c0 + c1·u) is
+    a QR in Fp2 iff its norm (c0² - β·c1²) is a QR in Fp.
+
+    With β = -1, norm(c0, c1) = c0² + c1². *)
+Definition fp2_norm (a : Fp2) : Fp :=
+  fst a *f fst a +f snd a *f snd a.
+
+Definition fp2_is_square (a : Fp2) : bool :=
+  fp_is_square (fp2_norm a).
+
+(** fp2_sqrt via the "complex method" for p ≡ 3 mod 4, β = -1:
+
+    Input: a = c0 + c1·u
+    Output: some y with y² = a (if a is a QR; otherwise unspecified).
+
+    Algorithm (from classical references, used in noble-curves):
+    1. If c1 = 0:
+       - If c0 is a QR in Fp: return (sqrt(c0), 0)
+       - Else: return (0, sqrt(-c0))  (since β = -1, -c0/β = -c0/-1 = c0,
+         wait — we need sqrt(c0 / β) = sqrt(-c0), and -c0 is a QR iff c0 is not)
+    2. Else:
+       - t = sqrt(c0² + c1²)     [norm sqrt, always a QR if a is]
+       - d = (t + c0) / 2
+       - If d is not a QR: d ← d - t = (−t + c0) / 2 is a QR
+       - r = sqrt(d)
+       - Return (r, c1 / (2·r)) *)
+Definition fp2_sqrt (a : Fp2) : Fp2 :=
+  let c0 := fst a in
+  let c1 := snd a in
+  if fp_eqb c1 0f then
+    if fp_is_square c0
+    then (fp_sqrt c0, 0f)
+    else (0f, fp_sqrt (-f c0))
+  else
+    let t := fp_sqrt (c0 *f c0 +f c1 *f c1) in
+    let half := invFp (of_Z 2) in
+    let d0 := (t +f c0) *f half in
+    let d :=
+      if fp_is_square d0 then d0
+      else (c0 -f t) *f half in
+    let r := fp_sqrt d in
+    (r, c1 *f invFp (of_Z 2 *f r)).
 
 (** sgn0 for Fp2: sgn0(a0 + a1·u) = sgn0(a0) ∨ (a0 == 0 ∧ sgn0(a1)).
     This is the "sign or imaginary sign" convention from RFC 9380 §4.1. *)
@@ -188,10 +235,53 @@ Definition bls12_b_g2 : Fp2 := (of_Z 4, of_Z 4).
     structure is the same as G1 but the coefficient lists are
     shorter — degree 3 instead of 11). *)
 
-Parameter iso_xnum_g2 : list Fp2.   (** length 4: degree 3 *)
-Parameter iso_xden_g2 : list Fp2.   (** length 3: degree 2 + leading 1 *)
-Parameter iso_ynum_g2 : list Fp2.   (** length 4: degree 3 *)
-Parameter iso_yden_g2 : list Fp2.   (** length 4: degree 3 + leading 1 *)
+(** Coefficient values from RFC 9380 §E.3 (cross-verified against
+    paulmillr/noble-curves bls12-381 isogenyMapG2 constants).
+    Each Fp2 is written (re, im). The convention: list is in
+    ascending degree order [c₀, c₁, c₂, ...]. Monic denominators
+    omit the leading 1 (appended by horner_eval_monic_fp2). *)
+
+(** x_num: 4 Fp2 coefficients, degree 3 (non-monic). *)
+Definition iso_xnum_g2 : list Fp2 := [
+  (of_Z 0x5c759507e8e333ebb5b7a9a47d7ed8532c52d39fd3a042a88b58423c50ae15d5c2638e343d9c71c6238aaaaaaaa97d6,
+   of_Z 0x5c759507e8e333ebb5b7a9a47d7ed8532c52d39fd3a042a88b58423c50ae15d5c2638e343d9c71c6238aaaaaaaa97d6);
+  (0f,
+   of_Z 0x11560bf17baa99bc32126fced787c88f984f87adf7ae0c7f9a208c6b4f20a4181472aaa9cb8d555526a9ffffffffc71a);
+  (of_Z 0x11560bf17baa99bc32126fced787c88f984f87adf7ae0c7f9a208c6b4f20a4181472aaa9cb8d555526a9ffffffffc71e,
+   of_Z 0x8ab05f8bdd54cde190937e76bc3e447cc27c3d6fbd7063fcd104635a790520c0a395554e5c6aaaa9354ffffffffe38d);
+  (of_Z 0x171d6541fa38ccfaed6dea691f5fb614cb14b4e7f4e810aa22d6108f142b85757098e38d0f671c7188e2aaaaaaaa5ed1,
+   0f)
+].
+
+(** x_den: 2 Fp2 coefficients, degree 2, monic (leading 1 implicit). *)
+Definition iso_xden_g2 : list Fp2 := [
+  (0f,
+   of_Z 0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaa63);
+  (of_Z 0xc,
+   of_Z 0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaa9f)
+].
+
+(** y_num: 4 Fp2 coefficients, degree 3 (non-monic). *)
+Definition iso_ynum_g2 : list Fp2 := [
+  (of_Z 0x1530477c7ab4113b59a4c18b076d11930f7da5d4a07f649bf54439d87d27e500fc8c25ebf8c92f6812cfc71c71c6d706,
+   of_Z 0x1530477c7ab4113b59a4c18b076d11930f7da5d4a07f649bf54439d87d27e500fc8c25ebf8c92f6812cfc71c71c6d706);
+  (0f,
+   of_Z 0x5c759507e8e333ebb5b7a9a47d7ed8532c52d39fd3a042a88b58423c50ae15d5c2638e343d9c71c6238aaaaaaaa97be);
+  (of_Z 0x11560bf17baa99bc32126fced787c88f984f87adf7ae0c7f9a208c6b4f20a4181472aaa9cb8d555526a9ffffffffc71c,
+   of_Z 0x8ab05f8bdd54cde190937e76bc3e447cc27c3d6fbd7063fcd104635a790520c0a395554e5c6aaaa9354ffffffffe38f);
+  (of_Z 0x124c9ad43b6cf79bfbf7043de3811ad0761b0f37a1e26286b0e977c69aa274524e79097a56dc4bd9e1b371c71c718b10,
+   0f)
+].
+
+(** y_den: 3 Fp2 coefficients, degree 3, monic (leading 1 implicit). *)
+Definition iso_yden_g2 : list Fp2 := [
+  (of_Z 0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffa8fb,
+   of_Z 0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffa8fb);
+  (0f,
+   of_Z 0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffa9d3);
+  (of_Z 0x12,
+   of_Z 0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaa99)
+].
 
 (** Horner evaluation in Fp2. *)
 Fixpoint horner_eval_fp2 (cs : list Fp2) (x : Fp2) : Fp2 :=
