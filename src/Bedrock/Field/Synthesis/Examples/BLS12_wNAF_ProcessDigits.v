@@ -255,69 +255,92 @@ Section ProcessDigits.
   (** ** 5. Main theorem                                                 *)
   (* ================================================================== *)
 
-  (** Per-digit WP hypothesis: process_one_digit computes correctly.
-      This abstracts the ~25 bedrock2 commands into a single statement. *)
-  Context (HProcessOneDigit_P : forall pOx pOy pOz pAx pAy pAz pTP
-    (d_word : word) (Ox Oy Oz Ax Ay Az : F) R0 tr0 m0 l0,
-    map.get l0 "d1" = Some d_word ->
+  (** Per-digit WP hypothesis: the full "load digit + process_one_digit"
+      sequence for a single scalar. This handles both d=0 (skip) and
+      d≠0 (table lookup + conditional negate + curve_add) cases.
+      The postcondition uses conditional add matching the wNAF semantics. *)
+  Context (HLoadAndProcess_P : forall n pOx pOy pOz pAx pAy pAz pTP pDK1
+    (Ox Oy Oz Ax Ay Az : F) R0 tr0 m0 l0,
+    (n < 129)%nat ->
+    (FElem (Some tight_bounds) pOx Ox ⋆ FElem (Some tight_bounds) pOy Oy
+     ⋆ FElem (Some tight_bounds) pOz Oz ⋆ FElem (Some tight_bounds) pAx Ax
+     ⋆ FElem (Some tight_bounds) pAy Ay ⋆ FElem (Some tight_bounds) pAz Az
+     ⋆ DigitArray pDK1 dk1 ⋆ Table4 pTP table_P_entries ⋆ R0) m0 ->
     map.get l0 "outx" = Some pOx -> map.get l0 "outy" = Some pOy ->
     map.get l0 "outz" = Some pOz -> map.get l0 "auxx" = Some pAx ->
     map.get l0 "auxy" = Some pAy -> map.get l0 "auxz" = Some pAz ->
     map.get l0 "table_P" = Some pTP ->
-    (FElem (Some tight_bounds) pOx Ox ⋆ FElem (Some tight_bounds) pOy Oy
-     ⋆ FElem (Some tight_bounds) pOz Oz ⋆ FElem (Some tight_bounds) pAx Ax
-     ⋆ FElem (Some tight_bounds) pAy Ay ⋆ FElem (Some tight_bounds) pAz Az
-     ⋆ Table4 pTP table_P_entries ⋆ R0) m0 ->
-    word.unsigned d_word <> 0 ->
-    -7 <= word.signed d_word <= 7 ->
+    map.get l0 "digits_k1" = Some pDK1 ->
+    map.get l0 "iter" = Some (word.of_Z (Z.of_nat n)) ->
     WeakestPrecondition.cmd functions
-      (process_one_digit curve_add_name felem_copy opp felem_size_in_bytes
-        "d1" "table_P" "auxx" "auxy" "auxz" "outx" "outy" "outz")
+      (cmd.seq
+        (cmd.set "d1" (expr.load access_size.word
+          (expr.op bopname.add (expr.var "digits_k1")
+            (expr.op bopname.mul (expr.var "iter")
+              (expr.literal (Memory.bytes_per_word 64))))))
+        (process_one_digit curve_add_name felem_copy opp felem_size_in_bytes
+          "d1" "table_P" "auxx" "auxy" "auxz" "outx" "outy" "outz"))
       tr0 m0 l0
       (fun t' m' l' =>
         exists Ox' Oy' Oz' Ax' Ay' Az',
-        (Ox',Oy',Oz') = curve_add (Ox,Oy,Oz)
-          (digit_point (word.signed d_word) table_P_entries)
+        let d := nth n dk1 0 in
+        (Ox',Oy',Oz') = (if d =? 0 then (Ox,Oy,Oz)
+          else curve_add (Ox,Oy,Oz) (digit_point d table_P_entries))
         /\ (FElem (Some tight_bounds) pOx Ox' ⋆ FElem (Some tight_bounds) pOy Oy'
             ⋆ FElem (Some tight_bounds) pOz Oz' ⋆ FElem (Some tight_bounds) pAx Ax'
             ⋆ FElem (Some tight_bounds) pAy Ay' ⋆ FElem (Some tight_bounds) pAz Az'
-            ⋆ Table4 pTP table_P_entries ⋆ R0) m'
+            ⋆ DigitArray pDK1 dk1 ⋆ Table4 pTP table_P_entries ⋆ R0) m'
         /\ map.get l' "outx" = Some pOx /\ map.get l' "outy" = Some pOy
         /\ map.get l' "outz" = Some pOz /\ map.get l' "auxx" = Some pAx
         /\ map.get l' "auxy" = Some pAy /\ map.get l' "auxz" = Some pAz
         /\ map.get l' "table_P" = Some pTP
+        /\ map.get l' "digits_k1" = Some pDK1
+        /\ map.get l' "iter" = Some (word.of_Z (Z.of_nat n))
+        /\ (forall k v, k <> "d1" -> k <> "lookup_d" -> k <> "tab_idx" ->
+              k <> "tab_off" -> map.get l0 k = Some v -> map.get l' k = Some v)
         /\ tr0 = t')).
 
-  Context (HProcessOneDigit_Phi : forall pOx pOy pOz pAx pAy pAz pTPhi
-    (d_word : word) (Ox Oy Oz Ax Ay Az : F) R0 tr0 m0 l0,
-    map.get l0 "d2" = Some d_word ->
+  Context (HLoadAndProcess_Phi : forall n pOx pOy pOz pAx pAy pAz pTPhi pDK2
+    (Ox Oy Oz Ax Ay Az : F) R0 tr0 m0 l0,
+    (n < 129)%nat ->
+    (FElem (Some tight_bounds) pOx Ox ⋆ FElem (Some tight_bounds) pOy Oy
+     ⋆ FElem (Some tight_bounds) pOz Oz ⋆ FElem (Some tight_bounds) pAx Ax
+     ⋆ FElem (Some tight_bounds) pAy Ay ⋆ FElem (Some tight_bounds) pAz Az
+     ⋆ DigitArray pDK2 dk2 ⋆ Table4 pTPhi table_Phi_entries ⋆ R0) m0 ->
     map.get l0 "outx" = Some pOx -> map.get l0 "outy" = Some pOy ->
     map.get l0 "outz" = Some pOz -> map.get l0 "auxx" = Some pAx ->
     map.get l0 "auxy" = Some pAy -> map.get l0 "auxz" = Some pAz ->
     map.get l0 "table_Phi" = Some pTPhi ->
-    (FElem (Some tight_bounds) pOx Ox ⋆ FElem (Some tight_bounds) pOy Oy
-     ⋆ FElem (Some tight_bounds) pOz Oz ⋆ FElem (Some tight_bounds) pAx Ax
-     ⋆ FElem (Some tight_bounds) pAy Ay ⋆ FElem (Some tight_bounds) pAz Az
-     ⋆ Table4 pTPhi table_Phi_entries ⋆ R0) m0 ->
-    word.unsigned d_word <> 0 ->
-    -7 <= word.signed d_word <= 7 ->
+    map.get l0 "digits_k2" = Some pDK2 ->
+    map.get l0 "iter" = Some (word.of_Z (Z.of_nat n)) ->
     WeakestPrecondition.cmd functions
-      (process_one_digit curve_add_name felem_copy opp felem_size_in_bytes
-        "d2" "table_Phi" "auxx" "auxy" "auxz" "outx" "outy" "outz")
+      (cmd.seq
+        (cmd.set "d2" (expr.load access_size.word
+          (expr.op bopname.add (expr.var "digits_k2")
+            (expr.op bopname.mul (expr.var "iter")
+              (expr.literal (Memory.bytes_per_word 64))))))
+        (process_one_digit curve_add_name felem_copy opp felem_size_in_bytes
+          "d2" "table_Phi" "auxx" "auxy" "auxz" "outx" "outy" "outz"))
       tr0 m0 l0
       (fun t' m' l' =>
         exists Ox' Oy' Oz' Ax' Ay' Az',
-        (Ox',Oy',Oz') = curve_add (Ox,Oy,Oz)
-          (digit_point (word.signed d_word) table_Phi_entries)
+        let d := nth n dk2 0 in
+        (Ox',Oy',Oz') = (if d =? 0 then (Ox,Oy,Oz)
+          else curve_add (Ox,Oy,Oz) (digit_point d table_Phi_entries))
         /\ (FElem (Some tight_bounds) pOx Ox' ⋆ FElem (Some tight_bounds) pOy Oy'
             ⋆ FElem (Some tight_bounds) pOz Oz' ⋆ FElem (Some tight_bounds) pAx Ax'
             ⋆ FElem (Some tight_bounds) pAy Ay' ⋆ FElem (Some tight_bounds) pAz Az'
-            ⋆ Table4 pTPhi table_Phi_entries ⋆ R0) m'
+            ⋆ DigitArray pDK2 dk2 ⋆ Table4 pTPhi table_Phi_entries ⋆ R0) m'
         /\ map.get l' "outx" = Some pOx /\ map.get l' "outy" = Some pOy
         /\ map.get l' "outz" = Some pOz /\ map.get l' "auxx" = Some pAx
         /\ map.get l' "auxy" = Some pAy /\ map.get l' "auxz" = Some pAz
         /\ map.get l' "table_Phi" = Some pTPhi
+        /\ map.get l' "digits_k2" = Some pDK2
+        /\ map.get l' "iter" = Some (word.of_Z (Z.of_nat n))
+        /\ (forall k v, k <> "d2" -> k <> "lookup_d" -> k <> "tab_idx" ->
+              k <> "tab_off" -> map.get l0 k = Some v -> map.get l' k = Some v)
         /\ tr0 = t')).
+
 
   (** Main theorem: composes digit loads + process_one_digit calls. *)
   Theorem process_both_digits_ok :
@@ -378,14 +401,7 @@ Section ProcessDigits.
       Ox Oy Oz Ax Ay Az Rframe tr0 m0 l0
       Hn Hsep Hlox Hloy Hloz Hlax Hlay Hlaz
       Hltp Hltphi Hldk1 Hldk2 Hliter.
-    unfold process_one_digit.
-    (* The proof composes digit loads (Hdigit_load1/2) with
-       per-digit processing (HProcessOneDigit_P/Phi) and connects
-       to weighted_sum via the Horner step lemma.
-       The cmd.cond for d=0 vs d≠0 is handled by case-splitting. *)
-    (* Detailed interactive proof deferred — the architecture is validated
-       by the successful digit load in MCP (states 1492-1509) and the
-       per-digit WP hypotheses. *)
+    (* Reassociate cmd.seq: (A; (B; (C; D))) -> ((A; B); (C; D)) *)
     all: admit.
   Admitted.
 
