@@ -487,8 +487,8 @@ Section BN446_Pairing.
        MSB is bit 112; after consuming it at init, iterate 112 bits (bits 111..0).
        Bit extraction: word_idx = i / 64, bit_in_word = i mod 64 *)
 
-    Let bn446_6u2_lo : Z := 0x0000006000000008.
-    Let bn446_6u2_hi : Z := 0x0001800000000000.
+    Definition bn446_6u2_lo : Z := 0x0000006000000008.
+    Definition bn446_6u2_hi : Z := 0x0001800000000000.
 
     (* Store the 2-word 6u+2 parameter on stack *)
     Local Definition store_6u2_limbs : Syntax.cmd.cmd :=
