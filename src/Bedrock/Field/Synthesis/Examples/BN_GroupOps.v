@@ -111,6 +111,41 @@ Section BN_G1.
   Definition G1_in_subgroup (P : G1_aff) : Prop :=
     G1_on_curve P.
 
+  (** *** Easy algebraic correctness lemmas *)
+
+  (* Doubling the point at infinity gives infinity *)
+  Lemma G1_double_inf : G1_double G1_inf = G1_inf.
+  Proof. reflexivity. Qed.
+
+  (* Adding infinity is the identity *)
+  Lemma G1_add_inf_l : forall P, G1_add G1_inf P = P.
+  Proof. intros [|x y]; reflexivity. Qed.
+
+  Lemma G1_add_inf_r : forall P, G1_add P G1_inf = P.
+  Proof. intros [|x y]; reflexivity. Qed.
+
+  (* Negation of infinity is infinity *)
+  Lemma G1_neg_inf : G1_neg G1_inf = G1_inf.
+  Proof. reflexivity. Qed.
+
+  (* Negation is involutive — requires primality, see curve-specific files *)
+
+  (* Infinity is on the curve *)
+  Lemma G1_on_curve_inf : G1_on_curve G1_inf.
+  Proof. exact I. Qed.
+
+  (* Subgroup contains infinity *)
+  Lemma G1_in_subgroup_inf : G1_in_subgroup G1_inf.
+  Proof. exact I. Qed.
+
+  (* Scalar mul by 0 *)
+  Lemma G1_scalar_mul_0 : forall P, G1_scalar_mul 0 P = G1_inf.
+  Proof. reflexivity. Qed.
+
+  (* Scalar mul by 1 *)
+  Lemma G1_scalar_mul_1 : forall P, G1_scalar_mul 1 P = P.
+  Proof. reflexivity. Qed.
+
 End BN_G1.
 
 Section BN_G2.
@@ -157,5 +192,35 @@ Section BN_G2.
     G2_on_twist P /\
     (* Cofactor check: [r] * P = O. This is the simple but slower check. *)
     True. (* Specification placeholder; actual order check via scalar mult *)
+
+  (** *** Efficient G2 subgroup check via endomorphism (BN-specific)
+
+      For BN curves, the twisted Frobenius endomorphism psi : E'(Fp2) -> E'(Fp2)
+      satisfies on the prime-order subgroup G2:
+
+        psi(P) = [t - 1] * P  =  [6u^2] * P    (since t = 6u^2 + 1)
+
+      Equivalently:
+        psi(P) - [6u^2] * P = O
+
+      This is much faster than the naive [r] * P = O check because:
+      - psi is just one Frobenius application + a few Fp2 multiplications
+      - [6u^2] is a small scalar (~128 bits for BN254 vs ~254 for r)
+
+      The check is sound because psi acts as multiplication by t-1 on G2,
+      and the order-r subgroup is exactly the eigenspace of psi for that
+      eigenvalue (the only other eigenspace has order ~p, distinguishing
+      the subgroup uniquely).
+
+      This is a SPECIFICATION of the check; the actual psi function and
+      its correctness are defined in curve-specific files. *)
+
+  Definition G2_subgroup_check_spec
+    (psi : G2_aff -> G2_aff)
+    (sm : Z -> G2_aff -> G2_aff)  (* scalar mul on G2 *)
+    (six_u_squared : Z)            (* 6u^2 for the curve *)
+    (P : G2_aff) : Prop :=
+    G2_on_twist P /\
+    psi P = sm six_u_squared P.
 
 End BN_G2.
