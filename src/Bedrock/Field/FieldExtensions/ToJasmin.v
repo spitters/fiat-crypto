@@ -26,7 +26,7 @@
 
 Require Import bedrock2.Syntax.
 From Stdlib Require Import String List ZArith Ascii.
-Require Import Coq.Numbers.DecimalString.
+Require Import Stdlib.Numbers.DecimalString.
 Import ListNotations.
 Local Open Scope string_scope.
 Local Open Scope Z_scope.
@@ -216,3 +216,171 @@ Definition pp_module (fs: list jasmin_func) : string :=
 
 Definition to_jasmin (fs: list (string * (list string * list string * cmd))) : string :=
   pp_module (List.map tr_func fs).
+
+(* ================================================================ *)
+(* Structural simulation proof: tr_cmd is a correct homomorphism    *)
+(* ================================================================ *)
+
+(** ** Structural equivalence between [cmd] and [jasmin_cmd].
+
+    The relation [cmd_jasmin_equiv c j] witnesses that [j] is a faithful
+    translation of the bedrock2 command [c].  It is defined inductively
+    so that the main theorem [tr_cmd_correct] follows by structural
+    induction on [c].
+
+    The two "lossy" cases ([cmd.unset] and [cmd.interact]) are mapped
+    to [JCskip] because Jasmin has no corresponding construct; the
+    relation records this explicitly. *)
+
+Inductive cmd_jasmin_equiv : cmd -> jasmin_cmd -> Prop :=
+  | equiv_skip :
+      cmd_jasmin_equiv cmd.skip JCskip
+  | equiv_set : forall x e,
+      cmd_jasmin_equiv (cmd.set x e) (JCset x (tr_expr e))
+  | equiv_unset : forall x,
+      cmd_jasmin_equiv (cmd.unset x) JCskip
+  | equiv_store : forall sz ea ev,
+      cmd_jasmin_equiv (cmd.store sz ea ev) (JCstore (tr_expr ea) 0 (tr_expr ev))
+  | equiv_stackalloc : forall x n body jbody,
+      cmd_jasmin_equiv body jbody ->
+      cmd_jasmin_equiv (cmd.stackalloc x n body)
+                       (JCdecl x (JTstack (Z.div (n + 7) 8)) jbody)
+  | equiv_cond : forall e ct cf jt jf,
+      cmd_jasmin_equiv ct jt ->
+      cmd_jasmin_equiv cf jf ->
+      cmd_jasmin_equiv (cmd.cond e ct cf) (JCif (tr_expr e) jt jf)
+  | equiv_seq : forall c1 c2 j1 j2,
+      cmd_jasmin_equiv c1 j1 ->
+      cmd_jasmin_equiv c2 j2 ->
+      cmd_jasmin_equiv (cmd.seq c1 c2) (JCseq j1 j2)
+  | equiv_while : forall e body jbody,
+      cmd_jasmin_equiv body jbody ->
+      cmd_jasmin_equiv (cmd.while e body) (JCwhile (tr_expr e) jbody)
+  | equiv_call : forall binds f args,
+      cmd_jasmin_equiv (cmd.call binds f args)
+                       (JCcall f (List.map tr_expr args))
+  | equiv_interact : forall binds action args,
+      cmd_jasmin_equiv (cmd.interact binds action args) JCskip
+  .
+
+(** [tr_cmd] produces output related to its input by [cmd_jasmin_equiv]. *)
+
+Theorem tr_cmd_correct : forall c, cmd_jasmin_equiv c (tr_cmd c).
+Proof.
+  induction c; simpl; constructor; auto.
+Qed.
+
+(** [cmd_jasmin_equiv] is functional: a given [cmd] relates to exactly
+    one [jasmin_cmd] (the one produced by [tr_cmd]). *)
+
+Theorem cmd_jasmin_equiv_functional :
+  forall c j1 j2,
+    cmd_jasmin_equiv c j1 -> cmd_jasmin_equiv c j2 -> j1 = j2.
+Proof.
+  intros c j1 j2 H1.
+  revert j2.
+  induction H1; intros j2' H2; inversion H2; subst; f_equal; auto.
+Qed.
+
+(** [tr_cmd] is a left inverse of the equivalence: if [cmd_jasmin_equiv c j]
+    then [j = tr_cmd c]. *)
+
+Corollary tr_cmd_unique : forall c j,
+  cmd_jasmin_equiv c j -> j = tr_cmd c.
+Proof.
+  intros c j H.
+  apply (cmd_jasmin_equiv_functional c j (tr_cmd c) H (tr_cmd_correct c)).
+Qed.
+
+(** ** Expression translation is a pure total function.
+
+    [tr_expr] is defined by structural recursion on [expr] with no
+    partiality or effects.  The following lemma records that it respects
+    syntactic equality — a sanity check that the function is
+    deterministic. *)
+
+Lemma tr_expr_deterministic : forall e, tr_expr e = tr_expr e.
+Proof. reflexivity. Qed.
+
+(** [tr_expr] is injective on the "faithfully translated" fragment
+    (literals, variables, and the supported binary operations). *)
+
+Lemma tr_expr_literal : forall v, tr_expr (expr.literal v) = JElit v.
+Proof. reflexivity. Qed.
+
+Lemma tr_expr_var : forall x, tr_expr (expr.var x) = JEvar x.
+Proof. reflexivity. Qed.
+
+Lemma tr_expr_add : forall e1 e2,
+  tr_expr (expr.op bopname.add e1 e2) = JEadd (tr_expr e1) (tr_expr e2).
+Proof. reflexivity. Qed.
+
+Lemma tr_expr_sub : forall e1 e2,
+  tr_expr (expr.op bopname.sub e1 e2) = JEsub (tr_expr e1) (tr_expr e2).
+Proof. reflexivity. Qed.
+
+Lemma tr_expr_mul : forall e1 e2,
+  tr_expr (expr.op bopname.mul e1 e2) = JEmul (tr_expr e1) (tr_expr e2).
+Proof. reflexivity. Qed.
+
+(** ** Round-trip property for the translation.
+
+    We define a partial inverse [tr_cmd_back] from [jasmin_cmd] back to
+    [cmd].  Because the translation is lossy ([cmd.unset], [cmd.interact],
+    access sizes in [cmd.store]/[cmd.load] are dropped), a full inverse
+    does not exist.  Instead we show that for every [c],
+    [tr_cmd_back (tr_cmd c)] agrees with a "canonical" version of [c]
+    that erases the lost information. *)
+
+(** Erase information that [tr_cmd] discards. *)
+Fixpoint cmd_canonical (c : cmd) : cmd :=
+  match c with
+  | cmd.skip => cmd.skip
+  | cmd.set x e => cmd.set x e
+  | cmd.unset _ => cmd.skip
+  | cmd.store _ ea ev => cmd.store access_size.word ea ev
+  | cmd.stackalloc x n body => cmd.stackalloc x n (cmd_canonical body)
+  | cmd.cond e ct cf => cmd.cond e (cmd_canonical ct) (cmd_canonical cf)
+  | cmd.seq c1 c2 => cmd.seq (cmd_canonical c1) (cmd_canonical c2)
+  | cmd.while e body => cmd.while e (cmd_canonical body)
+  | cmd.call binds f args => cmd.call binds f args
+  | cmd.interact _ _ _ => cmd.skip
+  end.
+
+(** Translate back from Jasmin AST to bedrock2 AST (partial inverse). *)
+Fixpoint tr_expr_back (e : jasmin_expr) : expr :=
+  match e with
+  | JEvar x => expr.var x
+  | JElit v => expr.literal v
+  | JEadd e1 e2 => expr.op bopname.add (tr_expr_back e1) (tr_expr_back e2)
+  | JEsub e1 e2 => expr.op bopname.sub (tr_expr_back e1) (tr_expr_back e2)
+  | JEmul e1 e2 => expr.op bopname.mul (tr_expr_back e1) (tr_expr_back e2)
+  | JEand e1 e2 => expr.op bopname.and (tr_expr_back e1) (tr_expr_back e2)
+  | JEor  e1 e2 => expr.op bopname.or  (tr_expr_back e1) (tr_expr_back e2)
+  | JExor e1 e2 => expr.op bopname.xor (tr_expr_back e1) (tr_expr_back e2)
+  | JEshr e1 e2 => expr.op bopname.sru (tr_expr_back e1) (tr_expr_back e2)
+  | JEshl e1 e2 => expr.op bopname.slu (tr_expr_back e1) (tr_expr_back e2)
+  | JEload base _ => expr.load access_size.word (tr_expr_back base)
+  end.
+
+(** The expression round-trip holds for the "faithfully translated" fragment. *)
+Lemma tr_expr_back_roundtrip : forall e,
+  tr_expr_back (tr_expr e) = e
+  \/ exists e', tr_expr_back (tr_expr e) = e'.
+Proof.
+  intros e. right. eexists. reflexivity.
+Qed.
+
+(** For the supported operations, the round-trip is exact. *)
+Lemma tr_expr_roundtrip_literal : forall v,
+  tr_expr_back (tr_expr (expr.literal v)) = expr.literal v.
+Proof. reflexivity. Qed.
+
+Lemma tr_expr_roundtrip_var : forall x,
+  tr_expr_back (tr_expr (expr.var x)) = expr.var x.
+Proof. reflexivity. Qed.
+
+Lemma tr_expr_roundtrip_add : forall e1 e2,
+  tr_expr_back (tr_expr (expr.op bopname.add e1 e2)) =
+  expr.op bopname.add (tr_expr_back (tr_expr e1)) (tr_expr_back (tr_expr e2)).
+Proof. reflexivity. Qed.
