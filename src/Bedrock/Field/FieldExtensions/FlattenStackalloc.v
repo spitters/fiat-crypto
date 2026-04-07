@@ -11,6 +11,7 @@
  *)
 
 Require Import bedrock2.Syntax.
+Require Import bedrock2.Semantics.
 Require Import bedrock2.Memory.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.Properties.
@@ -226,3 +227,101 @@ Section AnybytesLemmas.
   Qed.
 
 End AnybytesLemmas.
+
+(* ================================================================ *)
+(* Part 5: Simulation lemma — nested stackalloc to flattened         *)
+(* ================================================================ *)
+
+Section FlattenCorrectness.
+  Context {width: Z} {BW: Bitwidth width}
+          {word: word.word width} {mem: map.map word byte}
+          {word_ok: word.ok word} {mem_ok: map.ok mem}
+          {locals: map.map string word} {locals_ok: map.ok locals}
+          {ext_spec: @ExtSpec width BW word mem}.
+
+  Variable e : Semantics.env.
+
+  (** Two nested stackallocs [stackalloc x1 n1 (stackalloc x2 n2 body)]
+      can be replaced by a single allocation of [n1+n2] bytes followed
+      by computing [x2 := x1 + n1].
+
+      The proof uses [anybytes_split] to decompose the single large
+      allocation into two sub-regions, and [anybytes_join] to
+      reassemble them in the postcondition.  [exec.weaken] bridges
+      the two postcondition shapes. *)
+  Lemma flatten_two_stackallocs_equiv :
+    forall x1 n1 x2 n2 body t m l post,
+    0 <= n1 -> 0 <= n2 -> n1 + n2 <= 2 ^ width ->
+    n1 mod (bytes_per_word width) = 0 ->
+    n2 mod (bytes_per_word width) = 0 ->
+    (n1 + n2) mod (bytes_per_word width) = 0 ->
+    exec e (cmd.stackalloc x1 n1 (cmd.stackalloc x2 n2 body)) t m l post ->
+    exec e (cmd.stackalloc x1 (n1 + n2)
+      (cmd.seq (cmd.set x2 (expr.op bopname.add (expr.var x1) (expr.literal n1)))
+               body)) t m l post.
+  Proof.
+    intros x1 n1 x2 n2 body t m l post Hn1 Hn2 Hbound Hmod1 Hmod2 Hmod12 Hexec.
+    inversion Hexec; subst.
+    apply exec.stackalloc.
+    - exact Hmod12.
+    - intros a mStack mCombined Hany Hsplit.
+      (* Split the combined stack into two regions *)
+      pose proof (anybytes_split a n1 n2 mStack Hn1 Hn2 Hany)
+        as [mS1 [mS2 [HanyS1 [HanyS2 HsplitS]]]].
+      destruct Hsplit as [HmC HdisjMS].
+      destruct HsplitS as [HmS HdisjS12].
+      assert (HdisjmS1 : map.disjoint m mS1).
+      { subst mStack. rewrite map.disjoint_putmany_r in HdisjMS. tauto. }
+      assert (HdisjmS2 : map.disjoint m mS2).
+      { subst mStack. rewrite map.disjoint_putmany_r in HdisjMS. tauto. }
+      set (mC1 := map.putmany m mS1).
+      assert (HsplitC1 : map.split mC1 m mS1)
+        by (split; [reflexivity | exact HdisjmS1]).
+      assert (HsplitC : map.split mCombined mC1 mS2).
+      { split.
+        - subst mCombined mStack mC1. apply map.putmany_assoc.
+        - subst mC1. rewrite map.disjoint_putmany_l.
+          split; [exact HdisjmS2 | exact HdisjS12]. }
+      (* Specialize the outer hypothesis to get exec of inner stackalloc *)
+      specialize (H7 a mS1 mC1 HanyS1 HsplitC1).
+      (* Invert the inner stackalloc *)
+      inversion H7; subst.
+      (* Build seq: set x2, then body *)
+      eapply exec.seq with
+        (mid := fun t' m' l' =>
+          t' = t /\ m' = map.putmany m (map.putmany mS1 mS2) /\
+          l' = map.put (map.put l x1 a) x2 (word.add a (word.of_Z n1))).
+      + (* exec of [set x2 := x1 + n1] *)
+        eapply exec.set.
+        * simpl. rewrite map.get_put_same. reflexivity.
+        * auto.
+      + intros t' m' l' [Ht [Hm Hl]]. subst t' m' l'.
+        (* Use the inner hypothesis with the second sub-region *)
+        specialize (H9 (word.add a (word.of_Z n1)) mS2
+                       (map.putmany m (map.putmany mS1 mS2)) HanyS2 HsplitC).
+        (* Bridge postconditions via exec.weaken *)
+        eapply exec.weaken. { exact H9. }
+        intros t' mCombined' l' Hpost9.
+        destruct Hpost9 as
+          [mSmall_n2 [mStack_n2 [Hany_n2 [Hsplit_n2
+            [mSmall_n1 [mStack_n1 [Hany_n1 [Hsplit_n1 Hpost]]]]]]]].
+        exists mSmall_n1.
+        destruct Hsplit_n2 as [Hmc2 Hdisj2].
+        destruct Hsplit_n1 as [Hmc1 Hdisj1].
+        assert (HdisjStacks : map.disjoint mStack_n1 mStack_n2).
+        { subst mSmall_n2. rewrite map.disjoint_putmany_l in Hdisj2. tauto. }
+        exists (map.putmany mStack_n1 mStack_n2).
+        split; [| split].
+        * (* Rejoin: anybytes a (n1+n2) (putmany mStack_n1 mStack_n2) *)
+          eapply (anybytes_join a n1 n2 _ mStack_n1 mStack_n2); auto.
+          apply map.split_disjoint_putmany. exact HdisjStacks.
+        * (* Reassociate: split mCombined' mSmall_n1 (putmany mStack_n1 mStack_n2) *)
+          split.
+          -- subst mCombined' mSmall_n2. symmetry. apply map.putmany_assoc.
+          -- rewrite map.disjoint_putmany_r.
+             split; [exact Hdisj1|].
+             subst mSmall_n2. rewrite map.disjoint_putmany_l in Hdisj2. tauto.
+        * exact Hpost.
+  Qed.
+
+End FlattenCorrectness.
