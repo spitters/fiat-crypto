@@ -10,6 +10,7 @@ Require Import bedrock2.WeakestPrecondition.
 Require Import Rupicola.Lib.Api.
 Require Import coqutil.Word.Bitwidth64.
 Require Import bedrock2.BasicC64Semantics.
+Require Import Crypto.Bedrock.Field.Synthesis.Examples.BN_StraightlineFast.
 Require Import bedrock2.SepCalls.
 Require Import bedrock2.SepAutoArray.
 Require Import bedrock2.Scalars.

@@ -11,6 +11,7 @@ Require Import bedrock2.WeakestPrecondition.
 Require Import Rupicola.Lib.Api.
 Require Import coqutil.Word.Bitwidth64.
 Require Import bedrock2.BasicC64Semantics.
+Require Import Crypto.Bedrock.Field.Synthesis.Examples.BN_StraightlineFast.
 Require Import Crypto.Arithmetic.PrimeFieldTheorems.
 Require Import Crypto.Bedrock.Specs.AbstractField.
 Require Import Crypto.Bedrock.Specs.PrimeField.

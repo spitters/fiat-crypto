@@ -1517,6 +1517,7 @@ End GLV_Shamir_Generic.
     Require Import Crypto.Bedrock.Field.Translation.Parameters.Defaults64.
     Require Import coqutil.Word.Bitwidth64.
     Require Import bedrock2.BasicC64Semantics.
+Require Import Crypto.Bedrock.Field.Synthesis.Examples.BN_StraightlineFast.
 
     Definition bls12_377_glv_shamir :=
       @glv_shamir_func _ _ _ _ _ _ _ _ _ _
