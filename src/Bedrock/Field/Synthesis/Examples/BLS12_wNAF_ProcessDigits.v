@@ -257,6 +257,26 @@ Section ProcessDigits.
     WeakestPrecondition.cmd functions (cmd.seq (cmd.seq c1 c2) c3) tr m l post.
   Proof. exact id. Qed.
 
+  (** Horner algebraic step: connects doubling + conditional digit adds
+      to the weighted_sum transition from skipn (S n) to skipn n.
+      Discharged at instantiation using group algebra + digit_point_correct. *)
+  Context (Hhorner_step : forall n (Ox Oy Oz : F),
+    (n < 129)%nat ->
+    let ws1_old := weighted_sum (skipn (S n) dk1) 0 in
+    let ws2_old := weighted_sum (skipn (S n) dk2) 0 in
+    (Ox,Oy,Oz) = curve_add
+      (scmul_glv (Z.to_nat (2 * ws1_old)) (Px,Py,Pz))
+      (scmul_glv (Z.to_nat (2 * ws2_old)) (Phix,Phiy,Phiz)) ->
+    let d1 := nth n dk1 0 in
+    let d2 := nth n dk2 0 in
+    let after_d1 := if d1 =? 0 then (Ox,Oy,Oz)
+                    else curve_add (Ox,Oy,Oz) (digit_point d1 table_P_entries) in
+    (if d2 =? 0 then after_d1
+     else curve_add after_d1 (digit_point d2 table_Phi_entries))
+    = curve_add
+      (scmul_glv (Z.to_nat (weighted_sum (skipn n dk1) 0)) (Px,Py,Pz))
+      (scmul_glv (Z.to_nat (weighted_sum (skipn n dk2) 0)) (Phix,Phiy,Phiz))).
+
   (* ================================================================== *)
   (** ** 5. Main theorem                                                 *)
   (* ================================================================== *)
@@ -348,12 +368,19 @@ Section ProcessDigits.
         /\ tr0 = t')).
 
 
-  (** Main theorem: composes digit loads + process_one_digit calls. *)
+  (** Main theorem: composes digit loads + process_one_digit calls.
+      Requires [Hacc] precondition: the output accumulator holds the
+      doubled partial evaluation (provided by the loop body after
+      curve_double). The [Hhorner_step] hypothesis converts the
+      digit_point-based result to the weighted_sum formula. *)
   Theorem process_both_digits_ok :
     forall (n : nat) pOx pOy pOz pAx pAy pAz
       pTP pTPhi pDK1 pDK2 (Ox Oy Oz Ax Ay Az : F)
       (Rframe : mem -> Prop) tr0 m0 l0,
     (n < 129)%nat ->
+    (Ox,Oy,Oz) = curve_add
+      (scmul_glv (Z.to_nat (2 * weighted_sum (skipn (S n) dk1) 0)) (Px,Py,Pz))
+      (scmul_glv (Z.to_nat (2 * weighted_sum (skipn (S n) dk2) 0)) (Phix,Phiy,Phiz)) ->
     (FElem (Some tight_bounds) pOx Ox ⋆ FElem (Some tight_bounds) pOy Oy
      ⋆ FElem (Some tight_bounds) pOz Oz ⋆ FElem (Some tight_bounds) pAx Ax
      ⋆ FElem (Some tight_bounds) pAy Ay ⋆ FElem (Some tight_bounds) pAz Az
@@ -405,16 +432,86 @@ Section ProcessDigits.
   Proof.
     intros n pOx pOy pOz pAx pAy pAz pTP pTPhi pDK1 pDK2
       Ox Oy Oz Ax Ay Az Rframe tr0 m0 l0
-      Hn Hsep Hlox Hloy Hloz Hlax Hlay Hlaz
+      Hn Hacc Hsep Hlox Hloy Hloz Hlax Hlay Hlaz
       Hltp Hltphi Hldk1 Hldk2 Hliter.
-    (* Proper_cmd can't compose per-scalar hypotheses due to cmd.seq
-       association mismatch. Instead, step through all 4 commands directly.
-       After unfold/fold, the goal exposes the WP for the first command.
-       Use Hdigit_load1 for the d1 load, then case-split on d1=0,
-       apply HCurveAddInplace etc. for d1≠0, then same for d2. *)
-    unfold WeakestPrecondition.cmd; fold (@WeakestPrecondition.cmd _ _ _ _ _ _).
-    all: admit.
-  Admitted.
+
+    (* Phase 1: apply HLoadAndProcess_P. Package Phi-related memory into frame. *)
+    assert (Hsep_P : (FElem (Some tight_bounds) pOx Ox
+      ⋆ FElem (Some tight_bounds) pOy Oy ⋆ FElem (Some tight_bounds) pOz Oz
+      ⋆ FElem (Some tight_bounds) pAx Ax ⋆ FElem (Some tight_bounds) pAy Ay
+      ⋆ FElem (Some tight_bounds) pAz Az
+      ⋆ DigitArray pDK1 dk1 ⋆ Table4 pTP table_P_entries
+      ⋆ (DigitArray pDK2 dk2 ⋆ Table4 pTPhi table_Phi_entries ⋆ Rframe)) m0)
+      by ecancel_assumption.
+    pose proof (HLoadAndProcess_P n pOx pOy pOz pAx pAy pAz pTP pDK1
+      Ox Oy Oz Ax Ay Az
+      (DigitArray pDK2 dk2 ⋆ Table4 pTPhi table_Phi_entries ⋆ Rframe)%sep
+      tr0 m0 l0 Hn Hsep_P Hlox Hloy Hloz Hlax Hlay Hlaz
+      Hltp Hldk1 Hliter) as HWP1.
+    clear Hsep_P.
+
+    (* Decompose: unfold outer cmd.seq to expose load-d1 evaluation,
+       share it between goal and HWP1, then Proper_cmd on process_d1. *)
+    unfold WeakestPrecondition.cmd at 1;
+      fold (@WeakestPrecondition.cmd _ _ _ _ _ _).
+    unfold WeakestPrecondition.cmd at 1 in HWP1;
+      fold (@WeakestPrecondition.cmd _ _ _ _ _ _) in HWP1.
+    destruct HWP1 as [v1 [Heval1 HWP1_inner]].
+    exists v1; split; [exact Heval1|].
+    (* Goal & HWP1_inner both have WP for process_one_digit "d1" ... .
+       Goal's continuation includes (load d2; process d2), HWP1_inner's doesn't.
+       But the command (process_one_digit ...) is the same. Proper_cmd bridges. *)
+    eapply WeakestPreconditionProperties.Proper_cmd; [|exact HWP1_inner].
+    clear HWP1_inner.
+    intros t1 m1 l1 (Ox1 & Oy1 & Oz1 & Ax1 & Ay1 & Az1 &
+      Hout1 & Hsep1 & Hlox1 & Hloy1 & Hloz1 & Hlax1 & Hlay1 & Hlaz1 &
+      Hltp1 & Hldk1_1 & Hliter1 & Hpres1 & Htr1).
+    subst t1.
+    assert (Hltphi1 : map.get l1 "table_Phi" = Some pTPhi)
+      by (eapply Hpres1; congruence || exact Hltphi).
+    assert (Hldk2_1 : map.get l1 "digits_k2" = Some pDK2)
+      by (eapply Hpres1; congruence || exact Hldk2).
+
+    (* Phase 2: Same unfold/fold + destruct + Proper_cmd pattern for d2 *)
+    assert (Hsep_Phi : (FElem (Some tight_bounds) pOx Ox1
+      ⋆ FElem (Some tight_bounds) pOy Oy1 ⋆ FElem (Some tight_bounds) pOz Oz1
+      ⋆ FElem (Some tight_bounds) pAx Ax1 ⋆ FElem (Some tight_bounds) pAy Ay1
+      ⋆ FElem (Some tight_bounds) pAz Az1
+      ⋆ DigitArray pDK2 dk2 ⋆ Table4 pTPhi table_Phi_entries
+      ⋆ (DigitArray pDK1 dk1 ⋆ Table4 pTP table_P_entries ⋆ Rframe)) m1)
+      by ecancel_assumption.
+    pose proof (HLoadAndProcess_Phi n pOx pOy pOz pAx pAy pAz pTPhi pDK2
+      Ox1 Oy1 Oz1 Ax1 Ay1 Az1
+      (DigitArray pDK1 dk1 ⋆ Table4 pTP table_P_entries ⋆ Rframe)%sep
+      tr0 m1 l1 Hn Hsep_Phi Hlox1 Hloy1 Hloz1 Hlax1 Hlay1 Hlaz1
+      Hltphi1 Hldk2_1 Hliter1) as HWP2.
+    clear Hsep_Phi.
+    (* Unfold both goal and HWP2's outer cmd.seq to share the d2 load *)
+    unfold WeakestPrecondition.cmd at 1 in HWP2;
+      fold (@WeakestPrecondition.cmd _ _ _ _ _ _) in HWP2.
+    destruct HWP2 as [v2 [Heval2 HWP2_inner]].
+    exists v2; split; [exact Heval2|].
+    eapply WeakestPreconditionProperties.Proper_cmd; [|exact HWP2_inner].
+    clear HWP2_inner.
+    intros t2 m2 l2 (Ox2 & Oy2 & Oz2 & Ax2 & Ay2 & Az2 &
+      Hout2 & Hsep2 & Hlox2 & Hloy2 & Hloz2 & Hlax2 & Hlay2 & Hlaz2 &
+      Hltphi2 & Hldk2_2 & Hliter2 & Hpres2 & Htr2).
+    subst t2.
+    exists Ox2, Oy2, Oz2, Ax2, Ay2, Az2.
+    split.
+    2: { clear Hhorner_step HLoadAndProcess_P HLoadAndProcess_Phi
+              HCurveAddInplace HFelemCopy HOpp
+              Hdigit_load1 Hdigit_load2 Hdigits_bounded1 Hdigits_bounded2
+              digit_point_P_correct digit_point_Phi_correct point_opp_correct.
+         repeat split; try ecancel_assumption; try assumption;
+         eapply Hpres2; try congruence; assumption. }
+    (* Algebraic: output = weighted_sum formula via Hhorner_step *)
+    specialize (Hhorner_step n Ox Oy Oz Hn Hacc).
+    cbv zeta in Hhorner_step.
+    rewrite <- Hout1 in Hhorner_step.
+    rewrite <- Hout2 in Hhorner_step.
+    exact Hhorner_step.
+  Qed.
 
   (** Usage note: To discharge [HProcessBothDigits] from
       [BLS12_wNAF_GLV_LoopBody.v], instantiate its abstract [R0] as:

@@ -186,6 +186,12 @@ Section LoopBodyProof.
   Context (Px Py Pz Phix Phiy Phiz : F).
   Context (Hlen1 : length dk1 = 129%nat) (Hlen2 : length dk2 = 129%nat).
 
+  (** Weighted sums are non-negative (needed for Z.to_nat conversions) *)
+  Context (Hws_nn1 :
+    forall n, (n <= 129)%nat -> 0 <= weighted_sum (skipn n dk1) 0).
+  Context (Hws_nn2 :
+    forall n, (n <= 129)%nat -> 0 <= weighted_sum (skipn n dk2) 0).
+
   (** Abstract hypothesis for the "process both digits" phase.
       After iter-- and curve_double, the remaining loop body is:
         load d1, process_one_digit d1, load d2, process_one_digit d2.
@@ -194,6 +200,9 @@ Section LoopBodyProof.
   Context (HProcessBothDigits : forall (n : nat) pOx pOy pOz pAx pAy pAz
     pTP pTPhi pDK1 pDK2 (Ox Oy Oz Ax Ay Az : F) R0 tr0 m0 l0,
     (n < 129)%nat ->
+    (Ox,Oy,Oz) = curve_add
+      (scmul_glv (Z.to_nat (2 * weighted_sum (skipn (S n) dk1) 0)) (Px,Py,Pz))
+      (scmul_glv (Z.to_nat (2 * weighted_sum (skipn (S n) dk2) 0)) (Phix,Phiy,Phiz)) ->
     (FElem (Some tight_bounds) pOx Ox ⋆ FElem (Some tight_bounds) pOy Oy
      ⋆ FElem (Some tight_bounds) pOz Oz ⋆ FElem (Some tight_bounds) pAx Ax
      ⋆ FElem (Some tight_bounds) pAy Ay ⋆ FElem (Some tight_bounds) pAz Az
@@ -246,6 +255,9 @@ Section LoopBodyProof.
     forall (n : nat) pOx pOy pOz pAx pAy pAz pTP pTPhi pDK1 pDK2
       (Ox Oy Oz Ax Ay Az : F) R0 tr0 m0 l0,
       (n < 129)%nat ->
+      (Ox,Oy,Oz) = curve_add
+        (scmul_glv (Z.to_nat (weighted_sum (skipn (S n) dk1) 0)) (Px,Py,Pz))
+        (scmul_glv (Z.to_nat (weighted_sum (skipn (S n) dk2) 0)) (Phix,Phiy,Phiz)) ->
       (Point3 (Some tight_bounds) pOx pOy pOz Ox Oy Oz
        ⋆ Point3 (Some tight_bounds) pAx pAy pAz Ax Ay Az ⋆ R0) m0 ->
       map.get l0 "outx" = Some pOx -> map.get l0 "outy" = Some pOy ->
@@ -277,7 +289,7 @@ Section LoopBodyProof.
   Proof.
     intros n pOx pOy pOz pAx pAy pAz pTP pTPhi pDK1 pDK2
       Ox Oy Oz Ax Ay Az R0 tr0 m0 l0
-      Hn Hsep Hl_ox Hl_oy Hl_oz Hl_ax Hl_ay Hl_az
+      Hn Hinv Hsep Hl_ox Hl_oy Hl_oz Hl_ax Hl_ay Hl_az
       Hl_tp Hl_tphi Hl_dk1 Hl_dk2 Hl_iter.
     unfold wnaf_loop_body.
     (* Step 1: iter-- *)
@@ -313,6 +325,28 @@ Section LoopBodyProof.
     set (iter_word := word.sub (word.of_Z (Z.of_nat (S n))) (word.of_Z 1)).
     assert (Hiter_n : iter_word = word.of_Z (Z.of_nat n))
       by (unfold iter_word; rewrite <- word.ring_morph_sub; f_equal; lia).
+    (* Prove doubling precondition for HProcessBothDigits:
+       (Dx,Dy,Dz) = curve_add(scmul(2*ws1)(P))(scmul(2*ws2)(Phi)) *)
+    assert (Hdbl_acc : (Dx, Dy, Dz) = curve_add
+      (scmul_glv (Z.to_nat (2 * weighted_sum (skipn (S n) dk1) 0)) (Px,Py,Pz))
+      (scmul_glv (Z.to_nat (2 * weighted_sum (skipn (S n) dk2) 0)) (Phix,Phiy,Phiz))).
+    { (* Doubling: curve_add(acc)(acc) = curve_add(scmul(2*ws1)(P))(scmul(2*ws2)(Phi)) *)
+      pose proof (fun a b P => eq_sym (scmul_add Fzero Fone curve_add
+        curve_add_id_l curve_add_assoc a b P)) as Hscmul_add.
+      unfold doubled in Hdoubled. rewrite Hinv in Hdoubled.
+      symmetry in Hdoubled. rewrite Hdoubled.
+      set (ws1 := weighted_sum (skipn (S n) dk1) 0).
+      set (ws2 := weighted_sum (skipn (S n) dk2) 0).
+      rewrite curve_add_assoc.
+      rewrite (curve_add_4_rearrange curve_add curve_add_assoc curve_add_comm).
+      unfold scmul_glv. rewrite !Hscmul_add. fold scmul_glv.
+      assert (Z.to_nat ws1 + Z.to_nat ws1 = Z.to_nat (2 * ws1))%nat as ->.
+      { rewrite Z2Nat.inj_mul; [simpl Z.to_nat; lia | lia |].
+        unfold ws1. apply Hws_nn1. lia. }
+      assert (Z.to_nat ws2 + Z.to_nat ws2 = Z.to_nat (2 * ws2))%nat as ->.
+      { rewrite Z2Nat.inj_mul; [simpl Z.to_nat; lia | lia |].
+        unfold ws2. apply Hws_nn2. lia. }
+      reflexivity. }
     (* Reassociate sep for HProcessBothDigits *)
     assert (Hsep1' : (FElem (Some tight_bounds) pOx Dx
       ⋆ FElem (Some tight_bounds) pOy Dy ⋆ FElem (Some tight_bounds) pOz Dz
@@ -322,7 +356,7 @@ Section LoopBodyProof.
     eapply WeakestPreconditionProperties.Proper_cmd;
       [|exact (HProcessBothDigits n pOx pOy pOz pAx pAy pAz pTP pTPhi pDK1 pDK2
                 Dx Dy Dz Ax Ay Az R0 tr0 m1 (map.put l0 "iter" iter_word)
-                Hn Hsep1'
+                Hn Hdbl_acc Hsep1'
                 ltac:(rewrite map.get_put_diff by congruence; exact Hl_ox)
                 ltac:(rewrite map.get_put_diff by congruence; exact Hl_oy)
                 ltac:(rewrite map.get_put_diff by congruence; exact Hl_oz)

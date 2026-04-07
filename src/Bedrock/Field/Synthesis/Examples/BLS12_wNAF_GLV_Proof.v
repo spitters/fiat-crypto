@@ -97,6 +97,9 @@ Section WNAF_GLV.
          pTP pTPhi pDK1 pDK2
          (Ox Oy Oz Ax Ay Az : F) R0 tr0 m0 l0,
          (n < 129)%nat ->
+         (Ox,Oy,Oz) = curve_add
+           (scmul_glv (Z.to_nat (weighted_sum (skipn (S n) dk1) 0)) (Px,Py,Pz))
+           (scmul_glv (Z.to_nat (weighted_sum (skipn (S n) dk2) 0)) (Phix,Phiy,Phiz)) ->
          (Point3 (Some tight_bounds) pOx pOy pOz Ox Oy Oz
           ⋆ Point3 (Some tight_bounds) pAx pAy pAz Ax Ay Az ⋆ R0) m0 ->
          map.get l0 "outx" = Some pOx -> map.get l0 "outy" = Some pOy ->
@@ -234,7 +237,7 @@ Section WNAF_GLV.
         (* Apply HLoopBody *)
         specialize (HLoopBody n pOx pOy pOz pAx pAy pAz pTP pTPhi pDK1 pDK2
           Oxi Oyi Ozi Axi Ayi Azi R tr m1 l1
-          Hn_lt Hsep_i Hl_ox' Hl_oy' Hl_oz' Hl_ax' Hl_ay' Hl_az'
+          Hn_lt Hout_i Hsep_i Hl_ox' Hl_oy' Hl_oz' Hl_ax' Hl_ay' Hl_az'
           Hl_tp' Hl_tphi' Hl_dk1' Hl_dk2' Hl_iter').
 
         eapply WeakestPreconditionProperties.Proper_cmd; [|exact HLoopBody].
