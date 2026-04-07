@@ -11,7 +11,7 @@ Require Import Crypto.Spec.HashToCurveIsogenyCompute.
 Require Import Crypto.Spec.HashToCurveSWUProof.
 
 Local Open Scope Z_scope.
-Import HashToCurveIsogenyCompute.  (* Import p_Z as a shared Definition *)
+Import HashToCurveIsogenyCompute.
 Local Notation fpoly cs x := (F.of_Z p_pos (poly_eval_Z cs x)).
 
 Lemma pe_cons2 : forall a b rest x,
@@ -55,15 +55,10 @@ Proof.
       with ((a + b) mod p_Z :: poly_add_Z p_Z (a2 :: f'') (b2 :: g'')).
     rewrite (pe_cons_ne _ _ _ (poly_add_nonempty _ a2 f'' b2 g'')).
     rewrite (pe_cons2 a a2 f'' x), (pe_cons2 b b2 g'' x).
-    (* LHS: ((a+b) mod p + x * pe_add) mod p *)
-    (* RHS: (a + x*pe_f + (b + x*pe_g)) mod p *)
-    (* Normalize LHS: idemp_l strips (a+b) mod p *)
     rewrite Zplus_mod_idemp_l.
-    (* LHS: (a + b + x * pe_add) mod p *)
     rewrite Zplus_mod, (Zmult_mod x).
     rewrite IH.
     rewrite <- (Zmult_mod x), <- Zplus_mod.
-    (* LHS: (a + b + x * (pe_f + pe_g)) mod p *)
     f_equal.
     set (pf := poly_eval_Z (a2 :: f'') x).
     set (pg := poly_eval_Z (b2 :: g'') x).
@@ -112,7 +107,6 @@ Proof.
     rewrite Zplus_mod, (Zmult_mod x pe_mul). subst pe_mul. rewrite IH.
     set (pe_f := poly_eval_Z f' x).
     rewrite <- (Zmult_mod x).
-    (* Reassemble: use Zplus_mod_idemp on both sides *)
     rewrite !Zplus_mod_idemp_l, !Zplus_mod_idemp_r.
     subst pe_f pe_g.
     f_equal.
@@ -139,7 +133,7 @@ Proof.
 Qed.
 
 (* ================================================================== *)
-(** * F-level bridges via F.eq_to_Z_iff                                *)
+(** * F-level bridges                                                   *)
 (* ================================================================== *)
 
 Lemma fpoly_add : forall f g x,
@@ -230,7 +224,6 @@ Proof.
   change 2%N with (N.of_nat 2). change 3%N with (N.of_nat 3).
   rewrite <- (fpoly_pow ynum_Z 2), <- (fpoly_pow yden_Z 2).
   rewrite <- (fpoly_pow xnum_Z 3), <- (fpoly_pow xden_Z 3).
-  (* Unify all Z.pos p_pos with IsogenyCompute.p_Z *)
   change (Z.pos p_pos) with HashToCurveIsogenyCompute.p_Z.
   rewrite <- ynum2_eq, <- yden2_eq, <- xnum3_eq, <- xden3_eq.
   rewrite <- (fpoly_mul curve_eprime_Z ynum2_Z), <- curve_ynum2_eq.
@@ -244,82 +237,50 @@ Proof.
 Qed.
 
 (* ================================================================== *)
-(** * Isogeny correct for non-kernel points                            *)
+(** * Isogeny maps ALL E' points to E                                  *)
 (* ================================================================== *)
 
-Theorem iso_map_correct : forall (x' y' : Fp),
+(** With the projective iso_map (which returns (0, 2) at kernel points),
+    the isogeny is correct for ALL E' points, not just non-kernel ones. *)
+Theorem iso_map_on_curve : forall (x' y' : Fp),
   on_curve_Eprime (x', y') ->
-  horner_eval_monic iso_xden x' <> 0f ->
-  horner_eval_monic iso_yden x' <> 0f ->
   on_curve_E (iso_map (x', y')).
 Proof.
-  intros x' y' Hcurve Hxd Hyd.
+  intros x' y' Hcurve.
   unfold on_curve_Eprime in Hcurve.
-  unfold on_curve_E, iso_map, bls12_b.
+  unfold on_curve_E, iso_map.
   set (xn := horner_eval iso_xnum x').
   set (xd := horner_eval_monic iso_xden x').
   set (yn := horner_eval iso_ynum x').
   set (yd := horner_eval_monic iso_yden x').
-  assert (Hident := isogeny_identity_F x').
-  fold xn xd yn yd in Hident.
-  fold xd in Hxd. fold yd in Hyd.
-  rewrite <- Hcurve in Hident.
-  unfold sqr, cube in *.
-  clearbody xn xd yn yd.
-  clear Hcurve x'.
-  (* Goal: y'*yn*inv(yd) * (y'*yn*inv(yd)) = xn*inv(xd)*(xn*inv(xd))*(xn*inv(xd)) + of_Z 4 *)
-  (* Hident: y'*y'*(yn*yn)*(xd*xd*xd) = xn*xn*xn*(yd*yd) + of_Z 4*(xd*xd*xd)*(yd*yd) *)
-  (* Strategy: show Goal * (xd^3 * yd^2) = Hident, then cancel. *)
-  pose proof (Fp_mul_inv_r xd Hxd) as Hxdi.  (* xd * inv(xd) = 1 *)
-  pose proof (Fp_mul_inv_r yd Hyd) as Hydi.  (* yd * inv(yd) = 1 *)
-  pose proof (Fp_inv_nonzero xd Hxd) as Hixd. (* inv(xd) * xd = 1 *)
-  pose proof (Fp_inv_nonzero yd Hyd) as Hiyd. (* inv(yd) * yd = 1 *)
-  (* Cancel lemma *)
-  assert (Hcancel : forall a b c : Fp, c <> 0f -> a *f c = b *f c -> a = b).
-  { intros a0 b0 c0 Hc Hab.
-    assert (Hic := Fp_mul_inv_r c0 Hc).
-    assert (H0 : a0 *f c0 *f F.inv c0 = b0 *f c0 *f F.inv c0).
-    { f_equal. exact Hab. }
-    Opaque F.of_Z. (* prevent ring from normalizing big constants *)
-    replace (a0 *f c0 *f F.inv c0) with (a0 *f (c0 *f F.inv c0)) in H0 by ring.
-    replace (b0 *f c0 *f F.inv c0) with (b0 *f (c0 *f F.inv c0)) in H0 by ring.
-    rewrite Hic in H0.
-    replace (a0 *f 1f) with a0 in H0 by ring.
-    replace (b0 *f 1f) with b0 in H0 by ring.
-    Transparent F.of_Z. exact H0. }
-  set (C := xd *f xd *f xd *f (yd *f yd)).
-  assert (HC : C <> 0f).
-  { subst C. intro HC.
-    assert (Hmn := @mul_nonzero).
-    apply Hxd. destruct (F.eq_dec xd 0f); [assumption|exfalso].
-    apply Hyd. destruct (F.eq_dec yd 0f); [assumption|exfalso].
-    apply (Hmn (xd *f xd *f xd) (yd *f yd)).
-    - apply (Hmn (xd *f xd) xd); [apply (Hmn xd xd); assumption|assumption].
-    - apply (Hmn yd yd); assumption.
-    - exact HC. }
-  apply (Hcancel _ _ C HC).
-  (* Goal: LHS * C = RHS * C *)
-  (* LHS*C = y'*yn*inv(yd)*(y'*yn*inv(yd)) * xd^3*yd^2 *)
-  (*       = y'^2*yn^2 * (inv(yd)*yd)^2 * xd^3          [rearranging + simplifying] *)
-  (*       = y'^2*yn^2*xd^3                                [since inv(yd)*yd=1] *)
-  (* RHS*C = (xn*inv(xd)*(xn*inv(xd))*(xn*inv(xd))+4) * xd^3*yd^2 *)
-  (*       = xn^3*(inv(xd)*xd)^3*yd^2 + 4*xd^3*yd^2     [distributing + rearranging] *)
-  (*       = xn^3*yd^2 + 4*xd^3*yd^2                      [since inv(xd)*xd=1] *)
-  subst C.
-  Opaque F.of_Z.
-  (* Rewrite inv(xd)*xd = 1 and inv(yd)*yd = 1 *)
-  (* First, rearrange so that xd*inv(xd) and yd*inv(yd) are adjacent *)
-  (* Use 'enough' to provide Hident as a subtraction = 0, then field_simplify *)
-  Opaque F.of_Z.
-  field_simplify_eq; try assumption;
-    try (apply mul_nonzero; assumption);
-    try (apply mul_nonzero; [apply mul_nonzero|]; assumption).
-  field_simplify_eq in Hident; try assumption;
-    try (apply mul_nonzero; assumption);
-    try (apply mul_nonzero; [apply mul_nonzero|]; assumption).
-  etransitivity; [exact Hident|].
-  Transparent F.of_Z.
-  set (four := F.of_Z p_pos 4). clearbody four.
-  ring_simplify. reflexivity.
-  Unshelve. split; assumption.
+  set (z := xd *f yd).
+  destruct (fp_eqb z 0f) eqn:Hz.
+  - (* Kernel case: z = 0 → output is (0, of_Z 2), which is on E *)
+    (* (of_Z 2)^2 = of_Z 4 = 0^3 + 4 *)
+    unfold sqr, cube, bls12_b.
+    apply F.eq_to_Z_iff. vm_compute. reflexivity.
+  - (* Normal case: z ≠ 0 *)
+    apply fp_eqb_false_iff in Hz.
+    assert (Hxd : xd <> 0f).
+    { intro Habs. apply Hz. subst z. rewrite Habs. ring. }
+    assert (Hyd : yd <> 0f).
+    { intro Habs. apply Hz. subst z. rewrite Habs. ring. }
+    assert (Hident := isogeny_identity_F x').
+    fold xn xd yn yd in Hident.
+    rewrite <- Hcurve in Hident.
+    unfold sqr, cube, bls12_b in *.
+    subst z. clearbody xn xd yn yd.
+    clear Hcurve x'.
+    Opaque F.of_Z.
+    field_simplify_eq; try assumption;
+      try (apply mul_nonzero; assumption);
+      try (apply mul_nonzero; [apply mul_nonzero|]; assumption).
+    field_simplify_eq in Hident; try assumption;
+      try (apply mul_nonzero; assumption);
+      try (apply mul_nonzero; [apply mul_nonzero|]; assumption).
+    etransitivity; [exact Hident|].
+    Transparent F.of_Z.
+    set (four := F.of_Z p_pos 4). clearbody four.
+    ring_simplify. reflexivity.
+    Unshelve. all: try split; assumption.
 Qed.

@@ -277,15 +277,24 @@ Definition horner_eval_monic (cs : list Fp) (x : Fp) : Fp :=
   horner_eval (cs ++ [1f]) x.
 
 (** The 11-isogeny map phi: E'(x', y') -> E(x, y).
-    x = x_num(x') / x_den(x')
-    y = y' * y_num(x') / y_den(x') *)
+
+    Uses projective computation internally to handle kernel points
+    (where xden = 0) correctly. The projective image is
+      (X, Y, Z) = (xnum * yden, y' * ynum * xden, xden * yden)
+    which is converted to affine (X/Z, Y/Z) when Z ≠ 0.
+    When Z = 0 (kernel points), the image is the point at infinity,
+    represented as (0, 2) since (0, 2) ∈ E: y² = x³ + 4. *)
 Definition iso_map (pt : Fp * Fp) : Fp * Fp :=
   let '(x', y') := pt in
   let xn := horner_eval iso_xnum x' in
   let xd := horner_eval_monic iso_xden x' in
   let yn := horner_eval iso_ynum x' in
   let yd := horner_eval_monic iso_yden x' in
-  (xn *f inv xd, y' *f yn *f inv yd).
+  let z := xd *f yd in
+  if fp_eqb z 0f then
+    (0f, of_Z 2)
+  else
+    (xn *f yd *f inv z, y' *f yn *f xd *f inv z).
 
 (* ================================================================== *)
 (** * map_to_curve for BLS12-381 G1                                    *)
