@@ -97,3 +97,8 @@ Definition bls24_509_opt_c :=
 
 Redirect "bls24_509_pairing" Eval cbv in bls24_509_all_c.
 Redirect "bls24_509_pairing_flat" Eval cbv in bls24_509_opt_c.
+
+(* Jasmin output: use ToJasmin.v for the AST transformation,
+   but generate text via a Python post-processor on the C output
+   to avoid O(n²) string concatenation in vm_compute.
+   See: apply_to_jasmin.py *)
