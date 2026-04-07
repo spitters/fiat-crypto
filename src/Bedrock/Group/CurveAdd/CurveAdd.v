@@ -122,9 +122,11 @@ Section __.
                 * FElem (Some tight_bounds) pZout Zout * R)%sep mem'}.
 
   Lemma compile_ladderstep {tr m l functions}
-        (x1 x2 y1 y2 z1 z2 xout1 yout1 zout1 : F) :
+        (x1 x2 y1 y2 z1 z2 xout1 yout1 zout1 : F)
+        {P} {pred: P (@ladderstep_gallina _ three_b_val x1 x2 y1 y2 z1 z2) -> predicate}
+        {k: nlet_eq_k P (@ladderstep_gallina _ three_b_val x1 x2 y1 y2 z1 z2)} {k_impl} :
     let v := @ladderstep_gallina _ three_b_val x1 x2 y1 y2 z1 z2 in
-    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+    forall
            Rout
            X1_ptr X1_var X2_ptr X2_var Y1_ptr Y1_var Y2_ptr Y2_var
            Z1_ptr Z1_var Z2_ptr Z2_var Xout_ptr Xout_var Yout_ptr Yout_var Zout_ptr Zout_var,
@@ -200,9 +202,11 @@ Section __.
         (FElem (Some loose_bounds) pout three_b_val * Rout)%sep mem' }.
 
   (* Compilation lemma for loading the three_b constant *)
-  Lemma compile_load_three_b {tr m l functions} :
+  Lemma compile_load_three_b {tr m l functions}
+        {P} {pred: P three_b_val -> predicate}
+        {k: nlet_eq_k P three_b_val} {k_impl} :
     let v := three_b_val in
-    forall {P} {pred: P v -> predicate} {k: nlet_eq_k P v} {k_impl}
+    forall
            R out out_ptr out_var out_bounds,
       spec_of_three_b_loader functions ->
       map.get l out_var = Some out_ptr ->

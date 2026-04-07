@@ -1408,7 +1408,7 @@ Section BN256_MillerLoop.
         split.
         { exact Hbqy. }
         split.
-        { (* Sep -- the current sep matches the invariant (with u6p2 scalar) *)
+        { (* Sep -- the current sep matches the invariant (with u6p2 array) *)
           ecancel_assumption. }
         (* Locals: map.get for each variable *)
         repeat split; repeat straightline. }
@@ -1443,29 +1443,53 @@ Section BN256_MillerLoop.
           miller_straightline. (* cmd.set "i" -- updates locals *)
           unfold dlet.dlet; cbv beta.
 
-          (* Process set "word" = load(u6p2 + (i>>6)<<3)
-             This involves a memory load from the 2-word u6p2 array on stack.
-             The index is i>>6 (which word), and the address is
-             u6p2 + ((i>>6)<<3). *)
+          (* Process set "word" = load(u6p2 + (i/64)*8)
+             This involves a memory load that needs special handling.
+             We need to:
+             1. Extract the u6p2 array from the sep
+             2. Prove the load succeeds via u6p2_array_load
+             3. Introduce the loaded value *)
           miller_straightline. (* cmd.seq *)
 
-          (* cmd.set "word" (expr.load access_size.word (u6p2 + ((i>>6)<<3))) *)
+          (* cmd.set "word" (expr.load access_size.word addr_expr) *)
           unfold1_cmd_goal; cbv beta match delta [cmd_body].
           letexists. split.
-          { (* Evaluate load expression *)
+          { (* Evaluate load expression: provide the load result directly *)
             eassert (Harr_sep : (array scalar (word.of_Z 8) a_u6p2 u6p2_limbs ⋆ _) mi).
             { pose proof Hsep_vi as H'. ecancel_assumption. }
-            pose proof (u6p2_array_load a_u6p2 (word.of_Z (Z.of_nat vi)) mi _ Harr_sep) as Hload.
+            pose proof (u6p2_array_load a_u6p2 v mi _ Harr_sep) as Hload.
+            cbv beta zeta in Hload.
+            assert (Hbound_load : (Z.to_nat (word.unsigned (word.sru v (word.of_Z 6))) < Datatypes.length u6p2_limbs)%nat).
+            { cbv [u6p2_limbs]. simpl length.
+              enough (word.unsigned (word.sru v (word.of_Z 6)) < 2) by lia.
+              rewrite word.unsigned_sru_nowrap.
+              { rewrite word.unsigned_of_Z. change (word.wrap 6) with 6.
+                rewrite Z.shiftr_div_pow2 by lia.
+                pose proof (word.unsigned_range v).
+                assert (word.unsigned v < 128).
+                { assert (Hv_eq : v = @word.sub 64 word (word.of_Z (Z.of_nat vi)) (word.of_Z 1)).
+                  { subst v. apply word.unsigned_inj. reflexivity. }
+                  rewrite Hv_eq. rewrite word.unsigned_sub.
+                  rewrite !word.unsigned_of_Z. unfold word.wrap.
+                  assert (0 < vi)%nat by (destruct vi; [exfalso; apply Hne; reflexivity | lia]).
+                  rewrite (Z.mod_small (Z.of_nat vi) (2^64)) by lia.
+                  rewrite (Z.mod_small 1 (2^64)) by lia.
+                  rewrite Z.mod_small by lia. lia. }
+                apply Z.div_lt_upper_bound; lia. }
+              { rewrite word.unsigned_of_Z. change (word.wrap 6) with 6. lia. } }
+            specialize (Hload Hbound_load).
             unfold DEXPR, WeakestPrecondition.dexpr.
             cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
-                 WeakestPrecondition.get WeakestPrecondition.load dlet.dlet].
+                 WeakestPrecondition.get WeakestPrecondition.literal
+                 WeakestPrecondition.load dlet.dlet].
             eexists. split. { resolve_map_get. }
-            eexists. split.
-            { apply Hload. cbv [u6p2_limbs]. simpl length. lia. }
+            eexists. split. { resolve_map_get. }
+            cbv [Semantics.interp_binop].
+            eexists. split. { exact Hload. }
             exact eq_refl. }
           unfold dlet.dlet; cbv beta.
 
-          (* Process set "bit" = (word >> (i & 63)) & 1 *)
+          (* Process set "bit" = (word >> (i%64)) & 1 *)
           miller_straightline. (* cmd.seq *)
           miller_straightline. (* cmd.set "bit" *)
           unfold dlet.dlet; cbv beta.

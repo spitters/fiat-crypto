@@ -1,6 +1,7 @@
 (** * BN256 DSD Final Exponentiation Hard Part WP Proof
-    Proves bn256_final_exp_hard_dsd (25 calls, 7 stackallocs) satisfies its spec.
-    The hard part computes f^{(p^4 - p^2 + 1)/r} using the DSD decomposition.
+    Proves bn256_final_exp_hard_dsd (35 calls, 7 stackallocs) satisfies its spec.
+    The hard part computes f^{(p^4 - p^2 + 1)/r} using the
+    Fuentes-Castaneda Algorithm 1 decomposition for BN curves.
 *)
 
 From Stdlib Require Import Strings.String.
@@ -433,158 +434,207 @@ Section BN256_FinalExpHardDSD.
       cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
       (* ================================================================ *)
-      (* Call 5: sqr(t1, t0) — t1 = t0^2                                 *)
-      (* ================================================================ *)
-      repeat straightline.
-      eapply Semantics.weaken_call.
-      1: { eapply HFp12sqr.
-           split; [exact Hb_t0 |].
-           split; [eexists; ecancel_assumption_with_copy |].
-           ecancel_assumption_with_copy. }
-      intros ? ? ? [? [? [t1_v [Hfeval_t1 [Hb_t1 Hsep_t1]]]]]. subst.
-      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
-
-      (* ================================================================ *)
-      (* Call 6: pow_u(t2, t0) — t2 = pow_u(t0) = f^{u^2}               *)
+      (* Call 5: pow_u(t1, t0) — t1 = f^{u^2}                            *)
       (* ================================================================ *)
       repeat straightline.
       eapply Semantics.weaken_call.
       1: { eapply HFpowu.
            split; [exact Hb_t0 |].
            ecancel_assumption. }
+      intros ? ? ? [? [? [t1_v [Hb_t1 Hsep_t1]]]]. subst.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================ *)
+      (* Call 6: pow_u(t2, t1) — t2 = f^{u^3}                            *)
+      (* ================================================================ *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFpowu.
+           split; [exact Hb_t1 |].
+           ecancel_assumption. }
       intros ? ? ? [? [? [t2_v [Hb_t2 Hsep_t2]]]]. subst.
       cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
       (* ================================================================ *)
-      (* Call 7: sqr(t3, t2) — t3 = t2^2                                 *)
+      (* Call 7: frobenius(t3, t2) — t3 = f^{u^3*p}                      *)
       (* ================================================================ *)
       repeat straightline.
       eapply Semantics.weaken_call.
-      1: { eapply HFp12sqr.
+      1: { eapply HFp12frob.
            split; [exact Hb_t2 |].
-           split; [eexists; ecancel_assumption_with_copy |].
-           ecancel_assumption_with_copy. }
-      intros ? ? ? [? [? [t3_v [Hfeval_t3 [Hb_t3 Hsep_t3]]]]]. subst.
+           split; [exact Hb_g1 |].
+           split; [exact Hb_g2 |].
+           split; [exact Hb_w |].
+           ecancel_assumption. }
+      intros ? ? ? [? [? [t3_v [Hb_t3 Hsep_t3]]]]. subst.
       cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
       (* ================================================================ *)
-      (* Call 8: mul(t1, t1, t2) — t1 = t1 * t2                          *)
+      (* Call 8: mul(t2, t2, t3) — t2 = f^{u^3 + u^3*p}                  *)
       (* ================================================================ *)
       repeat straightline.
       eapply Semantics.weaken_call.
       1: { eapply HFp12mul.
-           split; [exact Hb_t1 |].
            split; [exact Hb_t2 |].
+           split; [exact Hb_t3 |].
            split; [eexists; ecancel_assumption_with_copy |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           ecancel_assumption_with_copy. }
+      intros ? ? ? [? [? [t2_v2 [Hfeval_t2b [Hb_t2b Hsep_t2b]]]]]. subst.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================ *)
+      (* Call 9: conjugate(t2, t2) — t2 = y6                              *)
+      (* ================================================================ *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFp12conj.
+           split; [exact Hb_t2b |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           ecancel_assumption_with_copy. }
+      intros ? ? ? [? [? [t2_v3 [Hfeval_t2c [Hb_t2c Hsep_t2c]]]]]. subst.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================ *)
+      (* Call 10: sqr(out, t2) — out = y6^2                               *)
+      (* ================================================================ *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFp12sqr.
+           split; [exact Hb_t2c |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           ecancel_assumption_with_copy. }
+      intros ? ? ? [? [? [out_v [Hfeval_out [Hb_out Hsep_out]]]]]. subst.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================ *)
+      (* Call 11: frobenius(t3, t1) — t3 = f^{u^2*p}                     *)
+      (* ================================================================ *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFp12frob.
+           split; [exact Hb_t1 |].
+           split; [exact Hb_g1 |].
+           split; [exact Hb_g2 |].
+           split; [exact Hb_w |].
+           ecancel_assumption. }
+      intros ? ? ? [? [? [t3_v2 [Hb_t3b Hsep_t3b]]]]. subst.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================ *)
+      (* Call 12: mul(t2, t0, t3) — t2 = f^{u + u^2*p}                   *)
+      (* ================================================================ *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFp12mul.
+           split; [exact Hb_t0 |].
+           split; [exact Hb_t3b |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           ecancel_assumption_with_copy. }
+      intros ? ? ? [? [? [t2_v4 [Hfeval_t2d [Hb_t2d Hsep_t2d]]]]]. subst.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================ *)
+      (* Call 13: conjugate(t2, t2) — t2 = y4                             *)
+      (* ================================================================ *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFp12conj.
+           split; [exact Hb_t2d |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           ecancel_assumption_with_copy. }
+      intros ? ? ? [? [? [t2_v5 [Hfeval_t2e [Hb_t2e Hsep_t2e]]]]]. subst.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================ *)
+      (* Call 14: mul(out, out, t2) — out = y6^2 * y4                     *)
+      (* ================================================================ *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFp12mul.
+           split; [exact Hb_out |].
+           split; [exact Hb_t2e |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           ecancel_assumption_with_copy. }
+      intros ? ? ? [? [? [out_v2 [Hfeval_outb [Hb_outb Hsep_outb]]]]]. subst.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================ *)
+      (* Call 15: conjugate(t1, t1) — t1 = y5 = f^{-u^2}                 *)
+      (* ================================================================ *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFp12conj.
+           split; [exact Hb_t1 |].
            split; [eexists; ecancel_assumption_with_copy |].
            ecancel_assumption_with_copy. }
       intros ? ? ? [? [? [t1_v2 [Hfeval_t1b [Hb_t1b Hsep_t1b]]]]]. subst.
       cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
       (* ================================================================ *)
-      (* Call 9: pow_u(t2, t2) — IN-PLACE — t2 = pow_u(t2) = f^{u^3}   *)
-      (* ================================================================ *)
-      repeat straightline.
-      eapply Semantics.weaken_call.
-      1: { eapply HFpowu_ip; [exact Hb_t2 | ecancel_assumption]. }
-      intros ? ? ? [? [? [t2_v2 [Hb_t2b Hsep_t2b]]]]. subst.
-      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
-
-      (* ================================================================ *)
-      (* Call 10: mul(t1, t1, t2) — t1 = t1 * t2                         *)
+      (* Call 16: mul(out, out, t1) — out = T01 = y6^2 * y4 * y5         *)
       (* ================================================================ *)
       repeat straightline.
       eapply Semantics.weaken_call.
       1: { eapply HFp12mul.
+           split; [exact Hb_outb |].
            split; [exact Hb_t1b |].
-           split; [exact Hb_t2b |].
            split; [eexists; ecancel_assumption_with_copy |].
            split; [eexists; ecancel_assumption_with_copy |].
            ecancel_assumption_with_copy. }
-      intros ? ? ? [? [? [t1_v3 [Hfeval_t1c [Hb_t1c Hsep_t1c]]]]]. subst.
+      intros ? ? ? [? [? [out_v3 [Hfeval_outc [Hb_outc Hsep_outc]]]]]. subst.
       cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
       (* ================================================================ *)
-      (* Call 11: conjugate(t1, t1)                                       *)
+      (* Call 17: frobenius(t2, t0) — t2 = f^{u*p}                       *)
+      (* ================================================================ *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFp12frob.
+           split; [exact Hb_t0 |].
+           split; [exact Hb_g1 |].
+           split; [exact Hb_g2 |].
+           split; [exact Hb_w |].
+           ecancel_assumption. }
+      intros ? ? ? [? [? [t2_v6 [Hb_t2f Hsep_t2f]]]]. subst.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================ *)
+      (* Call 18: conjugate(t2, t2) — t2 = y3                             *)
       (* ================================================================ *)
       repeat straightline.
       eapply Semantics.weaken_call.
       1: { eapply HFp12conj.
-           split; [exact Hb_t1c |].
+           split; [exact Hb_t2f |].
            split; [eexists; ecancel_assumption_with_copy |].
            ecancel_assumption_with_copy. }
-      intros ? ? ? [? [? [t1_v4 [Hfeval_t1d [Hb_t1d Hsep_t1d]]]]]. subst.
+      intros ? ? ? [? [? [t2_v7 [Hfeval_t2g [Hb_t2g Hsep_t2g]]]]]. subst.
       cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
       (* ================================================================ *)
-      (* Call 12: mul(t1, t1, f) — t1 = t1 * f                           *)
+      (* Call 19: mul(t0, out, t2) — t0 = T01 * y3                       *)
       (* ================================================================ *)
       repeat straightline.
       eapply Semantics.weaken_call.
       1: { eapply HFp12mul.
-           split; [exact Hb_t1d |].
-           split; [exact Hbf |].
+           split; [exact Hb_outc |].
+           split; [exact Hb_t2g |].
            split; [eexists; ecancel_assumption_with_copy |].
-           split; [eexists; ecancel_assumption_with_copy |].
-           ecancel_assumption_with_copy. }
-      intros ? ? ? [? [? [t1_v5 [Hfeval_t1e [Hb_t1e Hsep_t1e]]]]]. subst.
-      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
-
-      (* ================================================================ *)
-      (* Call 13: conjugate(t1, t1)                                       *)
-      (* ================================================================ *)
-      repeat straightline.
-      eapply Semantics.weaken_call.
-      1: { eapply HFp12conj.
-           split; [exact Hb_t1e |].
-           split; [eexists; ecancel_assumption_with_copy |].
-           ecancel_assumption_with_copy. }
-      intros ? ? ? [? [? [t1_v6 [Hfeval_t1f [Hb_t1f Hsep_t1f]]]]]. subst.
-      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
-
-      (* ================================================================ *)
-      (* Call 14: conjugate(t0, f) — t0 = conj(f)                        *)
-      (* ================================================================ *)
-      repeat straightline.
-      eapply Semantics.weaken_call.
-      1: { eapply HFp12conj.
-           split; [exact Hbf |].
            split; [eexists; ecancel_assumption_with_copy |].
            ecancel_assumption_with_copy. }
       intros ? ? ? [? [? [t0_v2 [Hfeval_t0b [Hb_t0b Hsep_t0b]]]]]. subst.
       cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
       (* ================================================================ *)
-      (* Call 15: mul(t1, t1, t0) — t1 = t1 * conj(f)                    *)
+      (* Call 20: mul(t0, t0, t1) — t0 = T11 = T01 * y3 * y5            *)
       (* ================================================================ *)
       repeat straightline.
       eapply Semantics.weaken_call.
       1: { eapply HFp12mul.
-           split; [exact Hb_t1f |].
            split; [exact Hb_t0b |].
-           split; [eexists; ecancel_assumption_with_copy |].
-           split; [eexists; ecancel_assumption_with_copy |].
-           ecancel_assumption_with_copy. }
-      intros ? ? ? [? [? [t1_v7 [Hfeval_t1g [Hb_t1g Hsep_t1g]]]]]. subst.
-      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
-
-      (* ================================================================ *)
-      (* Call 16: pow_u(t2, t2) — IN-PLACE — t2 = pow_u(t2) = f^{u^4}  *)
-      (* ================================================================ *)
-      repeat straightline.
-      eapply Semantics.weaken_call.
-      1: { eapply HFpowu_ip; [exact Hb_t2b | ecancel_assumption]. }
-      intros ? ? ? [? [? [t2_v3 [Hb_t2c Hsep_t2c]]]]. subst.
-      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
-
-      (* ================================================================ *)
-      (* Call 17: mul(t0, t2, t3)                                         *)
-      (* ================================================================ *)
-      repeat straightline.
-      eapply Semantics.weaken_call.
-      1: { eapply HFp12mul.
-           split; [exact Hb_t2c |].
-           split; [exact Hb_t3 |].
+           split; [exact Hb_t1b |].
            split; [eexists; ecancel_assumption_with_copy |].
            split; [eexists; ecancel_assumption_with_copy |].
            ecancel_assumption_with_copy. }
@@ -592,21 +642,73 @@ Section BN256_FinalExpHardDSD.
       cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
       (* ================================================================ *)
-      (* Call 18: mul(t0, t0, t1)                                         *)
+      (* Call 21: frobenius(t1, t3) — t1 = f^{u^2*p^2} = y2             *)
+      (* ================================================================ *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFp12frob.
+           split; [exact Hb_t3b |].
+           split; [exact Hb_g1 |].
+           split; [exact Hb_g2 |].
+           split; [exact Hb_w |].
+           ecancel_assumption. }
+      intros ? ? ? [? [? [t1_v3 [Hb_t1c Hsep_t1c]]]]. subst.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================ *)
+      (* Call 22: mul(out, out, t1) — out = T02 = T01 * y2               *)
       (* ================================================================ *)
       repeat straightline.
       eapply Semantics.weaken_call.
       1: { eapply HFp12mul.
-           split; [exact Hb_t0c |].
-           split; [exact Hb_t1g |].
+           split; [exact Hb_outc |].
+           split; [exact Hb_t1c |].
            split; [eexists; ecancel_assumption_with_copy |].
            split; [eexists; ecancel_assumption_with_copy |].
            ecancel_assumption_with_copy. }
-      intros ? ? ? [? [? [t0_v4 [Hfeval_t0d [Hb_t0d Hsep_t0d]]]]]. subst.
+      intros ? ? ? [? [? [out_v4 [Hfeval_outd [Hb_outd Hsep_outd]]]]]. subst.
       cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
       (* ================================================================ *)
-      (* Call 19: frobenius(t1, f, gamma1, gamma2, w_frob_c1)             *)
+      (* Call 23: sqr(t1, t0) — t1 = T11^2                               *)
+      (* ================================================================ *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFp12sqr.
+           split; [exact Hb_t0c |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           ecancel_assumption_with_copy. }
+      intros ? ? ? [? [? [t1_v4 [Hfeval_t1d [Hb_t1d Hsep_t1d]]]]]. subst.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================ *)
+      (* Call 24: mul(t1, t1, out) — t1 = T12 = T11^2 * T02              *)
+      (* ================================================================ *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFp12mul.
+           split; [exact Hb_t1d |].
+           split; [exact Hb_outd |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           ecancel_assumption_with_copy. }
+      intros ? ? ? [? [? [t1_v5 [Hfeval_t1e [Hb_t1e Hsep_t1e]]]]]. subst.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================ *)
+      (* Call 25: sqr(t1, t1) — t1 = T13 = T12^2                         *)
+      (* ================================================================ *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFp12sqr.
+           split; [exact Hb_t1e |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           ecancel_assumption_with_copy. }
+      intros ? ? ? [? [? [t1_v6 [Hfeval_t1f [Hb_t1f Hsep_t1f]]]]]. subst.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================ *)
+      (* Call 26: frobenius(t0, f) — t0 = f^p                             *)
       (* ================================================================ *)
       repeat straightline.
       eapply Semantics.weaken_call.
@@ -616,45 +718,45 @@ Section BN256_FinalExpHardDSD.
            split; [exact Hb_g2 |].
            split; [exact Hb_w |].
            ecancel_assumption. }
-      intros ? ? ? [? [? [frob1_v [Hb_frob1 Hsep_frob1]]]]. subst.
+      intros ? ? ? [? [? [t0_v4 [Hb_t0d Hsep_t0d]]]]. subst.
       cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
       (* ================================================================ *)
-      (* Call 20: frobenius(t2, t1, gamma1, gamma2, w_frob_c1)            *)
+      (* Call 27: frobenius(t2, t0) — t2 = f^{p^2}                       *)
       (* ================================================================ *)
       repeat straightline.
       eapply Semantics.weaken_call.
       1: { eapply HFp12frob.
-           split; [exact Hb_frob1 |].
+           split; [exact Hb_t0d |].
            split; [exact Hb_g1 |].
            split; [exact Hb_g2 |].
            split; [exact Hb_w |].
            ecancel_assumption. }
-      intros ? ? ? [? [? [frob2_v [Hb_frob2 Hsep_frob2]]]]. subst.
+      intros ? ? ? [? [? [t2_v8 [Hb_t2h Hsep_t2h]]]]. subst.
       cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
       (* ================================================================ *)
-      (* Call 21: frobenius(t3, t2, gamma1, gamma2, w_frob_c1)            *)
+      (* Call 28: frobenius(t3, t2) — t3 = f^{p^3}                       *)
       (* ================================================================ *)
       repeat straightline.
       eapply Semantics.weaken_call.
       1: { eapply HFp12frob.
-           split; [exact Hb_frob2 |].
+           split; [exact Hb_t2h |].
            split; [exact Hb_g1 |].
            split; [exact Hb_g2 |].
            split; [exact Hb_w |].
            ecancel_assumption. }
-      intros ? ? ? [? [? [frob3_v [Hb_frob3 Hsep_frob3]]]]. subst.
+      intros ? ? ? [? [? [t3_v3 [Hb_t3c Hsep_t3c]]]]. subst.
       cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
       (* ================================================================ *)
-      (* Call 22: mul(t0, t0, t1)                                         *)
+      (* Call 29: mul(t0, t0, t2) — t0 = f^{p + p^2}                     *)
       (* ================================================================ *)
       repeat straightline.
       eapply Semantics.weaken_call.
       1: { eapply HFp12mul.
            split; [exact Hb_t0d |].
-           split; [exact Hb_frob1 |].
+           split; [exact Hb_t2h |].
            split; [eexists; ecancel_assumption_with_copy |].
            split; [eexists; ecancel_assumption_with_copy |].
            ecancel_assumption_with_copy. }
@@ -662,13 +764,13 @@ Section BN256_FinalExpHardDSD.
       cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
       (* ================================================================ *)
-      (* Call 23: mul(t0, t0, t2)                                         *)
+      (* Call 30: mul(t0, t0, t3) — t0 = y0 = f^{p + p^2 + p^3}         *)
       (* ================================================================ *)
       repeat straightline.
       eapply Semantics.weaken_call.
       1: { eapply HFp12mul.
            split; [exact Hb_t0e |].
-           split; [exact Hb_frob2 |].
+           split; [exact Hb_t3c |].
            split; [eexists; ecancel_assumption_with_copy |].
            split; [eexists; ecancel_assumption_with_copy |].
            ecancel_assumption_with_copy. }
@@ -676,27 +778,69 @@ Section BN256_FinalExpHardDSD.
       cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
       (* ================================================================ *)
-      (* Call 24: mul(t0, t0, t3)                                         *)
+      (* Call 31: mul(t2, t1, t0) — t2 = T14 = T13 * y0                  *)
       (* ================================================================ *)
       repeat straightline.
       eapply Semantics.weaken_call.
       1: { eapply HFp12mul.
+           split; [exact Hb_t1f |].
            split; [exact Hb_t0f |].
-           split; [exact Hb_frob3 |].
            split; [eexists; ecancel_assumption_with_copy |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           ecancel_assumption_with_copy. }
+      intros ? ? ? [? [? [t2_v9 [Hfeval_t2i [Hb_t2i Hsep_t2i]]]]]. subst.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================ *)
+      (* Call 32: conjugate(t0, f) — t0 = y1 = conj(f) = f^{-1}          *)
+      (* ================================================================ *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFp12conj.
+           split; [exact Hbf |].
            split; [eexists; ecancel_assumption_with_copy |].
            ecancel_assumption_with_copy. }
       intros ? ? ? [? [? [t0_v7 [Hfeval_t0g [Hb_t0g Hsep_t0g]]]]]. subst.
       cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
       (* ================================================================ *)
-      (* Call 25: copy(out, t0)                                           *)
+      (* Call 33: mul(t0, t1, t0) — t0 = T03 = T13 * y1                  *)
       (* ================================================================ *)
       repeat straightline.
       eapply Semantics.weaken_call.
-      1: { eapply HFp12copy.
-           split; ecancel_assumption_with_copy. }
-      intros ? ? ? [? [? Hsep_copy]]. subst.
+      1: { eapply HFp12mul.
+           split; [exact Hb_t1f |].
+           split; [exact Hb_t0g |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           ecancel_assumption_with_copy. }
+      intros ? ? ? [? [? [t0_v8 [Hfeval_t0h [Hb_t0h Hsep_t0h]]]]]. subst.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================ *)
+      (* Call 34: sqr(t0, t0) — t0 = T03^2                               *)
+      (* ================================================================ *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFp12sqr.
+           split; [exact Hb_t0h |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           ecancel_assumption_with_copy. }
+      intros ? ? ? [? [? [t0_v9 [Hfeval_t0i [Hb_t0i Hsep_t0i]]]]]. subst.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* ================================================================ *)
+      (* Call 35: mul(out, t0, t2) — out = T03^2 * T14 = RESULT          *)
+      (* ================================================================ *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFp12mul.
+           split; [exact Hb_t0i |].
+           split; [exact Hb_t2i |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           split; [eexists; ecancel_assumption_with_copy |].
+           ecancel_assumption_with_copy. }
+      intros ? ? ? [? [? [out_v5 [Hfeval_oute [Hb_oute Hsep_oute]]]]]. subst.
       cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
 
       (* ================================================================ *)
@@ -707,13 +851,13 @@ Section BN256_FinalExpHardDSD.
       match goal with Hc : (_ ⋆ _)%sep ?m |- _ =>
         assert (Hsep_w_front :
           (FElem_Fp2 a_wfc1 wfc1_v ⋆
-           (FElem_Fp12 pout t0_v7 ⋆
-            (FElem_Fp12 a_t0 t0_v7 ⋆
-             (FElem_Fp2 a_gamma2 gamma2_v ⋆
-              (FElem_Fp2 a_gamma1 gamma1_v ⋆
-               (FElem_Fp12 a_t3 frob3_v ⋆
-                (FElem_Fp12 a_t2 frob2_v ⋆
-                 (FElem_Fp12 a_t1 frob1_v ⋆
+           (FElem_Fp12 pout out_v5 ⋆
+            (FElem_Fp2 a_gamma2 gamma2_v ⋆
+             (FElem_Fp2 a_gamma1 gamma1_v ⋆
+              (FElem_Fp12 a_t3 t3_v3 ⋆
+               (FElem_Fp12 a_t2 t2_v9 ⋆
+                (FElem_Fp12 a_t1 t1_v6 ⋆
+                 (FElem_Fp12 a_t0 t0_v9 ⋆
                   (FElem_Fp12 pf f_val ⋆ Rr))))))))) m);
         [ecancel_assumption | clear Hc]
       end.
@@ -730,12 +874,12 @@ Section BN256_FinalExpHardDSD.
       (* Dealloc gamma2 (Fp2) *)
       assert (Hsep_g2_front :
         (FElem_Fp2 a_gamma2 gamma2_v ⋆
-         (FElem_Fp12 pout t0_v7 ⋆
-          (FElem_Fp12 a_t0 t0_v7 ⋆
-           (FElem_Fp2 a_gamma1 gamma1_v ⋆
-            (FElem_Fp12 a_t3 frob3_v ⋆
-             (FElem_Fp12 a_t2 frob2_v ⋆
-              (FElem_Fp12 a_t1 frob1_v ⋆
+         (FElem_Fp12 pout out_v5 ⋆
+          (FElem_Fp2 a_gamma1 gamma1_v ⋆
+           (FElem_Fp12 a_t3 t3_v3 ⋆
+            (FElem_Fp12 a_t2 t2_v9 ⋆
+             (FElem_Fp12 a_t1 t1_v6 ⋆
+              (FElem_Fp12 a_t0 t0_v9 ⋆
                (FElem_Fp12 pf f_val ⋆ Rr)))))))) m_after_w).
       { ecancel_assumption. }
       clear Hrest_w.
@@ -752,11 +896,11 @@ Section BN256_FinalExpHardDSD.
       (* Dealloc gamma1 (Fp2) *)
       assert (Hsep_g1_front :
         (FElem_Fp2 a_gamma1 gamma1_v ⋆
-         (FElem_Fp12 pout t0_v7 ⋆
-          (FElem_Fp12 a_t0 t0_v7 ⋆
-           (FElem_Fp12 a_t3 frob3_v ⋆
-            (FElem_Fp12 a_t2 frob2_v ⋆
-             (FElem_Fp12 a_t1 frob1_v ⋆
+         (FElem_Fp12 pout out_v5 ⋆
+          (FElem_Fp12 a_t3 t3_v3 ⋆
+           (FElem_Fp12 a_t2 t2_v9 ⋆
+            (FElem_Fp12 a_t1 t1_v6 ⋆
+             (FElem_Fp12 a_t0 t0_v9 ⋆
               (FElem_Fp12 pf f_val ⋆ Rr))))))) m_after_g2).
       { ecancel_assumption. }
       clear Hrest_g2.
@@ -772,11 +916,11 @@ Section BN256_FinalExpHardDSD.
 
       (* Dealloc t3 (Fp12) *)
       assert (Hsep_t3_front :
-        (FElem_Fp12 a_t3 frob3_v ⋆
-         (FElem_Fp12 pout t0_v7 ⋆
-          (FElem_Fp12 a_t0 t0_v7 ⋆
-           (FElem_Fp12 a_t2 frob2_v ⋆
-            (FElem_Fp12 a_t1 frob1_v ⋆
+        (FElem_Fp12 a_t3 t3_v3 ⋆
+         (FElem_Fp12 pout out_v5 ⋆
+          (FElem_Fp12 a_t2 t2_v9 ⋆
+           (FElem_Fp12 a_t1 t1_v6 ⋆
+            (FElem_Fp12 a_t0 t0_v9 ⋆
              (FElem_Fp12 pf f_val ⋆ Rr)))))) m_after_g1).
       { ecancel_assumption. }
       clear Hrest_g1.
@@ -784,7 +928,7 @@ Section BN256_FinalExpHardDSD.
       assert (Hab_t3 : Memory.anybytes a_t3 (AbstractField.felem_size_in_bytes (F:=Fp12)) mStack_t3).
       { pose proof (AbstractField.FElem_to_bytes
                       (field_representation:=bn256_Fp12_rep')
-                      a_t3 frob3_v mStack_t3 Hfe_t3) as Ht3_bytes.
+                      a_t3 t3_v3 mStack_t3 Hfe_t3) as Ht3_bytes.
         cbv [Placeholder] in Ht3_bytes. exact Ht3_bytes. }
       exists m_after_t3, mStack_t3.
       split. { exact Hab_t3. }
@@ -792,10 +936,10 @@ Section BN256_FinalExpHardDSD.
 
       (* Dealloc t2 (Fp12) *)
       assert (Hsep_t2_front :
-        (FElem_Fp12 a_t2 frob2_v ⋆
-         (FElem_Fp12 pout t0_v7 ⋆
-          (FElem_Fp12 a_t0 t0_v7 ⋆
-           (FElem_Fp12 a_t1 frob1_v ⋆
+        (FElem_Fp12 a_t2 t2_v9 ⋆
+         (FElem_Fp12 pout out_v5 ⋆
+          (FElem_Fp12 a_t1 t1_v6 ⋆
+           (FElem_Fp12 a_t0 t0_v9 ⋆
             (FElem_Fp12 pf f_val ⋆ Rr))))) m_after_t3).
       { ecancel_assumption. }
       clear Hrest_t3.
@@ -803,7 +947,7 @@ Section BN256_FinalExpHardDSD.
       assert (Hab_t2 : Memory.anybytes a_t2 (AbstractField.felem_size_in_bytes (F:=Fp12)) mStack_t2).
       { pose proof (AbstractField.FElem_to_bytes
                       (field_representation:=bn256_Fp12_rep')
-                      a_t2 frob2_v mStack_t2 Hfe_t2) as Ht2_bytes.
+                      a_t2 t2_v9 mStack_t2 Hfe_t2) as Ht2_bytes.
         cbv [Placeholder] in Ht2_bytes. exact Ht2_bytes. }
       exists m_after_t2, mStack_t2.
       split. { exact Hab_t2. }
@@ -811,9 +955,9 @@ Section BN256_FinalExpHardDSD.
 
       (* Dealloc t1 (Fp12) *)
       assert (Hsep_t1_front :
-        (FElem_Fp12 a_t1 frob1_v ⋆
-         (FElem_Fp12 pout t0_v7 ⋆
-          (FElem_Fp12 a_t0 t0_v7 ⋆
+        (FElem_Fp12 a_t1 t1_v6 ⋆
+         (FElem_Fp12 pout out_v5 ⋆
+          (FElem_Fp12 a_t0 t0_v9 ⋆
            (FElem_Fp12 pf f_val ⋆ Rr)))) m_after_t2).
       { ecancel_assumption. }
       clear Hrest_t2.
@@ -821,7 +965,7 @@ Section BN256_FinalExpHardDSD.
       assert (Hab_t1 : Memory.anybytes a_t1 (AbstractField.felem_size_in_bytes (F:=Fp12)) mStack_t1).
       { pose proof (AbstractField.FElem_to_bytes
                       (field_representation:=bn256_Fp12_rep')
-                      a_t1 frob1_v mStack_t1 Hfe_t1) as Ht1_bytes.
+                      a_t1 t1_v6 mStack_t1 Hfe_t1) as Ht1_bytes.
         cbv [Placeholder] in Ht1_bytes. exact Ht1_bytes. }
       exists m_after_t1, mStack_t1.
       split. { exact Hab_t1. }
@@ -829,8 +973,8 @@ Section BN256_FinalExpHardDSD.
 
       (* Dealloc t0 (Fp12) *)
       assert (Hsep_t0_front :
-        (FElem_Fp12 a_t0 t0_v7 ⋆
-         (FElem_Fp12 pout t0_v7 ⋆
+        (FElem_Fp12 a_t0 t0_v9 ⋆
+         (FElem_Fp12 pout out_v5 ⋆
           (FElem_Fp12 pf f_val ⋆ Rr))) m_after_t1).
       { ecancel_assumption. }
       clear Hrest_t1.
@@ -838,7 +982,7 @@ Section BN256_FinalExpHardDSD.
       assert (Hab_t0 : Memory.anybytes a_t0 (AbstractField.felem_size_in_bytes (F:=Fp12)) mStack_t0).
       { pose proof (AbstractField.FElem_to_bytes
                       (field_representation:=bn256_Fp12_rep')
-                      a_t0 t0_v7 mStack_t0 Hfe_t0) as Ht0_bytes.
+                      a_t0 t0_v9 mStack_t0 Hfe_t0) as Ht0_bytes.
         cbv [Placeholder] in Ht0_bytes. exact Ht0_bytes. }
       exists m_final, mStack_t0.
       split. { exact Hab_t0. }
@@ -848,8 +992,8 @@ Section BN256_FinalExpHardDSD.
       cbv [list_map list_map_body WeakestPrecondition.get].
       split. { reflexivity. }
       split. { reflexivity. }
-      exists t0_v7.
-      split. { exact Hb_t0g. }
+      exists out_v5.
+      split. { exact Hb_oute. }
       exact Hrest_final.
     Qed.
 

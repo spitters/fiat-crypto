@@ -19,7 +19,7 @@
     - Different Frobenius constants
     - u is POSITIVE => NO conjugation after Miller loop
 
-    WP proofs are stubs (exact I) -- the function bodies are real.
+    WP proofs are in companion files (PairingHelpers, MillerLoop, etc.).
 *)
 
 From Stdlib Require Import Strings.String.
@@ -55,9 +55,11 @@ Local Open Scope list_scope.
 
 (* Compatibility shim *)
 Local Notation function_t := (String.string * (list String.string * list String.string * Syntax.cmd.cmd))%type.
-Local Definition program_logic_goal_for (_ : function_t) (P : Prop) := P.
-Local Notation "program_logic_goal_for_function! proc" :=
-  (program_logic_goal_for proc True) (at level 10, only parsing).
+
+(* NOTE: This file defines function BODIES only. WP correctness proofs
+   are in the companion files: BN256_PairingHelpers.v, BN256_MillerLoop.v,
+   BN256_PowU.v, BN256_FinalExpHardDSD.v, BN256_FinalExpDSD.v,
+   BN256_PairingTop.v. *)
 
 Section BN256_Pairing.
 
@@ -322,10 +324,6 @@ Section BN256_Pairing.
          coq:(cmd.call [] fp_mul_name
            [expr_fp_snd (expr.var "out"); expr_fp_snd (expr.var "x"); expr.var "s"])
        ))).
-
-    Lemma bn256_Fp2_mul_fp_ok : program_logic_goal_for_function! bn256_Fp2_mul_fp.
-    Proof. exact I. Qed.
-
     (* ============================================================== *)
     (* make_line: construct line evaluation as Fp12                    *)
     (*   c0 = (lambda*x_T - y_T, -(lambda*x_P), 0)                   *)
@@ -378,10 +376,6 @@ Section BN256_Pairing.
               expr.literal 0]
          ])
        ))).
-
-    Lemma bn256_make_line_ok : program_logic_goal_for_function! bn256_make_line.
-    Proof. exact I. Qed.
-
     (* ============================================================== *)
     (* Frobenius constant loaders for BN256                            *)
     (*                                                                  *)
@@ -439,33 +433,18 @@ Section BN256_Pairing.
        (["out"], []:list String.string,
         store_fp2_real_only "out"
           0x12d3cef5e1ada57d 0xe2eca1463753babb 0x0ca41e40ddccf750 0x551337060397e04c)).
-
-    Lemma bn256_load_gamma1_p2_ok :
-      program_logic_goal_for_function! bn256_load_gamma1_p2.
-    Proof. exact I. Qed.
-
     (* gamma2_p2 = xi^{2(p^2-1)/3} for BN256 in Montgomery form *)
     Definition bn256_load_gamma2_p2 : function_t :=
       ("bn256_load_gamma2_p2",
        (["out"], []:list String.string,
         store_fp2_real_only "out"
           0x3642364f386c1db8 0xe825f92d2acd661f 0xf2aba7e846c19d14 0x5a0bcea3dc52b7a0)).
-
-    Lemma bn256_load_gamma2_p2_ok :
-      program_logic_goal_for_function! bn256_load_gamma2_p2.
-    Proof. exact I. Qed.
-
     (* w_frob_p2_c1 = xi^{(p^2-1)/6} for BN256 in Montgomery form *)
     Definition bn256_load_w_frob_p2_c1 : function_t :=
       ("bn256_load_w_frob_p2_c1",
        (["out"], []:list String.string,
         store_fp2_real_only "out"
           0xe21a761d259c78af 0x06358fa3f5e84f7e 0xb7c444d01ac33f0d 0x35a9333f6e50d058)).
-
-    Lemma bn256_load_w_frob_p2_c1_ok :
-      program_logic_goal_for_function! bn256_load_w_frob_p2_c1.
-    Proof. exact I. Qed.
-
     (* ============================================================== *)
     (* Helper: set an Fp12 element to the multiplicative identity      *)
     (* (1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0) in Fp components        *)
@@ -528,16 +507,15 @@ Section BN256_Pairing.
         cmd.set "i" (expr.op bopname.sub (expr.var "i") (expr.literal 1));
 
         (* Extract bit i from two-word u6p2:
-           word_idx = i / 64 (0 or 1), bit_idx = i mod 64
-           We use: word_offset = (i >> 6) << 3 = (i / 64) * 8 *)
-        cmd.set "word_off" (expr.op bopname.mul
-          (expr.op bopname.sru (expr.var "i") (expr.literal 6))
-          (expr.literal 8));
-        cmd.set "bit_idx" (expr.op bopname.and (expr.var "i") (expr.literal 63));
+           word = u6p2[(i >> 6) << 3], bit = (word >> (i & 63)) & 1 *)
         cmd.set "word" (expr.load access_size.word
-          (expr.op bopname.add (expr.var "u6p2") (expr.var "word_off")));
+          (expr.op bopname.add (expr.var "u6p2")
+            (expr.op bopname.slu
+              (expr.op bopname.sru (expr.var "i") (expr.literal 6))
+              (expr.literal 3))));
         cmd.set "bit" (expr.op bopname.and
-          (expr.op bopname.sru (expr.var "word") (expr.var "bit_idx"))
+          (expr.op bopname.sru (expr.var "word")
+            (expr.op bopname.and (expr.var "i") (expr.literal 63)))
           (expr.literal 1));
 
         (* === Doubling step === *)
@@ -653,10 +631,6 @@ Section BN256_Pairing.
           stackalloc 16 as u6p2;
           coq:(miller_loop_full_body)
         ))).
-
-    Lemma bn256_miller_loop_ok : program_logic_goal_for_function! bn256_miller_loop.
-    Proof. exact I. Qed.
-
     (* ============================================================== *)
     (* Final exponentiation                                            *)
     (*   f^{(p^12-1)/r} = f^{(p^6-1)(p^2+1)*h3}                     *)
@@ -699,11 +673,6 @@ Section BN256_Pairing.
               [expr.var "out"; expr.var "result"]
           ])
         ))).
-
-    Lemma bn256_Fp12_pow_u_ok :
-      program_logic_goal_for_function! bn256_Fp12_pow_u.
-    Proof. exact I. Qed.
-
     (* ============================================================== *)
     (* Frobenius p constant loaders (for DSD final exponentiation)    *)
     (* Constants: gamma1 = xi^{(p-1)/3}, gamma2 = xi^{2(p-1)/3},     *)
@@ -711,148 +680,154 @@ Section BN256_Pairing.
     (* All imaginary parts are zero.                                   *)
     (* ============================================================== *)
 
-    (* gamma1 = xi^{(p-1)/3} for BN256 in Montgomery form
-       TODO: Compute actual values; currently PLACEHOLDERS (zeros). *)
+    (* gamma1 = xi^{(p-1)/3} for BN256 in Montgomery form *)
     Definition bn256_load_gamma1 : function_t :=
       ("bn256_load_gamma1",
        (["out"], []:list String.string,
         store_fp2_full "out"
-          0 0 0 0
-          0 0 0 0)).
-
-    Lemma bn256_load_gamma1_ok :
-      program_logic_goal_for_function! bn256_load_gamma1.
-    Proof. exact I. Qed.
-
-    (* gamma2 = xi^{2(p-1)/3} for BN256 in Montgomery form
-       TODO: Compute actual values; currently PLACEHOLDERS (zeros). *)
+          0xf8606916d3816f2c 0x1e5c0d7926de927e 0xbc45f3946d81185e 0x80752a25aa738091
+          0x4f59e37c01832e57 0xae6be39ac2bbbfe4 0xe04ea1bb697512f8 0x3097caa8fc40e10e)).
+    (* gamma2 = xi^{2(p-1)/3} for BN256 in Montgomery form *)
     Definition bn256_load_gamma2 : function_t :=
       ("bn256_load_gamma2",
        (["out"], []:list String.string,
         store_fp2_full "out"
-          0 0 0 0
-          0 0 0 0)).
-
-    Lemma bn256_load_gamma2_ok :
-      program_logic_goal_for_function! bn256_load_gamma2.
-    Proof. exact I. Qed.
-
-    (* w_frob_c1 = xi^{(p-1)/6} for BN256 in Montgomery form
-       TODO: Compute actual values; currently PLACEHOLDERS (zeros). *)
+          0x4d2ea218872f3d2c 0x2fcb27fc4abe7b69 0xd31d972f0e88ced9 0x53adc04a00a73b15
+          0x51678e7469b3c52a 0x4fb98f8b13319fc9 0x29b2254db3f1df75 0x1c044935a3d22fb2)).
+    (* w_frob_c1 = xi^{(p-1)/6} for BN256 in Montgomery form *)
     Definition bn256_load_w_frob_c1 : function_t :=
       ("bn256_load_w_frob_c1",
        (["out"], []:list String.string,
         store_fp2_full "out"
-          0 0 0 0
-          0 0 0 0)).
-
-    Lemma bn256_load_w_frob_c1_ok :
-      program_logic_goal_for_function! bn256_load_w_frob_c1.
-    Proof. exact I. Qed.
-
+          0x7407634dd9cca958 0x36d5bd6c7afb8f26 0xf4b1c32cebd880fa 0x06aa7869306f455f
+          0x25af52988477cdb7 0x3d81a455ddced86a 0x227d012e872c2431 0x0179198d3ea65d05)).
     (* ============================================================== *)
-    (* Final exponentiation hard part (DSD decomposition)             *)
-    (*   PLACEHOLDER: Uses the same DSD structure as BLS12-377 for    *)
-    (*   now. The actual BN-specific formula will be implemented later *)
-    (*   (BN curves use a different DSD decomposition than BLS12).    *)
+    (* Final exponentiation hard part (Fuentes-Castaneda algorithm)   *)
+    (*   BN-specific formula from "Faster Final Exponentiation on     *)
+    (*   Ate Pairing" (Fuentes-Castaneda, Knapp, Rodriguez-Henriquez) *)
     (*                                                                  *)
-    (*   BN256 has POSITIVE u, so NO conjugations after pow_u.        *)
-    (*   t0 = f^u (no conjugation -- u is positive)                   *)
-    (*   t1 = t0^2                                                     *)
-    (*   t2 = pow_u(t0) = f^{u^2}                                     *)
-    (*   t3 = t2^2 = f^{2u^2}                                         *)
-    (*   Chain multiplications and Frobenius maps                     *)
+    (*   Registers: t0, t1, t2, t3, out (used as temp in phases)      *)
+    (*   3 pow_u calls, 3 sqr, 10 mul, 7 frobenius, 3 conjugate      *)
+    (*   BN256 has POSITIVE u, so NO conjugation after pow_u.          *)
     (* ============================================================== *)
 
     Local Definition final_exp_hard_dsd_body : Syntax.cmd.cmd :=
       cmd_seq_list [
-        (* Load Frobenius constants *)
+        (* Load Frobenius p^1 constants *)
         cmd.call [] "bn256_load_gamma1" [expr.var "gamma1"];
         cmd.call [] "bn256_load_gamma2" [expr.var "gamma2"];
         cmd.call [] "bn256_load_w_frob_c1" [expr.var "w_frob_c1"];
 
-        (* t0 = f^u (NO conjugation -- u is positive for BN256) *)
+        (* Phase 1: Powers of u *)
+        (* t0 = f^u *)
         cmd.call [] "bn256_Fp12_pow_u"
           [expr.var "t0"; expr.var "f"];
-
-        (* t1 = t0^2 (NO conjugation -- u positive means t0^2 = f^{2u}) *)
-        cmd.call [] fp12_sqr_name
+        (* t1 = f^{u^2} *)
+        cmd.call [] "bn256_Fp12_pow_u"
           [expr.var "t1"; expr.var "t0"];
-
-        (* t2 = pow_u(t0) = f^{u^2} (NO conjugation) *)
+        (* t2 = f^{u^3} *)
         cmd.call [] "bn256_Fp12_pow_u"
-          [expr.var "t2"; expr.var "t0"];
+          [expr.var "t2"; expr.var "t1"];
 
-        (* t3 = t2^2 = f^{2u^2} (NO conjugation) *)
-        cmd.call [] fp12_sqr_name
-          [expr.var "t3"; expr.var "t2"];
-
-        (* t1 = t1 * t2 => f^{2u + u^2} *)
-        cmd.call [] fp12_mul_name
-          [expr.var "t1"; expr.var "t1"; expr.var "t2"];
-
-        (* t2 = pow_u(t2) => f^{u^3} *)
-        cmd.call [] "bn256_Fp12_pow_u"
-          [expr.var "t2"; expr.var "t2"];
-
-        (* t1 = t1 * t2 => f^{u^3 + u^2 + 2u} *)
-        cmd.call [] fp12_mul_name
-          [expr.var "t1"; expr.var "t1"; expr.var "t2"];
-
-        (* t1 = conjugate(t1) *)
-        cmd.call [] fp12_conjugate_name
-          [expr.var "t1"; expr.var "t1"];
-
-        (* t1 = t1 * f *)
-        cmd.call [] fp12_mul_name
-          [expr.var "t1"; expr.var "t1"; expr.var "f"];
-
-        (* t1 = conjugate(t1) *)
-        cmd.call [] fp12_conjugate_name
-          [expr.var "t1"; expr.var "t1"];
-
-        (* t0 = conjugate(f) -- reuse t0 as temp for conj(f) *)
-        cmd.call [] fp12_conjugate_name
-          [expr.var "t0"; expr.var "f"];
-
-        (* t1 = t1 * conj(f) *)
-        cmd.call [] fp12_mul_name
-          [expr.var "t1"; expr.var "t1"; expr.var "t0"];
-
-        (* t2 = pow_u(t2) => f^{u^4} *)
-        cmd.call [] "bn256_Fp12_pow_u"
-          [expr.var "t2"; expr.var "t2"];
-
-        (* t0 = t2 * t3 -- reuse t0 as accumulator *)
-        cmd.call [] fp12_mul_name
-          [expr.var "t0"; expr.var "t2"; expr.var "t3"];
-
-        (* t0 = t0 * t1 *)
-        cmd.call [] fp12_mul_name
-          [expr.var "t0"; expr.var "t0"; expr.var "t1"];
-
-        (* Frobenius maps: t1 = f^p, t2 = f^{p^2}, t3 = f^{p^3} *)
+        (* Phase 2: y6 = conj(f^{u^3} * frobenius(f^{u^3})) *)
         cmd.call [] fp12_frobenius_name
-          [expr.var "t1"; expr.var "f";
+          [expr.var "t3"; expr.var "t2";
            expr.var "gamma1"; expr.var "gamma2"; expr.var "w_frob_c1"];
+        cmd.call [] fp12_mul_name
+          [expr.var "t2"; expr.var "t2"; expr.var "t3"];
+        cmd.call [] fp12_conjugate_name
+          [expr.var "t2"; expr.var "t2"];
+        (* t2 = y6 *)
+
+        (* Phase 3: out = y6^2 * y4 * y5 *)
+        (* out = y6^2 *)
+        cmd.call [] fp12_sqr_name
+          [expr.var "out"; expr.var "t2"];
+        (* t2 = frobenius(f^{u^2}) = f^{u^2 * p} -- save for Phase 5 *)
         cmd.call [] fp12_frobenius_name
           [expr.var "t2"; expr.var "t1";
+           expr.var "gamma1"; expr.var "gamma2"; expr.var "w_frob_c1"];
+        (* t3 = f^{u + u^2*p} *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t3"; expr.var "t0"; expr.var "t2"];
+        (* t3 = conj => y4 *)
+        cmd.call [] fp12_conjugate_name
+          [expr.var "t3"; expr.var "t3"];
+        (* out = y6^2 * y4 *)
+        cmd.call [] fp12_mul_name
+          [expr.var "out"; expr.var "out"; expr.var "t3"];
+        (* t3 = conj(f^{u^2}) = y5 *)
+        cmd.call [] fp12_conjugate_name
+          [expr.var "t3"; expr.var "t1"];
+        (* out = y6^2 * y4 * y5 = T01 *)
+        cmd.call [] fp12_mul_name
+          [expr.var "out"; expr.var "out"; expr.var "t3"];
+
+        (* Phase 4: t0 = T01 * y3 * y5 = T11 *)
+        (* t1 = frobenius(f^u) = f^{u*p} *)
+        cmd.call [] fp12_frobenius_name
+          [expr.var "t1"; expr.var "t0";
+           expr.var "gamma1"; expr.var "gamma2"; expr.var "w_frob_c1"];
+        (* t1 = conj => y3 *)
+        cmd.call [] fp12_conjugate_name
+          [expr.var "t1"; expr.var "t1"];
+        (* t0 = T01 * y3 *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t0"; expr.var "out"; expr.var "t1"];
+        (* t0 = T01 * y3 * y5 = T11 *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t0"; expr.var "t0"; expr.var "t3"];
+
+        (* Phase 5: out = T01 * y2 = T02 *)
+        (* t1 = frobenius(t2) = f^{u^2*p^2} = y2 (reuses saved t2) *)
+        cmd.call [] fp12_frobenius_name
+          [expr.var "t1"; expr.var "t2";
+           expr.var "gamma1"; expr.var "gamma2"; expr.var "w_frob_c1"];
+        (* out = T01 * y2 = T02 *)
+        cmd.call [] fp12_mul_name
+          [expr.var "out"; expr.var "out"; expr.var "t1"];
+
+        (* Phase 6: t1 = (T11^2 * T02)^2 = T13 *)
+        cmd.call [] fp12_sqr_name
+          [expr.var "t1"; expr.var "t0"];
+        cmd.call [] fp12_mul_name
+          [expr.var "t1"; expr.var "t1"; expr.var "out"];
+        cmd.call [] fp12_sqr_name
+          [expr.var "t1"; expr.var "t1"];
+        (* t1 = T13 *)
+
+        (* Phase 7: y0 = f^p * f^{p^2} * f^{p^3} *)
+        cmd.call [] fp12_frobenius_name
+          [expr.var "t0"; expr.var "f";
+           expr.var "gamma1"; expr.var "gamma2"; expr.var "w_frob_c1"];
+        cmd.call [] fp12_frobenius_name
+          [expr.var "t2"; expr.var "t0";
            expr.var "gamma1"; expr.var "gamma2"; expr.var "w_frob_c1"];
         cmd.call [] fp12_frobenius_name
           [expr.var "t3"; expr.var "t2";
            expr.var "gamma1"; expr.var "gamma2"; expr.var "w_frob_c1"];
-
-        (* result = t0 * frob1 * frob2 * frob3 *)
-        cmd.call [] fp12_mul_name
-          [expr.var "t0"; expr.var "t0"; expr.var "t1"];
         cmd.call [] fp12_mul_name
           [expr.var "t0"; expr.var "t0"; expr.var "t2"];
         cmd.call [] fp12_mul_name
           [expr.var "t0"; expr.var "t0"; expr.var "t3"];
+        (* t0 = y0 *)
 
-        (* Copy to output *)
-        cmd.call [] fp12_copy_name
-          [expr.var "out"; expr.var "t0"]
+        (* Phase 8: Final = T13 * y0 combined with T13 * y1 *)
+        (* t2 = T13 * y0 = T14 *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t2"; expr.var "t1"; expr.var "t0"];
+        (* t0 = conj(f) = y1 *)
+        cmd.call [] fp12_conjugate_name
+          [expr.var "t0"; expr.var "f"];
+        (* t0 = T13 * y1 = T03 *)
+        cmd.call [] fp12_mul_name
+          [expr.var "t0"; expr.var "t1"; expr.var "t0"];
+        (* t0 = T03^2 *)
+        cmd.call [] fp12_sqr_name
+          [expr.var "t0"; expr.var "t0"];
+        (* out = T03^2 * T14 = RESULT *)
+        cmd.call [] fp12_mul_name
+          [expr.var "out"; expr.var "t0"; expr.var "t2"]
       ].
 
     Definition bn256_final_exp_hard_dsd : function_t :=
@@ -868,11 +843,6 @@ Section BN256_Pairing.
           stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as w_frob_c1;
           coq:(final_exp_hard_dsd_body)
         ))).
-
-    Lemma bn256_final_exp_hard_dsd_ok :
-      program_logic_goal_for_function! bn256_final_exp_hard_dsd.
-    Proof. exact I. Qed.
-
     (* ============================================================== *)
     (* DSD final exponentiation (easy part + DSD hard part)           *)
     (*   Easy part: same as BLS12 (conjugate/inv/frobenius_p2)         *)
@@ -909,11 +879,6 @@ Section BN256_Pairing.
           stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as tmp;
           coq:(final_exp_dsd_body)
         ))).
-
-    Lemma bn256_final_exp_dsd_ok :
-      program_logic_goal_for_function! bn256_final_exp_dsd.
-    Proof. exact I. Qed.
-
     (* ============================================================== *)
     (* Top-level pairing using DSD final exponentiation                *)
     (* ============================================================== *)
@@ -945,11 +910,6 @@ Section BN256_Pairing.
           stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as w_frob_p2_c1;
           coq:(pairing_dsd_body)
         ))).
-
-    Lemma bn256_pairing_dsd_ok :
-      program_logic_goal_for_function! bn256_pairing_dsd.
-    Proof. exact I. Qed.
-
     (* ============================================================== *)
     (* Collected function lists                                        *)
     (* ============================================================== *)
