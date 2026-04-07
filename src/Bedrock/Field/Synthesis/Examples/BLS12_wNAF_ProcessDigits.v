@@ -251,6 +251,12 @@ Section ProcessDigits.
         (word.of_Z (Memory.bytes_per_word 64)))) =
     Some (encode_digit (nth n dk2 0))).
 
+  (** cmd.seq associativity for WP (definitionally equal). *)
+  Lemma wp_cmd_seq_assoc c1 c2 c3 tr m l post :
+    WeakestPrecondition.cmd functions (cmd.seq c1 (cmd.seq c2 c3)) tr m l post ->
+    WeakestPrecondition.cmd functions (cmd.seq (cmd.seq c1 c2) c3) tr m l post.
+  Proof. exact id. Qed.
+
   (* ================================================================== *)
   (** ** 5. Main theorem                                                 *)
   (* ================================================================== *)
@@ -401,7 +407,12 @@ Section ProcessDigits.
       Ox Oy Oz Ax Ay Az Rframe tr0 m0 l0
       Hn Hsep Hlox Hloy Hloz Hlax Hlay Hlaz
       Hltp Hltphi Hldk1 Hldk2 Hliter.
-    (* Reassociate cmd.seq: (A; (B; (C; D))) -> ((A; B); (C; D)) *)
+    (* Proper_cmd can't compose per-scalar hypotheses due to cmd.seq
+       association mismatch. Instead, step through all 4 commands directly.
+       After unfold/fold, the goal exposes the WP for the first command.
+       Use Hdigit_load1 for the d1 load, then case-split on d1=0,
+       apply HCurveAddInplace etc. for d1≠0, then same for d2. *)
+    unfold WeakestPrecondition.cmd; fold (@WeakestPrecondition.cmd _ _ _ _ _ _).
     all: admit.
   Admitted.
 
