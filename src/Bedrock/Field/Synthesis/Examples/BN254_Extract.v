@@ -7,6 +7,7 @@ Require Import bedrock2.Syntax.
 
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.bn254_prime.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.bn254_felem_copy.
+Require Import Crypto.Bedrock.Field.Synthesis.Examples.bn254_Fp2.
 Require Import Crypto.Bedrock.Field.FieldExtensions.QuadraticFieldExtensions.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.BN254_Pairing.
 
@@ -23,9 +24,13 @@ Definition fp_base_funcs : list function_t :=
     bn254_select_znz;
     ("bn254_felem_copy", bn254_felem_copy) ].
 
-(** Combined: Fp base + pairing pipeline *)
+(** Combined: Fp base + pairing pipeline (includes Fp2/Fp6/Fp12) *)
 Definition all_funcs : list function_t :=
-  fp_base_funcs ++ BN254_Pairing.bn254_all_pairing_funcs.
+  fp_base_funcs ++
+  (* Fp2 base ops from bn254_Fp2.v *)
+  [ Fp2_felem_copy; Fp2_add; Fp2_sub; Fp2_zero; Fp2_one;
+    Fp2_mul; Fp2_sqr; Fp2_inv ] ++
+  BN254_Pairing.bn254_all_pairing_funcs.
 
 Definition all_c :=
   Eval vm_compute in c_module all_funcs.
