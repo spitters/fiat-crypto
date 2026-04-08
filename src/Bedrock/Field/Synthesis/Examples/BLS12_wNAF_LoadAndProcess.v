@@ -154,6 +154,92 @@ Section LoadAndProcess.
       equals the Z-level offset of table_point_addr. *)
 
   (* ================================================================== *)
+  (** ** WP automation tactics for process_one_digit                      *)
+  (* ================================================================== *)
+
+  (** Resolve a single map.get from a chain of map.put.
+      Tries map.get_put_same first; if that fails, rewrites
+      with map.get_put_diff and looks for an assumption. *)
+  Local Ltac solve_mapget :=
+    first [ apply map.get_put_same
+          | rewrite map.get_put_diff by congruence; assumption
+          | rewrite map.get_put_diff by congruence; solve_mapget ].
+
+  (** Evaluate a DEXPR for a single expression.
+      Handles: var lookups, literal, binop, and their compositions. *)
+  Local Ltac wp_dexpr :=
+    cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
+         WeakestPrecondition.get WeakestPrecondition.literal
+         dlet.dlet];
+    repeat (first
+      [ eexists; split; [solve_mapget|]
+      | eexists; split; [reflexivity|]
+      | cbn [Semantics.interp_binop]; reflexivity
+      | reflexivity ]).
+
+  (** Process one cmd.set: unfold WP, solve DEXPR, bind result. *)
+  Local Ltac wp_cmd_set :=
+    cbn [WeakestPrecondition.cmd WeakestPrecondition.cmd_body];
+    eexists; split; [wp_dexpr|]; cbv [dlet.dlet].
+
+  (** Process the dexprs (argument list) for a function call.
+      Handles [dexprs m l [e1; e2; ...] args]. *)
+  Local Ltac wp_dexprs :=
+    cbv [WeakestPrecondition.dexprs
+         WeakestPrecondition.dexpr
+         WeakestPrecondition.expr WeakestPrecondition.expr_body
+         WeakestPrecondition.get WeakestPrecondition.literal
+         dlet.dlet list_map list_map_body];
+    (* Also reduce partially-unfolded expr fixpoints *)
+    cbn [Semantics.interp_binop];
+    repeat (first
+      [ exact (conj eq_refl eq_refl)
+      | split; [ (eexists; split; [solve_mapget|]; cbn [Semantics.interp_binop]; reflexivity) | ]
+      | split; [ reflexivity | ]
+      | eexists; split; [solve_mapget|]; cbn [Semantics.interp_binop]; reflexivity
+      | eexists; split; [solve_mapget|] ]).
+
+  (** Process a full bedrock2 cmd.call: peel cmd.seq + dexprs + weaken_call.
+      [spec] is the hypothesis (e.g., HFelemCopy, HCurveAddInplace).
+      Handles cmd.seq nesting and the full pattern:
+        WP (cmd.seq (cmd.call ...) rest) post *)
+  Local Ltac wp_call spec :=
+    (* Peel cmd.seq layers to expose the cmd.call *)
+    repeat match goal with
+    | |- WeakestPrecondition.cmd _ (cmd.seq _ _) _ _ _ _ =>
+        cbn [WeakestPrecondition.cmd WeakestPrecondition.cmd_body]
+    end;
+    (* Now goal should be: exists args, dexprs ... args /\ Semantics.call ... *)
+    repeat straightline;
+    (* Provide the argument witness and split into dexprs + call *)
+    eexists; split;
+    [ (* Solve dexprs — use repeat for the argument list *)
+      wp_dexprs
+    | (* Apply the function spec via weaken_call *)
+      eapply Semantics.weaken_call;
+      [ eapply spec; ecancel_assumption
+      | intros ? ? ? ?; repeat (
+          match goal with
+          | H : _ /\ _ |- _ => destruct H
+          | H : _ = _ |- _ => first [ subst | idtac ]
+          end);
+        cbv [map.putmany_of_list_zip];
+        try (eexists; split; [exact eq_refl|]) ] ].
+
+  (** Close the postcondition: existentials, eq, sep, map.get chain. *)
+  Local Ltac wp_postcond :=
+    repeat eexists;
+    repeat (split;
+      [ first [ ecancel_assumption | reflexivity
+              | solve_mapget
+              | intros; solve_mapget ]
+      | ]).
+
+  (** Unfold Table4 into 12 individual FElems in a sep hypothesis. *)
+  Local Ltac unfold_Table4_in H :=
+    unfold Table4, TablePoint, table_point_addr, felem_addr in H.
+
+  (* ================================================================== *)
   (** ** Main theorem: HLoadAndProcess_P                                 *)
   (* ================================================================== *)
 
