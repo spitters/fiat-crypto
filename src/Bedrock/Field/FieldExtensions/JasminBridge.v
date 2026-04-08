@@ -39,10 +39,30 @@ Module Type JasminSemantics.
   (** Jasmin command execution *)
   Parameter jsem : jstate -> jasmin_cmd -> jstate -> Prop.
 
-  (** State accessors *)
-  Parameter jmem : jstate -> Type.
+  (** State accessors.
+
+      Both [jlocals_get] and [jmem_get] return [option Z]: locals are
+      addressed by name and byte addresses are encoded as nonneg [Z].
+      Returning [option] reflects that the variable / address may be
+      undefined in the Jasmin estate. *)
   Parameter jlocals_get : jstate -> string -> option Z.
   Parameter jlocals_set : jstate -> string -> Z -> jstate.
+  Parameter jmem_get : jstate -> Z -> option Byte.byte.
+
+  (** Locals get-after-set agreement: setting a local then reading it
+      yields the value just written.  Real Jasmin estate satisfies this
+      because [jlocals_set] is implemented by [Mvar.set]. *)
+  Axiom jlocals_get_set_same : forall s x v,
+    jlocals_get (jlocals_set s x v) x = Some v.
+
+  Axiom jlocals_get_set_other : forall s x y v,
+    x <> y ->
+    jlocals_get (jlocals_set s x v) y = jlocals_get s y.
+
+  (** Setting a local does not perturb memory — locals and memory are
+      independent components of the estate. *)
+  Axiom jmem_get_set_locals : forall s x v a,
+    jmem_get (jlocals_set s x v) a = jmem_get s a.
 
   (** Semantics axioms — what [jsem] satisfies *)
 
@@ -104,15 +124,50 @@ Module Bridge (JS : JasminSemantics).
             {ext_spec_ok : ext_spec.ok ext_spec}.
 
     (** The state relation maps bedrock2 state to Jasmin state.
-        It asserts that memory contents and local variable values agree. *)
+        It asserts that memory contents and local variable values agree.
+
+        - [sr_locals]: every variable in bedrock2 locals appears in
+          Jasmin locals with the same unsigned-word value.
+        - [sr_mem]: every byte in bedrock2 memory appears in Jasmin
+          memory at the same byte address. *)
     Record state_related (t : Semantics.trace) (m : mem)
            (l : locals) (js : JS.jstate) : Prop := {
-      (* Memory agreement: every byte in bedrock2 mem is in Jasmin mem *)
-      sr_mem : True; (* abstracted — would compare map contents *)
-      (* Locals agreement: every variable in bedrock2 locals has the
-         same value in Jasmin locals *)
-      sr_locals : True; (* abstracted — would compare variable maps *)
+      sr_locals :
+        forall (x : string) (v : word),
+          map.get l x = Some v ->
+          JS.jlocals_get js x = Some (word.unsigned v);
+      sr_mem :
+        forall (a : word) (b : Byte.byte),
+          map.get m a = Some b ->
+          JS.jmem_get js (word.unsigned a) = Some b;
     }.
+
+    (** Setting a fresh local on both sides preserves the relation. *)
+    Lemma state_related_set_locals :
+      forall t m l js x v,
+        state_related t m l js ->
+        state_related t m (map.put l x v)
+                          (JS.jlocals_set js x (word.unsigned v)).
+    Proof.
+      intros t m l js x v [Hl Hm]. constructor.
+      - intros y w Hget.
+        destruct (String.eqb_spec x y) as [<- | Hneq].
+        + rewrite map.get_put_same in Hget. inversion Hget; subst.
+          apply JS.jlocals_get_set_same.
+        + rewrite map.get_put_diff in Hget by congruence.
+          rewrite JS.jlocals_get_set_other by congruence.
+          apply Hl. exact Hget.
+      - intros a b Hga.
+        rewrite JS.jmem_get_set_locals.
+        apply Hm. exact Hga.
+    Qed.
+
+    (** A no-op step on both sides preserves the relation. *)
+    Lemma state_related_refl_skip :
+      forall t m l js,
+        state_related t m l js ->
+        state_related t m l js.
+    Proof. auto. Qed.
 
     (** Main simulation theorem:
         If [cmd_jasmin_equiv c j] and bedrock2 executes [c] successfully,

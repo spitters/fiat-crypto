@@ -39,7 +39,7 @@ Local Open Scope Z_scope.
 
 Inductive jasmin_type :=
   | JTu64          (* u64 scalar *)
-  | JTptr          (* reg ptr u64[N] — pointer to array *)
+  | JTptr (n: Z)   (* reg ptr u64[N] — pointer to array of N u64 limbs *)
   | JTstack (n: Z) (* stack u64[N] — stack-allocated array *)
   .
 
@@ -129,16 +129,383 @@ Section Translation.
     end.
 
   (** Translate a bedrock2 function to a Jasmin function.
-      All parameters become [reg ptr u64[]] (pointers to field elements). *)
-  Definition tr_func (f: string * (list string * list string * cmd)) : jasmin_func :=
+      All parameters become [reg ptr u64[field_size]] (pointers to
+      field elements of [field_size] limbs).  Different curves use
+      different limb counts (e.g. 6 for BLS12-381, 8 for BLS24-509). *)
+  Definition tr_func_sized (field_size: Z)
+      (f: string * (list string * list string * cmd)) : jasmin_func :=
     let '(name, (args, rets, body)) := f in
     {| jf_name := name;
-       jf_params := List.map (fun a => (a, JTptr)) args;
+       jf_params := List.map (fun a => (a, JTptr field_size)) args;
        jf_locals := nil; (* locals are inferred from cmd.set *)
        jf_body := tr_cmd body;
     |}.
 
+  (** Backward-compatible default: assumes single u64 (field_size = 1). *)
+  Definition tr_func (f: string * (list string * list string * cmd)) : jasmin_func :=
+    tr_func_sized 1 f.
+
 End Translation.
+
+(* ================================================================ *)
+(* Codegen polish 1: lower binops to in-place form                  *)
+(* ================================================================ *)
+
+(** Jasmin compiles a binary operation [x = e1 op e2] to an x86
+    destructive instruction whose destination must equal one of the
+    sources.  When the bedrock2 → jasmin translator emits
+
+      x_n = (x_m op e2);
+
+    with [x_m] still live afterwards, jasminc's register allocator
+    cannot satisfy the merge constraint and aborts with
+    "conflicting variables x_n and x_m must be merged".
+
+    [lower_binop_assigns] rewrites every such [JCset x (JEbinop e1 e2)]
+    into the explicit two-step form
+
+      x = e1;
+      x = (x op e2);
+
+    so the surface syntax already has dest == src1, eliminating the
+    constraint.  The first assignment is a [mov] (no constraint), the
+    second a destructive in-place op.  Loads, plain-variable assigns,
+    literals and unary forms are left unchanged.  The pass is purely
+    syntactic on [jasmin_cmd] and does not touch [JCdecl]/[JCcall]
+    arguments. *)
+
+Definition is_binop (e : jasmin_expr) : bool :=
+  match e with
+  | JEadd _ _ | JEsub _ _ | JEmul _ _
+  | JEand _ _ | JEor _ _ | JExor _ _
+  | JEshr _ _ | JEshl _ _ => true
+  | _ => false
+  end.
+
+(** Replace the [src1] of a binary expression with a fresh variable
+    [v].  Used to build the in-place form. *)
+Definition rebuild_binop (v : string) (e : jasmin_expr) : jasmin_expr :=
+  match e with
+  | JEadd _ e2 => JEadd (JEvar v) e2
+  | JEsub _ e2 => JEsub (JEvar v) e2
+  | JEmul _ e2 => JEmul (JEvar v) e2
+  | JEand _ e2 => JEand (JEvar v) e2
+  | JEor  _ e2 => JEor  (JEvar v) e2
+  | JExor _ e2 => JExor (JEvar v) e2
+  | JEshr _ e2 => JEshr (JEvar v) e2
+  | JEshl _ e2 => JEshl (JEvar v) e2
+  | _ => e
+  end.
+
+Definition binop_src1 (e : jasmin_expr) : option jasmin_expr :=
+  match e with
+  | JEadd e1 _ | JEsub e1 _ | JEmul e1 _
+  | JEand e1 _ | JEor  e1 _ | JExor e1 _
+  | JEshr e1 _ | JEshl e1 _ => Some e1
+  | _ => None
+  end.
+
+(** [is_atom] holds for the only operands jasminc's asmgen accepts as
+    a [src2] of a binary instruction: a register-held variable, a
+    literal, or a single load.  Anything else (a nested binop) must be
+    materialized into a fresh temporary. *)
+Definition is_atom (e : jasmin_expr) : bool :=
+  match e with
+  | JEvar _ => true
+  | JElit _ => true
+  | JEload _ _ => true
+  | _ => false
+  end.
+
+(** Build a fresh temporary name from a base [x] and a counter [n].
+    These names live alongside the bedrock2 [x_<n>] series and are
+    declared by [function_locals] (which collects every variable
+    appearing on the LHS of a [JCset]). *)
+Definition fresh_name (x : string) (n : nat) : string :=
+  (x ++ "_bp" ++ String (Ascii.ascii_of_nat (48 + n)) "")%string.
+
+(** Convert an expression into a sequence of [JCset]s + an atomic
+    final expression.  The counter [n] threads fresh-temp suffixes
+    through recursion.  Returns [(prefix_cmds, final_atom, next_n)].
+
+    Strategy:
+    - If [e] is already an atom, no work to do.
+    - If [e] is a binop [JEbinop a b], recursively flatten [a] and
+      [b], emit assignments into fresh temps, then build a binop on
+      the two atoms. *)
+Fixpoint flatten_expr (n : nat) (base : string) (e : jasmin_expr)
+    : jasmin_cmd * jasmin_expr * nat :=
+  if is_atom e then (JCskip, e, n)
+  else
+    match e with
+    | JEadd e1 e2 =>
+        let '(p1, a1, n1) := flatten_expr n base e1 in
+        let '(p2, a2, n2) := flatten_expr n1 base e2 in
+        let t := fresh_name base n2 in
+        (JCseq p1 (JCseq p2 (JCseq (JCset t a1)
+                                   (JCset t (JEadd (JEvar t) a2)))),
+         JEvar t, S n2)
+    | JEsub e1 e2 =>
+        let '(p1, a1, n1) := flatten_expr n base e1 in
+        let '(p2, a2, n2) := flatten_expr n1 base e2 in
+        let t := fresh_name base n2 in
+        (JCseq p1 (JCseq p2 (JCseq (JCset t a1)
+                                   (JCset t (JEsub (JEvar t) a2)))),
+         JEvar t, S n2)
+    | JEmul e1 e2 =>
+        let '(p1, a1, n1) := flatten_expr n base e1 in
+        let '(p2, a2, n2) := flatten_expr n1 base e2 in
+        let t := fresh_name base n2 in
+        (JCseq p1 (JCseq p2 (JCseq (JCset t a1)
+                                   (JCset t (JEmul (JEvar t) a2)))),
+         JEvar t, S n2)
+    | JEand e1 e2 =>
+        let '(p1, a1, n1) := flatten_expr n base e1 in
+        let '(p2, a2, n2) := flatten_expr n1 base e2 in
+        let t := fresh_name base n2 in
+        (JCseq p1 (JCseq p2 (JCseq (JCset t a1)
+                                   (JCset t (JEand (JEvar t) a2)))),
+         JEvar t, S n2)
+    | JEor e1 e2 =>
+        let '(p1, a1, n1) := flatten_expr n base e1 in
+        let '(p2, a2, n2) := flatten_expr n1 base e2 in
+        let t := fresh_name base n2 in
+        (JCseq p1 (JCseq p2 (JCseq (JCset t a1)
+                                   (JCset t (JEor (JEvar t) a2)))),
+         JEvar t, S n2)
+    | JExor e1 e2 =>
+        let '(p1, a1, n1) := flatten_expr n base e1 in
+        let '(p2, a2, n2) := flatten_expr n1 base e2 in
+        let t := fresh_name base n2 in
+        (JCseq p1 (JCseq p2 (JCseq (JCset t a1)
+                                   (JCset t (JExor (JEvar t) a2)))),
+         JEvar t, S n2)
+    | JEshr e1 e2 =>
+        let '(p1, a1, n1) := flatten_expr n base e1 in
+        let '(p2, a2, n2) := flatten_expr n1 base e2 in
+        let t := fresh_name base n2 in
+        (JCseq p1 (JCseq p2 (JCseq (JCset t a1)
+                                   (JCset t (JEshr (JEvar t) a2)))),
+         JEvar t, S n2)
+    | JEshl e1 e2 =>
+        let '(p1, a1, n1) := flatten_expr n base e1 in
+        let '(p2, a2, n2) := flatten_expr n1 base e2 in
+        let t := fresh_name base n2 in
+        (JCseq p1 (JCseq p2 (JCseq (JCset t a1)
+                                   (JCset t (JEshl (JEvar t) a2)))),
+         JEvar t, S n2)
+    | _ => (JCskip, e, n)  (* unreachable: non-atom and non-binop *)
+    end.
+
+(** Lower a [JCset x e] using the in-place form:
+      x = e1; x = (x op flatten(e2));
+    where [e1] and [e2] are the operands of the top-level binop.
+
+    If [e] is an atom or has no binop top, just emit [JCset x e]. *)
+Definition lower_set (x : string) (e : jasmin_expr) : jasmin_cmd :=
+  match binop_src1 e with
+  | Some e1 =>
+      (* Materialize a flattened second operand. *)
+      let '(p2, a2, _) := flatten_expr 0 x
+        (match e with
+         | JEadd _ b | JEsub _ b | JEmul _ b
+         | JEand _ b | JEor _ b | JExor _ b
+         | JEshr _ b | JEshl _ b => b
+         | _ => JElit 0
+         end) in
+      (* Materialize the first operand into x via a flatten. *)
+      let '(p1, a1, _) := flatten_expr 0 (x ++ "a") e1 in
+      JCseq p1 (JCseq (JCset x a1)
+              (JCseq p2 (JCset x (rebuild_binop x
+                  (match e with
+                   | JEadd _ _ => JEadd (JEvar x) a2
+                   | JEsub _ _ => JEsub (JEvar x) a2
+                   | JEmul _ _ => JEmul (JEvar x) a2
+                   | JEand _ _ => JEand (JEvar x) a2
+                   | JEor _ _ => JEor  (JEvar x) a2
+                   | JExor _ _ => JExor (JEvar x) a2
+                   | JEshr _ _ => JEshr (JEvar x) a2
+                   | JEshl _ _ => JEshl (JEvar x) a2
+                   | _ => e
+                   end)))))
+  | None => JCset x e
+  end.
+
+Fixpoint lower_binop_assigns (c : jasmin_cmd) : jasmin_cmd :=
+  match c with
+  | JCskip => JCskip
+  | JCseq c1 c2 => JCseq (lower_binop_assigns c1) (lower_binop_assigns c2)
+  | JCset x e => lower_set x e
+  | JCstore base off v => JCstore base off v
+  | JCcall f args => JCcall f args
+  | JCif e ct cf => JCif e (lower_binop_assigns ct) (lower_binop_assigns cf)
+  | JCwhile e body => JCwhile e (lower_binop_assigns body)
+  | JCdecl x ty body => JCdecl x ty (lower_binop_assigns body)
+  end.
+
+(** Apply [lower_binop_assigns] to a [jasmin_func]'s body. *)
+Definition lower_func (f : jasmin_func) : jasmin_func :=
+  {| jf_name := jf_name f;
+     jf_params := jf_params f;
+     jf_locals := jf_locals f;
+     jf_body := lower_binop_assigns (jf_body f) |}.
+
+(* ================================================================ *)
+(* Codegen polish 2: normalize negative u64 literals                *)
+(* ================================================================ *)
+
+(** Coq's [Z] is unbounded, so negative integer literals (e.g. [-1])
+    appear in the AST and would normally render as [(- 1)].  Jasmin's
+    parser accepts that, but its register allocator/asmgen can refuse
+    to fit a sign-extended negative immediate into a u64 destination
+    register, producing errors like
+
+      asmgen: invalid rexpr for oprd RCX &64u R15
+
+    Replacing every negative [JElit v] with its two's-complement
+    positive equivalent ([v + 2^64]) sidesteps the issue.  We do the
+    rewrite at the AST level, BEFORE extraction, so the literal is a
+    positive [Z] in the extracted code — never depends on the OCaml-
+    side [Z.add]/[Z.pow] (which under [ExtrOcamlZInt] map to native
+    [int] arithmetic and silently overflow at [2^63]). *)
+
+Definition u64_max : Z := Z.pow 2 64.
+
+Definition normalize_lit (v : Z) : Z :=
+  if (v <? 0)%Z then Z.add v u64_max else v.
+
+Fixpoint normalize_neg_lits_expr (e : jasmin_expr) : jasmin_expr :=
+  match e with
+  | JEvar x => JEvar x
+  | JElit v => JElit (normalize_lit v)
+  | JEadd e1 e2 => JEadd (normalize_neg_lits_expr e1) (normalize_neg_lits_expr e2)
+  | JEsub e1 e2 => JEsub (normalize_neg_lits_expr e1) (normalize_neg_lits_expr e2)
+  | JEmul e1 e2 => JEmul (normalize_neg_lits_expr e1) (normalize_neg_lits_expr e2)
+  | JEand e1 e2 => JEand (normalize_neg_lits_expr e1) (normalize_neg_lits_expr e2)
+  | JEor  e1 e2 => JEor  (normalize_neg_lits_expr e1) (normalize_neg_lits_expr e2)
+  | JExor e1 e2 => JExor (normalize_neg_lits_expr e1) (normalize_neg_lits_expr e2)
+  | JEshr e1 e2 => JEshr (normalize_neg_lits_expr e1) (normalize_neg_lits_expr e2)
+  | JEshl e1 e2 => JEshl (normalize_neg_lits_expr e1) (normalize_neg_lits_expr e2)
+  | JEload base off => JEload (normalize_neg_lits_expr base) off
+  end.
+
+Fixpoint normalize_neg_lits_cmd (c : jasmin_cmd) : jasmin_cmd :=
+  match c with
+  | JCskip => JCskip
+  | JCseq c1 c2 => JCseq (normalize_neg_lits_cmd c1) (normalize_neg_lits_cmd c2)
+  | JCset x e => JCset x (normalize_neg_lits_expr e)
+  | JCstore base off v =>
+      JCstore (normalize_neg_lits_expr base) off (normalize_neg_lits_expr v)
+  | JCcall f args => JCcall f (List.map normalize_neg_lits_expr args)
+  | JCif e ct cf =>
+      JCif (normalize_neg_lits_expr e) (normalize_neg_lits_cmd ct)
+           (normalize_neg_lits_cmd cf)
+  | JCwhile e body =>
+      JCwhile (normalize_neg_lits_expr e) (normalize_neg_lits_cmd body)
+  | JCdecl x ty body => JCdecl x ty (normalize_neg_lits_cmd body)
+  end.
+
+Definition normalize_func (f : jasmin_func) : jasmin_func :=
+  {| jf_name := jf_name f;
+     jf_params := jf_params f;
+     jf_locals := jf_locals f;
+     jf_body := normalize_neg_lits_cmd (jf_body f) |}.
+
+(* ================================================================ *)
+(* Codegen polish 3: constant folding + dead-expression removal     *)
+(* ================================================================ *)
+
+(** Simplify an expression by folding constants:
+    - [0 + x]  → [x]    (left-identity for add)
+    - [x + 0]  → [x]    (right-identity for add)
+    - [x - 0]  → [x]
+    - [0 + 0]  → [0]
+    - [x ^ 0]  → [x]    (XOR with 0 is identity)
+    - [x & x]  → [x]    where both sides are same var
+    Runs bottom-up so nested patterns like [(0 + 0) + x] simplify. *)
+Fixpoint simplify_expr (e : jasmin_expr) : jasmin_expr :=
+  match e with
+  | JEadd e1 e2 =>
+      let e1' := simplify_expr e1 in
+      let e2' := simplify_expr e2 in
+      match e1', e2' with
+      | JElit 0, _ => e2'
+      | _, JElit 0 => e1'
+      | _, _ => JEadd e1' e2'
+      end
+  | JEsub e1 e2 =>
+      let e1' := simplify_expr e1 in
+      let e2' := simplify_expr e2 in
+      match e2' with
+      | JElit 0 => e1'
+      | _ => JEsub e1' e2'
+      end
+  | JExor e1 e2 =>
+      let e1' := simplify_expr e1 in
+      let e2' := simplify_expr e2 in
+      match e2' with
+      | JElit 0 => e1'
+      | _ => JExor e1' e2'
+      end
+  | JEand e1 e2 =>
+      JEand (simplify_expr e1) (simplify_expr e2)
+  | JEor e1 e2 =>
+      JEor (simplify_expr e1) (simplify_expr e2)
+  | JEmul e1 e2 =>
+      JEmul (simplify_expr e1) (simplify_expr e2)
+  | JEshr e1 e2 =>
+      JEshr (simplify_expr e1) (simplify_expr e2)
+  | JEshl e1 e2 =>
+      JEshl (simplify_expr e1) (simplify_expr e2)
+  | JEload base off =>
+      JEload (simplify_expr base) off
+  | _ => e
+  end.
+
+(** Simplify a command by:
+    - Folding constant expressions
+    - Removing [JCset x (JEvar x)] (self-assignment, no-op)
+    - Removing [JCskip] from sequences *)
+Fixpoint simplify_cmd (c : jasmin_cmd) : jasmin_cmd :=
+  match c with
+  | JCskip => JCskip
+  | JCseq c1 c2 =>
+      let c1' := simplify_cmd c1 in
+      let c2' := simplify_cmd c2 in
+      match c1', c2' with
+      | JCskip, _ => c2'
+      | _, JCskip => c1'
+      | _, _ => JCseq c1' c2'
+      end
+  | JCset x e =>
+      let e' := simplify_expr e in
+      match e' with
+      | JEvar y => if String.eqb x y then JCskip else JCset x e'
+      | _ => JCset x e'
+      end
+  | JCstore base off v =>
+      JCstore (simplify_expr base) off (simplify_expr v)
+  | JCcall f args =>
+      JCcall f (List.map simplify_expr args)
+  | JCif e ct cf =>
+      JCif (simplify_expr e) (simplify_cmd ct) (simplify_cmd cf)
+  | JCwhile e body =>
+      JCwhile (simplify_expr e) (simplify_cmd body)
+  | JCdecl x ty body =>
+      JCdecl x ty (simplify_cmd body)
+  end.
+
+Definition simplify_func (f : jasmin_func) : jasmin_func :=
+  {| jf_name := jf_name f;
+     jf_params := jf_params f;
+     jf_locals := jf_locals f;
+     jf_body := simplify_cmd (jf_body f) |}.
+
+(** Combined polish: simplify + normalize + lower + simplify again.
+    The second simplify catches opportunities exposed by lowering
+    (e.g. [x = 0; x = (x + y)] simplifies to [x = y]). *)
+Definition polish_func (f : jasmin_func) : jasmin_func :=
+  simplify_func (lower_func (normalize_func (simplify_func f))).
 
 (* ================================================================ *)
 (* Pretty-printing: jasmin_cmd → string (Jasmin source text)        *)
@@ -146,12 +513,21 @@ End Translation.
 
 Definition LF : string := String (Ascii.Ascii false true false true false false false false) "".
 
+(** Render a [Z] as a Jasmin u64 immediate.  Negative values are
+    converted to their two's-complement positive form (mod 2^64) so
+    jasminc accepts them as immediates without sign-extension surprises. *)
+Definition pp_zlit_u64 (v : Z) : string :=
+  let normalized :=
+    if (v <? 0)%Z
+    then Z.add v (Z.pow 2 64)
+    else v
+  in
+  DecimalString.NilZero.string_of_int (Z.to_int normalized).
+
 Fixpoint pp_expr (e: jasmin_expr) : string :=
   match e with
   | JEvar x => x
-  | JElit v =>
-      if (v <? 0)%Z then "(- " ++ DecimalString.NilZero.string_of_int (Z.to_int (Z.opp v)) ++ ")"
-      else DecimalString.NilZero.string_of_int (Z.to_int v)
+  | JElit v => pp_zlit_u64 v
   | JEadd e1 e2 => "(" ++ pp_expr e1 ++ " + " ++ pp_expr e2 ++ ")"
   | JEsub e1 e2 => "(" ++ pp_expr e1 ++ " - " ++ pp_expr e2 ++ ")"
   | JEmul e1 e2 => "(" ++ pp_expr e1 ++ " * " ++ pp_expr e2 ++ ")"
@@ -162,13 +538,23 @@ Fixpoint pp_expr (e: jasmin_expr) : string :=
   | JEshl e1 e2 => "(" ++ pp_expr e1 ++ " << " ++ pp_expr e2 ++ ")"
   | JEload base off =>
       let off_str := DecimalString.NilZero.string_of_int (Z.to_int off) in
-      "(u64)[" ++ pp_expr base ++ " + " ++ off_str ++ "]"
+      "[" ++ pp_expr base ++ " + " ++ off_str ++ "]"
   end.
 
+(** Pretty-print a Jasmin storage type for a function parameter or
+    local declaration.
+
+    Note: [JTptr n] is rendered as [reg u64] (a raw register-held byte
+    pointer) rather than [reg ptr u64[n]] (a typed array reference).
+    The bedrock2 calling convention treats every pointer parameter as
+    a raw byte address dereferenced via [base + offset], which matches
+    Jasmin's [reg u64] / [[base + off]] memory access form.  The size
+    [n] is retained on the AST for downstream tools (e.g. an emitter
+    that wants to declare a [stack u64[n]] frame for the callee). *)
 Definition pp_type (t: jasmin_type) : string :=
   match t with
   | JTu64 => "reg u64"
-  | JTptr => "reg ptr u64[1]"  (* simplified; real version needs size *)
+  | JTptr _ => "reg u64"
   | JTstack n =>
       "stack u64[" ++ DecimalString.NilZero.string_of_int (Z.to_int n) ++ "]"
   end.
@@ -181,7 +567,7 @@ Fixpoint pp_cmd (indent: string) (c: jasmin_cmd) : string :=
       indent ++ x ++ " = " ++ pp_expr e ++ ";" ++ LF
   | JCstore base off v =>
       let off_str := DecimalString.NilZero.string_of_int (Z.to_int off) in
-      indent ++ "(u64)[" ++ pp_expr base ++ " + " ++ off_str ++ "] = " ++ pp_expr v ++ ";" ++ LF
+      indent ++ "[" ++ pp_expr base ++ " + " ++ off_str ++ "] = " ++ pp_expr v ++ ";" ++ LF
   | JCcall f args =>
       indent ++ f ++ "(" ++ String.concat ", " (List.map pp_expr args) ++ ");" ++ LF
   | JCif e ct cf =>
@@ -199,11 +585,58 @@ Fixpoint pp_cmd (indent: string) (c: jasmin_cmd) : string :=
       pp_cmd indent body
   end.
 
+(** Collect every variable assigned via [JCset] in a [jasmin_cmd],
+    excluding variables introduced by [JCdecl] (which already provide
+    their own typed declaration).  Used by [pp_func] to emit
+    [reg u64 x;] declarations at the top of each function — Jasmin
+    requires every register-held local to be declared explicitly. *)
+
+Definition string_in (x : string) (xs : list string) : bool :=
+  List.existsb (String.eqb x) xs.
+
+Fixpoint collect_set_vars (c : jasmin_cmd) : list string :=
+  match c with
+  | JCskip => nil
+  | JCseq c1 c2 => collect_set_vars c1 ++ collect_set_vars c2
+  | JCset x _ => x :: nil
+  | JCstore _ _ _ => nil
+  | JCcall _ _ => nil
+  | JCif _ ct cf => collect_set_vars ct ++ collect_set_vars cf
+  | JCwhile _ body => collect_set_vars body
+  | JCdecl x _ body =>
+      (* Exclude [x] from the body: it was declared, not "set". *)
+      List.filter (fun y => negb (String.eqb x y)) (collect_set_vars body)
+  end.
+
+(** Deduplicate a list of strings, preserving order of first occurrence. *)
+Fixpoint dedup_strings (acc : list string) (xs : list string) : list string :=
+  match xs with
+  | nil => List.rev acc
+  | x :: rest =>
+      if string_in x acc
+      then dedup_strings acc rest
+      else dedup_strings (x :: acc) rest
+  end.
+
+(** Locals to declare = vars set in the body, minus parameters,
+    deduplicated, in order of first appearance. *)
+Definition function_locals (f : jasmin_func) : list string :=
+  let param_names := List.map fst (jf_params f) in
+  let all_set := collect_set_vars (jf_body f) in
+  let filtered :=
+    List.filter (fun x => negb (string_in x param_names)) all_set in
+  dedup_strings nil filtered.
+
+Definition pp_locals_decls (indent : string) (xs : list string) : string :=
+  String.concat ""
+    (List.map (fun x => indent ++ "reg u64 " ++ x ++ ";" ++ LF) xs).
+
 Definition pp_func (f: jasmin_func) : string :=
   "export fn " ++ jf_name f ++ "(" ++
     String.concat ", " (List.map (fun '(name, ty) =>
       pp_type ty ++ " " ++ name) (jf_params f)) ++
     ") {" ++ LF ++
+    pp_locals_decls "  " (function_locals f) ++
     pp_cmd "  " (jf_body f) ++
   "}" ++ LF.
 
@@ -216,6 +649,13 @@ Definition pp_module (fs: list jasmin_func) : string :=
 
 Definition to_jasmin (fs: list (string * (list string * list string * cmd))) : string :=
   pp_module (List.map tr_func fs).
+
+(** Sized variant: every function is given the same [field_size] for its
+    pointer parameters.  This is the right interface for whole-curve
+    extraction (e.g. BLS12-381 with [field_size = 6]). *)
+Definition to_jasmin_sized (field_size: Z)
+    (fs: list (string * (list string * list string * cmd))) : string :=
+  pp_module (List.map (tr_func_sized field_size) fs).
 
 (* ================================================================ *)
 (* Structural simulation proof: tr_cmd is a correct homomorphism    *)

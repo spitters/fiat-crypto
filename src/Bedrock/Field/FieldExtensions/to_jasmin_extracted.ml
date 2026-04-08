@@ -574,7 +574,7 @@ module NilZero =
 
 type jasmin_type =
 | JTu64
-| JTptr
+| JTptr of int
 | JTstack of int
 
 type jasmin_expr =
@@ -643,16 +643,24 @@ let rec tr_cmd = function
 | Coq_cmd.Coq_call (_, f, args) -> JCcall (f, (map tr_expr args))
 | _ -> JCskip
 
+(** val tr_func_sized :
+    int -> (char list * ((char list list * char list list) * Coq_cmd.cmd)) ->
+    jasmin_func **)
+
+let tr_func_sized field_size = function
+| (name, p) ->
+  let (p0, body) = p in
+  let (args, _) = p0 in
+  { jf_name = name; jf_params =
+  (map (fun a -> (a, (JTptr field_size))) args); jf_locals = []; jf_body =
+  (tr_cmd body) }
+
 (** val tr_func :
     (char list * ((char list list * char list list) * Coq_cmd.cmd)) ->
     jasmin_func **)
 
-let tr_func = function
-| (name, p) ->
-  let (p0, body) = p in
-  let (args, _) = p0 in
-  { jf_name = name; jf_params = (map (fun a -> (a, JTptr)) args); jf_locals =
-  []; jf_body = (tr_cmd body) }
+let tr_func f =
+  tr_func_sized 1 f
 
 (** val lF : char list **)
 
@@ -710,8 +718,10 @@ let rec pp_expr = function
 
 let pp_type = function
 | JTu64 -> 'r'::('e'::('g'::(' '::('u'::('6'::('4'::[]))))))
-| JTptr ->
-  'r'::('e'::('g'::(' '::('p'::('t'::('r'::(' '::('u'::('6'::('4'::('['::('1'::(']'::[])))))))))))))
+| JTptr n ->
+  append
+    ('r'::('e'::('g'::(' '::('p'::('t'::('r'::(' '::('u'::('6'::('4'::('['::[]))))))))))))
+    (append (NilZero.string_of_int (Z.to_int n)) (']'::[]))
 | JTstack n ->
   append
     ('s'::('t'::('a'::('c'::('k'::(' '::('u'::('6'::('4'::('['::[]))))))))))
@@ -797,6 +807,13 @@ let pp_module fs =
 
 let to_jasmin fs =
   pp_module (map tr_func fs)
+
+(** val to_jasmin_sized :
+    int -> (char list * ((char list list * char list list) * Coq_cmd.cmd))
+    list -> char list **)
+
+let to_jasmin_sized field_size fs =
+  pp_module (map (tr_func_sized field_size) fs)
 
 (** val collect_stackallocs :
     Coq_cmd.cmd -> (char list * int) list * Coq_cmd.cmd **)

@@ -258,6 +258,7 @@ src/Bedrock/Field/Synthesis/Examples/BLS12_Sqrt.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_wNAF_GLV_Instance.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_wNAF_GLV_LoopBody.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_wNAF_GLV_Proof.v
+src/Bedrock/Field/Synthesis/Examples/BLS12_wNAF_HornerAlgebra.v
 src/Bedrock/Field/Synthesis/Examples/BLS12_wNAF_ProcessDigits.v
 src/Bedrock/Field/Synthesis/Examples/BLS24_509_Extract.v
 src/Bedrock/Field/Synthesis/Examples/BLS24_509_Feval.v
@@ -268,6 +269,7 @@ src/Bedrock/Field/Synthesis/Examples/BLS24_509_Instances.v
 src/Bedrock/Field/Synthesis/Examples/BLS24_509_MillerLoop.v
 src/Bedrock/Field/Synthesis/Examples/BLS24_509_MillerLoop_proof.v
 src/Bedrock/Field/Synthesis/Examples/BLS24_509_PairingHelpers.v
+src/Bedrock/Field/Synthesis/Examples/BN254_Extract.v
 src/Bedrock/Field/Synthesis/Examples/BN254_FinalExpDSD.v
 src/Bedrock/Field/Synthesis/Examples/BN254_FinalExpHardDSD.v
 src/Bedrock/Field/Synthesis/Examples/BN254_FrobeniusVerify.v
@@ -279,6 +281,7 @@ src/Bedrock/Field/Synthesis/Examples/BN254_PairingHelpers.v
 src/Bedrock/Field/Synthesis/Examples/BN254_PairingTop.v
 src/Bedrock/Field/Synthesis/Examples/BN254_PowU.v
 src/Bedrock/Field/Synthesis/Examples/BN254_TestVectors.v
+src/Bedrock/Field/Synthesis/Examples/BN256_Extract.v
 src/Bedrock/Field/Synthesis/Examples/BN256_FinalExpDSD.v
 src/Bedrock/Field/Synthesis/Examples/BN256_FinalExpHardDSD.v
 src/Bedrock/Field/Synthesis/Examples/BN256_FrobeniusVerify.v
@@ -290,6 +293,7 @@ src/Bedrock/Field/Synthesis/Examples/BN256_PairingHelpers.v
 src/Bedrock/Field/Synthesis/Examples/BN256_PairingTop.v
 src/Bedrock/Field/Synthesis/Examples/BN256_PowU.v
 src/Bedrock/Field/Synthesis/Examples/BN256_TestVectors.v
+src/Bedrock/Field/Synthesis/Examples/BN446_Extract.v
 src/Bedrock/Field/Synthesis/Examples/BN446_FinalExpDSD.v
 src/Bedrock/Field/Synthesis/Examples/BN446_FinalExpHardDSD.v
 src/Bedrock/Field/Synthesis/Examples/BN446_FrobeniusVerify.v
@@ -303,6 +307,8 @@ src/Bedrock/Field/Synthesis/Examples/BN446_PowU.v
 src/Bedrock/Field/Synthesis/Examples/BN446_TestVectors.v
 src/Bedrock/Field/Synthesis/Examples/BN_FrobeniusGeneric.v
 src/Bedrock/Field/Synthesis/Examples/BN_GroupOps.v
+src/Bedrock/Field/Synthesis/Examples/BN_PairingGeneric.v
+src/Bedrock/Field/Synthesis/Examples/BN_StraightlineFast.v
 src/Bedrock/Field/Synthesis/Examples/ScalarsUtil.v
 src/Bedrock/Field/Synthesis/Examples/bls12_377_Fp2.v
 src/Bedrock/Field/Synthesis/Examples/bls12_377_Fp2_mul_test.v
@@ -526,7 +532,9 @@ src/Rewriter/PerfTesting/StandaloneOCamlMain.v
 src/Spec/CompleteEdwardsCurve.v
 src/Spec/Curve25519.v
 src/Spec/HashToCurve.v
+src/Spec/HashToCurveClosureProof.v
 src/Spec/HashToCurveFieldSetup.v
+src/Spec/HashToCurveG2.v
 src/Spec/HashToCurveIsogenyCompute.v
 src/Spec/HashToCurveIsogenyProof.v
 src/Spec/HashToCurvePolyArith.v

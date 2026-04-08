@@ -16,5 +16,5 @@ Global Set Warnings Append "-extraction-opaque-accessed".
 (* These are the standard Rocq extraction remappings *)
 
 Extraction "src/Bedrock/Field/FieldExtensions/to_jasmin_extracted"
-  tr_func pp_func pp_module to_jasmin
+  tr_func tr_func_sized pp_func pp_module to_jasmin to_jasmin_sized
   flatten_stackallocs flatten_func flatten_selected.

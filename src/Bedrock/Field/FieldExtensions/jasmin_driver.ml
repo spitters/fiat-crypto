@@ -44,16 +44,21 @@ let fp2_mul_func =
   (coq_string "bls24_Fp2_mul",
    ((List.map coq_string ["out"; "inx"; "iny"], []), fp2_mul_cmd))
 
+(* BLS24-509 field elements are 8 u64 limbs (508 bits, 64 bits per limb,
+   one extra limb for Montgomery slack).  Use [tr_func_sized 8] so the
+   emitted Jasmin reflects the real array width. *)
+let bls24_field_size = 8
+
 let () =
   (* Original *)
-  let jf = tr_func fp2_mul_func in
+  let jf = tr_func_sized bls24_field_size fp2_mul_func in
   Printf.printf "=== Original (nested stackallocs) ===\n";
   print_string (ocaml_string (pp_func jf));
   Printf.printf "\n";
 
   (* Flattened *)
   let ff = flatten_func fp2_mul_func in
-  let jff = tr_func ff in
+  let jff = tr_func_sized bls24_field_size ff in
   Printf.printf "=== Flattened (single allocation) ===\n";
   print_string (ocaml_string (pp_func jff));
   Printf.printf "\n"
