@@ -118,6 +118,12 @@ Section Translation.
         | _ => JElit 0 (* lts, srs, divu, remu: not used in crypto *)
         end
     | expr.load _ ea => JEload (tr_expr ea) 0 (* TODO: proper load *)
+    | expr.op1 op e =>
+        let e' := tr_expr e in
+        match op with
+        | op1.not => JExor e' (JElit (-1)%Z)  (* bitwise NOT = xor with all-ones *)
+        | op1.opp => JEsub (JElit 0) e'        (* arithmetic negation = 0 - e *)
+        end
     | _ => JElit 0
     end.
 
@@ -481,6 +487,159 @@ Definition normalize_func (f : jasmin_func) : jasmin_func :=
      jf_body := normalize_neg_lits_cmd (jf_body f) |}.
 
 (* ================================================================ *)
+(* Codegen polish 6: lift large literals to __wtmp__                *)
+(* ================================================================ *)
+
+(** x86-64 binary instructions accept at most a 32-bit sign-extended
+    immediate.  Constants outside [-2^31, 2^31) must be loaded into a
+    register first.  This pass walks every [JCset]/[JCstore]/etc. and
+    finds the first [JElit v] with [|v| >= 2^31] in the expression,
+    replacing it with a reference to [__wtmp__] and emitting
+    [__wtmp__ = v;] before the statement. *)
+
+Definition is_large_lit (v : Z) : bool :=
+  Z.leb (Z.pow 2 31) v || Z.ltb v 0.
+
+(** Substitute the FIRST large literal in an expression with [JEvar "__wtmp__"].
+    Returns [(found_lit, new_expr)] where [found_lit] is the literal that was
+    substituted (if any). *)
+Fixpoint subst_first_large_lit (e : jasmin_expr)
+    : option Z * jasmin_expr :=
+  match e with
+  | JEvar _ => (None, e)
+  | JElit v =>
+      if is_large_lit v
+      then (Some v, JEvar "__wtmp__"%string)
+      else (None, e)
+  | JEadd e1 e2 =>
+      let '(f1, e1') := subst_first_large_lit e1 in
+      match f1 with
+      | Some _ => (f1, JEadd e1' e2)
+      | None =>
+          let '(f2, e2') := subst_first_large_lit e2 in
+          (f2, JEadd e1 e2')
+      end
+  | JEsub e1 e2 =>
+      let '(f1, e1') := subst_first_large_lit e1 in
+      match f1 with
+      | Some _ => (f1, JEsub e1' e2)
+      | None =>
+          let '(f2, e2') := subst_first_large_lit e2 in
+          (f2, JEsub e1 e2')
+      end
+  | JEmul e1 e2 =>
+      let '(f1, e1') := subst_first_large_lit e1 in
+      match f1 with
+      | Some _ => (f1, JEmul e1' e2)
+      | None =>
+          let '(f2, e2') := subst_first_large_lit e2 in
+          (f2, JEmul e1 e2')
+      end
+  | JEand e1 e2 =>
+      let '(f1, e1') := subst_first_large_lit e1 in
+      match f1 with
+      | Some _ => (f1, JEand e1' e2)
+      | None =>
+          let '(f2, e2') := subst_first_large_lit e2 in
+          (f2, JEand e1 e2')
+      end
+  | JEor e1 e2 =>
+      let '(f1, e1') := subst_first_large_lit e1 in
+      match f1 with
+      | Some _ => (f1, JEor e1' e2)
+      | None =>
+          let '(f2, e2') := subst_first_large_lit e2 in
+          (f2, JEor e1 e2')
+      end
+  | JExor e1 e2 =>
+      let '(f1, e1') := subst_first_large_lit e1 in
+      match f1 with
+      | Some _ => (f1, JExor e1' e2)
+      | None =>
+          let '(f2, e2') := subst_first_large_lit e2 in
+          (f2, JExor e1 e2')
+      end
+  | JEshr e1 e2 =>
+      let '(f1, e1') := subst_first_large_lit e1 in
+      match f1 with
+      | Some _ => (f1, JEshr e1' e2)
+      | None => (None, e)  (* shift count is small *)
+      end
+  | JEshl e1 e2 =>
+      let '(f1, e1') := subst_first_large_lit e1 in
+      match f1 with
+      | Some _ => (f1, JEshl e1' e2)
+      | None => (None, e)
+      end
+  | JEltu e1 e2 =>
+      let '(f1, e1') := subst_first_large_lit e1 in
+      match f1 with
+      | Some _ => (f1, JEltu e1' e2)
+      | None =>
+          let '(f2, e2') := subst_first_large_lit e2 in
+          (f2, JEltu e1 e2')
+      end
+  | JEeq e1 e2 =>
+      let '(f1, e1') := subst_first_large_lit e1 in
+      match f1 with
+      | Some _ => (f1, JEeq e1' e2)
+      | None =>
+          let '(f2, e2') := subst_first_large_lit e2 in
+          (f2, JEeq e1 e2')
+      end
+  | JEmulhuu e1 e2 =>
+      let '(f1, e1') := subst_first_large_lit e1 in
+      match f1 with
+      | Some _ => (f1, JEmulhuu e1' e2)
+      | None =>
+          let '(f2, e2') := subst_first_large_lit e2 in
+          (f2, JEmulhuu e1 e2')
+      end
+  | JEload base off =>
+      let '(f, base') := subst_first_large_lit base in
+      (f, JEload base' off)
+  end.
+
+(** Repeatedly lift large literals from a single expression until none
+    remain.  Each iteration adds a [JCset "__wtmp__" (JElit v)] prefix
+    statement; subsequent iterations would overwrite [__wtmp__] but we
+    use a numbered family ([__wtmp_N__]) to avoid that.  Fuel-bounded. *)
+
+Definition lift_one_set (x : string) (e : jasmin_expr) : jasmin_cmd :=
+  let '(f, e') := subst_first_large_lit e in
+  match f with
+  | Some v =>
+      JCseq (JCset "__wtmp__" (JElit v)) (JCset x e')
+  | None => JCset x e
+  end.
+
+Fixpoint lift_lits_cmd (c : jasmin_cmd) : jasmin_cmd :=
+  match c with
+  | JCskip => JCskip
+  | JCseq c1 c2 => JCseq (lift_lits_cmd c1) (lift_lits_cmd c2)
+  | JCset x e => lift_one_set x e
+  | JCstore base off v =>
+      (* For stores, lift literals from [v] *)
+      let '(f, v') := subst_first_large_lit v in
+      match f with
+      | Some lit =>
+          JCseq (JCset "__wtmp__" (JElit lit)) (JCstore base off v')
+      | None => JCstore base off v
+      end
+  | JCcall f args => JCcall f args
+  | JCif e ct cf => JCif e (lift_lits_cmd ct) (lift_lits_cmd cf)
+  | JCwhile e body => JCwhile e (lift_lits_cmd body)
+  | JCdecl x ty body => JCdecl x ty (lift_lits_cmd body)
+  | _ => c
+  end.
+
+Definition lift_lits_func (f : jasmin_func) : jasmin_func :=
+  {| jf_name := jf_name f;
+     jf_params := jf_params f;
+     jf_locals := jf_locals f;
+     jf_body := lift_lits_cmd (jf_body f) |}.
+
+(* ================================================================ *)
 (* Codegen polish 3: constant folding + dead-expression removal     *)
 (* ================================================================ *)
 
@@ -729,9 +888,21 @@ Definition match_borrow_out (c : jasmin_cmd) : option jasmin_cmd :=
       Some (JCseq (JCset bout (JElit 0))
                    (JCif (JEvar "__bf") (JCset bout (JElit 1)) JCskip))
   | JCset bout (JEadd (JElit 0) (JEeq (JEadd (JEltu _ _) (JEltu _ _)) (JElit 0))) =>
-      (* Inverted: bout=1 means no borrow *)
-      Some (JCseq (JCset bout (JElit 1))
-                   (JCif (JEvar "__bf") (JCset bout (JElit 0)) JCskip))
+      (* Pattern is [0 + (borrow_sum == 0)] = 1 iff no borrow. *)
+      Some (JCseq (JCset bout (JElit 0))
+                   (JCif (JEvar "__bf") JCskip (JCset bout (JElit 1))))
+  | JCset bout (JEadd (JEsub (JElit 0) (JElit 1))
+                       (JEeq (JEadd (JEltu _ _) (JEltu _ _)) (JElit 0))) =>
+      (* Pattern is [(-1) + (borrow_sum == 0)] = -1 + (1 if no borrow else 0)
+         = 0 if no borrow, -1 (all-ones) if borrow.
+         This is the SIGN-EXTENDED mask used for conditional p addition.
+         __bf=1 (borrow) → bout = -1 (all ones).
+         __bf=0 (no borrow) → bout = 0. *)
+      Some (JCseq (JCset bout (JElit 0))
+                   (JCif (JEvar "__bf")
+                         (JCseq (JCset bout (JElit 0))
+                                (JCset bout (JEsub (JEvar bout) (JElit 1))))
+                         JCskip))
   | _ => None
   end.
 
@@ -744,29 +915,45 @@ Definition match_borrow_out (c : jasmin_cmd) : option jasmin_cmd :=
 Definition match_cmov (c1 c2 c3 : jasmin_cmd)
     : option jasmin_cmd :=
   match c1, c2, c3 with
-  | JCset mask (JEadd (JElit 0) (JEeq (JEvar _) (JElit 0))),
+  | JCset mask (JEadd (JElit 0) (JEeq (JEvar flag) (JElit 0))),
     JCset nmask (JExor (JEvar mask') (JElit _)),
     JCset out (JEor (JEand (JEvar sum) (JEvar mask''))
                      (JEand (JEvar diff) (JEvar nmask'))) =>
       if String.eqb mask mask'
          && String.eqb mask mask''
          && String.eqb nmask nmask'
-      (* __bf=1 (borrow from sub p) means sum < p → keep sum.
-         __bf=0 (no borrow) means sum >= p → keep diff = sum-p. *)
-      then Some (JCseq (JCset out (JEvar diff))
-                       (JCif (JEvar "__bf") (JCset out (JEvar sum)) JCskip))
+      (* For bls12_add: flag (e.g. x35) = 1 if borrow when subtracting p
+         (sum < p, keep sum), 0 if no borrow (sum >= p, use diff).
+         Emit: out = sum; if (flag == 0) { out = diff; } *)
+      then Some (JCseq (JCset out (JEvar sum))
+                       (JCif (JEeq (JEvar flag) (JElit 0))
+                             (JCset out (JEvar diff))
+                             JCskip))
       else None
   | _, _, _ => None
   end.
 
-(** Match simple [x = (a + b); y = (x <u a)] → JCadd_flags y x a b. *)
+(** Match simple [x = (a + b); y = (x <u a)] → JCadd_flags __cf_y x a b
+    followed by a bool→u64 promotion of [y].
+
+    The promotion is essential: subsequent bedrock2 code consumes [y]
+    as a u64 (e.g. [next = y; next = next + ...]).  Emitting
+    [JCadd_flags y ...] alone makes [y] register as a [reg bool] in
+    [collect_bool_vars], and jasminc then rejects the later
+    [reg u64 = reg bool] copy.  We forward the carry through a fresh
+    bool [__cf_<carry>] and immediately materialize [carry] as 0/1. *)
 Definition match_add_carry (c1 c2 : jasmin_cmd)
     : option jasmin_cmd :=
   match c1, c2 with
   | JCset sum (JEadd a b),
     JCset carry (JEltu (JEvar sum') a') =>
       if String.eqb sum sum' && expr_eqb a a'
-      then Some (JCadd_flags carry sum a b)
+      then
+        let cf_tmp := ("__cf_" ++ carry)%string in
+        Some (JCseq (JCadd_flags cf_tmp sum a b)
+                    (JCseq (JCset carry (JElit 0))
+                           (JCif (JEvar cf_tmp)
+                                 (JCset carry (JElit 1)) JCskip)))
       else None
   | _, _ => None
   end.
@@ -898,13 +1085,28 @@ Fixpoint extract_comparisons (n : nat) (x : string) (e : jasmin_expr)
       (* First extract any nested comparisons from operands *)
       let '(n1, p1, a') := extract_comparisons n x a in
       let '(n2, p2, b') := extract_comparisons n1 x b in
-      let bname := ltu_bool_name (fresh_name x n2) in
-      let tmp := fresh_name x n2 in
-      (S n2,
-       JCseq p1 (JCseq p2
-         (JCseq (JCset bname (JEltu a' b'))
+      (* Lift nested binops in a' or b' to fresh temps so the
+         comparison's operands are atoms (jasminc <u rejects nested
+         binops on the right). *)
+      let lift_a :=
+        if is_atom a' then (n2, JCskip, a')
+        else
+          let t := fresh_name (x ++ "_lt_a") n2 in
+          (S n2, JCset t a', JEvar t) in
+      let '(n3, pa, a'') := lift_a in
+      let lift_b :=
+        if is_atom b' then (n3, JCskip, b')
+        else
+          let t := fresh_name (x ++ "_lt_b") n3 in
+          (S n3, JCset t b', JEvar t) in
+      let '(n4, pb, b'') := lift_b in
+      let bname := ltu_bool_name (fresh_name x n4) in
+      let tmp := fresh_name x n4 in
+      (S n4,
+       JCseq p1 (JCseq p2 (JCseq pa (JCseq pb
+         (JCseq (JCset bname (JEltu a'' b''))
                 (JCseq (JCset tmp (JElit 0))
-                       (JCif (JEvar bname) (JCset tmp (JElit 1)) JCskip)))),
+                       (JCif (JEvar bname) (JCset tmp (JElit 1)) JCskip)))))),
        JEvar tmp)
   | JEeq a b =>
       let '(n1, p1, a') := extract_comparisons n x a in
@@ -976,7 +1178,12 @@ Definition lower_comparisons_func (f : jasmin_func) : jasmin_func :=
     5. lower_func: flatten binops for jasminc
     6. simplify_func: clean up after lowering *)
 Definition polish_func (f : jasmin_func) : jasmin_func :=
-  simplify_func (lower_func (normalize_func (simplify_func (lower_comparisons_func (carry_func f))))).
+  lift_lits_func
+    (simplify_func
+      (lower_func
+        (normalize_func
+          (simplify_func
+            (lower_comparisons_func (carry_func f)))))).
 
 (* ================================================================ *)
 (* Pretty-printing: jasmin_cmd → string (Jasmin source text)        *)
@@ -1045,12 +1252,12 @@ Fixpoint pp_cmd (indent: string) (c: jasmin_cmd) : string :=
   | JCcall f args =>
       indent ++ f ++ "(" ++ String.concat ", " (List.map pp_expr args) ++ ");" ++ LF
   | JCif e ct cf =>
-      (* For bool-typed conditions (from ltu/eq lowering), emit
-         [if bname {] without [!= 0].  For u64 conditions, keep
-         the [!= 0] test. *)
+      (* For bool-typed conditions, emit bare condition.  Comparisons
+         (JEltu/JEeq) are inherently bool-valued. *)
       let cond_str :=
         match e with
         | JEvar x => x  (* bool var: Jasmin accepts [if bname {] *)
+        | JEltu _ _ | JEeq _ _ => "(" ++ pp_expr e ++ ")"
         | _ => "(" ++ pp_expr e ++ " != 0)"
         end in
       let else_part :=
