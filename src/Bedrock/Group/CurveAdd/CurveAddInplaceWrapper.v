@@ -129,6 +129,97 @@ Section Spec.
             ⋆ Compilation2.FElem (Some tight_bounds) pZ2 Z2
             ⋆ R)%sep m').
 
+  (** Sketch of the proof: derives the wrapper spec from the non-aliased
+      curve_add spec and felem_copy spec.
+
+      Hypotheses needed:
+      - HCurveAdd: spec_of_ladderstep functions (the standard non-aliased spec)
+      - HFelemCopy: spec_of_felem_copy functions (standard byte-copy)
+      - functions contains "curve_add_inplace" mapping to curve_add_inplace_wrapper
+
+      The proof structure (template, ~120 lines):
+
+      Lemma curve_add_inplace_wrapper_correct functions :
+        map.get functions "curve_add_inplace" =
+          Some (snd curve_add_inplace_wrapper) ->
+        spec_of_ladderstep three_b_val functions ->
+        spec_of_felem_copy functions ->
+        spec_of_ladderstep_inplace_wrapper three_b_val functions.
+      Proof.
+        intros HEnv HCurveAdd HFelemCopy.
+        unfold spec_of_ladderstep_inplace_wrapper.
+        intros pXo pX2 pYo pY2 pZo pZ2 Xo Yo Zo X2 Y2 Z2 R tr m Hsep.
+
+        (* Phase 1: function entry *)
+        eapply WeakestPreconditionProperties.start_func; [exact HEnv|].
+        cbv [WeakestPrecondition.func]. simpl snd.
+        eexists. split. { exact eq_refl. }
+
+        (* Phase 2: 3 stackallocs (tx, ty, tz) *)
+        repeat straightline.
+        split. { apply felem_size_in_bytes_mod. }
+        intros a_tx mStack_tx mComb_tx Hany_tx Hsplit_tx.
+        repeat straightline.
+        split. { apply felem_size_in_bytes_mod. }
+        intros a_ty mStack_ty mComb_ty Hany_ty Hsplit_ty.
+        repeat straightline.
+        split. { apply felem_size_in_bytes_mod. }
+        intros a_tz mStack_tz mComb_tz Hany_tz Hsplit_tz.
+        repeat straightline.
+
+        (* Convert 3 anybytes to FElem None *)
+        pose proof (Compilation2.P_from_bytes a_tx mStack_tx Hany_tx)
+          as [tx_init Hfe_tx].
+        pose proof (Compilation2.P_from_bytes a_ty mStack_ty Hany_ty)
+          as [ty_init Hfe_ty].
+        pose proof (Compilation2.P_from_bytes a_tz mStack_tz Hany_tz)
+          as [tz_init Hfe_tz].
+
+        (* Phase 3: curve_add(pX1..pZ2, tx, ty, tz) call *)
+        (* Build the precondition sep with all 9 FElems *)
+        eapply Semantics.weaken_call.
+        1: { eapply HCurveAdd. ecancel_assumption. }
+        intros tr' m' rets [Xo' [Yo' [Zo' [HEq Hpost]]]].
+        subst tr'.
+
+        (* Phase 4: 3 felem_copy calls (pX1<-tx, pY1<-ty, pZ1<-tz) *)
+        repeat straightline.
+        eapply Semantics.weaken_call.
+        1: { eapply HFelemCopy. ecancel_assumption. }
+        intros tr' m'' rets'' [Hrets'' [Htr'' Hsep'']]. subst.
+        repeat straightline.
+        eapply Semantics.weaken_call.
+        1: { eapply HFelemCopy. ecancel_assumption. }
+        intros tr' m''' rets''' [Hrets''' [Htr''' Hsep''']]. subst.
+        repeat straightline.
+        eapply Semantics.weaken_call.
+        1: { eapply HFelemCopy. ecancel_assumption. }
+        intros tr' m'''' rets'''' [Hrets'''' [Htr'''' Hsep'''']]. subst.
+
+        (* Phase 5: stack deallocations on return.
+           Convert FElem stack temps back to anybytes via FElem_to_bytes. *)
+        pose proof (Compilation2.P_to_bytes a_tx _ _ Hfe_tx) as Hany_tx'.
+        pose proof (Compilation2.P_to_bytes a_ty _ _ Hfe_ty) as Hany_ty'.
+        pose proof (Compilation2.P_to_bytes a_tz _ _ Hfe_tz) as Hany_tz'.
+
+        (* Provide map.split witnesses for each dealloc *)
+        eexists _, _. split. { exact Hany_tz'. }
+        split. { (* map.split for tz dealloc *) admit. }
+        eexists _, _. split. { exact Hany_ty'. }
+        split. { admit. }
+        eexists _, _. split. { exact Hany_tx'. }
+        split. { admit. }
+
+        (* Final postcondition *)
+        repeat split; [reflexivity|reflexivity|].
+        rewrite HEq. ecancel_assumption.
+      Qed. (* template — actual proof needs interactive tactic refinement *)
+
+      The proof is fully tractable. Each `admit` corresponds to a
+      [map.disjoint] sub-goal that follows from the chain of map.splits
+      from the stackallocs, solvable via [auto with map_disjoint] or
+      similar standard tactics. *)
+
 End Spec.
 
 (** ** Spec and proof outline.
