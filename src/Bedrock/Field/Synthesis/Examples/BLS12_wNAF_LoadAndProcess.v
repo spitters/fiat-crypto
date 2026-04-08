@@ -203,27 +203,63 @@ Section LoadAndProcess.
       Ox Oy Oz Ax Ay Az R0 tr0 m0 l0
       Hn Hsep Hlox Hloy Hloz Hlax Hlay Hlaz Hltp Hldk Hliter.
 
-    (* ============================================================ *)
-    (* Proof outline (to be filled interactively with MCP):         *)
-    (*                                                              *)
-    (* Step 1: cmd.set "d1" := load(digits_k1 + iter * word_size)  *)
-    (*   Unfold cmd.seq, evaluate expr (load from digit array).     *)
-    (*   Uses Hdigit_load1 to resolve the memory load.              *)
-    (*   After: l1 = map.put l0 "d1" (encode_digit d)              *)
-    (*                                                              *)
-    (* Step 2: cmd.cond on d1 (branch on d = 0 vs d != 0)          *)
-    (*                                                              *)
-    (* Case d = 0: ELSE branch (cmd.skip)                           *)
-    (*   Output unchanged. Instantiate existentials with Ox/Oy/Oz.  *)
-    (*   Show all map.get preserved via map.get_put_diff.           *)
-    (*                                                              *)
-    (* Case d != 0: THEN branch (table lookup + cond negate + add) *)
-    (*   Phase A: abs value + table offset (3x cmd.set)             *)
-    (*   Phase B: 3x felem_copy (table -> aux) using HFelemCopy    *)
-    (*   Phase C: cond negate auxy if d < 0 using HOppInplace      *)
-    (*   Phase D: curve_add(out, aux, out) using HCurveAddInplace  *)
-    (*   Phase E: close postcondition with ecancel_assumption       *)
-    (* ============================================================ *)
+    (* === Step 1: cmd.set "d1" := load(digits_k1 + iter * word_size) === *)
+    cbn [WeakestPrecondition.cmd WeakestPrecondition.cmd_body].
+    eexists. split.
+    1: { cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
+              WeakestPrecondition.get dlet.dlet].
+         eexists. split. 1: exact Hldk.
+         eexists. split. 1: exact Hliter.
+         cbn [Semantics.interp_binop].
+         pose proof (Hdigit_load1 n pDK1 m0 _ ltac:(rewrite Hlen1; lia)
+                       ltac:(ecancel_assumption)) as Hld.
+         cbv [expr expr_body literal dlet.dlet load].
+         rewrite Hld. eexists. split; reflexivity. }
+
+    (* === Step 2: process_one_digit, evaluate cmd.cond on "d1" === *)
+    cbv [dlet.dlet].
+    set (d := nth n dk1 0). set (l1 := map.put l0 "d1" (encode_digit d)).
+    unfold process_one_digit.
+    cbn [WeakestPrecondition.cmd WeakestPrecondition.cmd_body].
+    eexists. split.
+    1: { cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
+              WeakestPrecondition.get dlet.dlet].
+         eexists. split. 1: subst l1; apply map.get_put_same. reflexivity. }
+
+    split.
+    2: { (* === Step 3: d = 0 case (cmd.skip / ELSE branch) === *)
+         intros Hd0eq.
+         exists Ox, Oy, Oz, Ax, Ay, Az.
+         assert (Hdz : d = 0).
+         { unfold encode_digit in Hd0eq.
+           pose proof (Hdigits_bounded1 n Hn) as Hdb. fold d in Hdb.
+           rewrite word.unsigned_of_Z in Hd0eq. unfold word.wrap in Hd0eq.
+           destruct width_cases as [Hw|Hw]; subst;
+             rewrite Z.mod_small in Hd0eq by lia; lia. }
+         rewrite Hdz. simpl.
+         repeat (split; [try (exact Hsep); try reflexivity|]); try reflexivity.
+         all: try (subst l1; rewrite map.get_put_diff by congruence; assumption).
+         all: try (subst l1; intros k v Hk1 Hk2 Hk3 Hk4 Hgk;
+                   rewrite map.get_put_diff by auto; exact Hgk). }
+
+    (* === Step 4: d ≠ 0 case (THEN branch) ===
+       The remaining proof is the bulk: ~150 lines stepping through
+       the THEN branch of process_one_digit:
+       - Phase A: abs value (cmd.cond + cmd.set "lookup_d")
+       - Phase B: tab_idx, tab_off (2x cmd.set)
+       - Phase C: 3x felem_copy via HFelemCopy
+       - Phase D: conditional negate via HOppInplace
+       - Phase E: curve_add(out, aux, out) via HCurveAddInplace
+       - Phase F: postcondition closure with table_correctness lemma
+
+       Proof structure follows exactly the same pattern as Steps 1-3:
+       - cbv to expose existentials
+       - eexists/split to instantiate fresh variables
+       - eapply Semantics.weaken_call + apply spec for function calls
+       - rewrite map.get_put_diff for locals tracking
+       - The KEY algebraic step at the end uses digit_point_is_sm_Z
+         (from BLS12_wNAF_HornerAlgebra.v) to convert table_lookup +
+         conditional negate into the abstract digit_point form. *)
   Admitted.
 
 End LoadAndProcess.
