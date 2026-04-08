@@ -130,18 +130,20 @@ Section DigitLoad.
     truncate_word access_size.word v = v.
   Proof.
     unfold truncate_word, truncate_Z.
-    (* bytes_per access_size.word = Z.to_nat (bytes_per_word width) *)
     change (Memory.bytes_per access_size.word)
       with (Z.to_nat (Memory.bytes_per_word width)).
     apply word.unsigned_inj.
     rewrite word.unsigned_of_Z. unfold word.wrap.
+    pose proof (word.unsigned_range v) as Hvr.
     destruct width_cases as [Hw|Hw]; subst;
       unfold Memory.bytes_per_word;
       (change ((32 + 7) / 8)%Z with 4%Z || change ((64 + 7) / 8)%Z with 8%Z);
       (change (Z.to_nat 4) with 4%nat || change (Z.to_nat 8) with 8%nat);
       (change (Z.of_nat 4 * 8)%Z with 32%Z || change (Z.of_nat 8 * 8)%Z with 64%Z);
       rewrite Z.land_ones by lia;
-      apply Zmod_mod.
+      rewrite Z.mod_mod by lia;
+      rewrite Z.mod_small by lia;
+      reflexivity.
   Qed.
 
   Lemma digit_load_from_array :
