@@ -1447,7 +1447,26 @@ Fixpoint pp_cmd (indent: string) (c: jasmin_cmd) : string :=
   | JCadcx cf_out result a b cf_in =>
       indent ++ cf_out ++ ", " ++ result ++ " = #ADCX(" ++ pp_expr a ++ ", " ++ pp_expr b ++ ", " ++ cf_in ++ ");" ++ LF
   | JCmulx hi lo a b =>
-      indent ++ "(" ++ hi ++ ", " ++ lo ++ ") = #MULX(" ++ pp_expr a ++ ", " ++ pp_expr b ++ ");" ++ LF
+      (* Copy the left operand to __mulx_tmp__ right before the #MULX
+         call, keeping RDX's live range minimal.  Without this, multiple
+         MULX batches with different left operands cause jasminc register
+         allocation failures ("variable must be allocated to RDX; this
+         register already holds conflicting variables").
+         Also: MULX's second operand must be reg or mem, not an
+         immediate, so load literal constants into __wtmp__ first. *)
+      let b_load :=
+        match b with
+        | JElit _ => indent ++ "__wtmp__ = " ++ pp_expr b ++ ";" ++ LF
+        | _ => ""
+        end in
+      let b_ref :=
+        match b with
+        | JElit _ => "__wtmp__"
+        | _ => pp_expr b
+        end in
+      b_load ++
+      indent ++ "__mulx_tmp__ = " ++ pp_expr a ++ ";" ++ LF ++
+      indent ++ "(" ++ hi ++ ", " ++ lo ++ ") = #MULX(__mulx_tmp__, " ++ b_ref ++ ");" ++ LF
   | JCsub_flags cf result a b =>
       (* load large immediate into __wtmp, copy src to dest, in-place SUB *)
       indent ++ "__wtmp__ = " ++ pp_expr b ++ ";" ++ LF ++
@@ -1524,17 +1543,45 @@ Fixpoint collect_bool_vars (c : jasmin_cmd) : list string :=
   | _ => nil
   end.
 
-Definition pp_locals_decls (indent : string) (bool_vars : list string)
+(** Collect variables that appear as MULX results or other
+    hardware-constrained instruction outputs.  These must NOT be
+    spilled because the underlying x86 instruction cannot write
+    directly to a stack slot. *)
+Fixpoint collect_hw_constrained_vars (c : jasmin_cmd) : list string :=
+  match c with
+  | JCskip => nil
+  | JCseq c1 c2 =>
+      collect_hw_constrained_vars c1 ++ collect_hw_constrained_vars c2
+  | JCmulx hi lo _ _ => hi :: lo :: nil
+  | JCadd_flags cf result _ _ => cf :: result :: nil
+  | JCadcx cf_out result _ _ _ => cf_out :: result :: nil
+  | JCsub_flags cf result _ _ => cf :: result :: nil
+  | JCsbb cf_out result _ _ _ => cf_out :: result :: nil
+  | JCif _ ct cf =>
+      collect_hw_constrained_vars ct ++ collect_hw_constrained_vars cf
+  | JCwhile _ body => collect_hw_constrained_vars body
+  | JCdecl _ _ body => collect_hw_constrained_vars body
+  | _ => nil
+  end.
+
+Definition pp_locals_decls (indent : string) (bool_vars no_spill : list string)
     (xs : list string) : string :=
   String.concat ""
     (List.map (fun x =>
        if string_in x bool_vars
        then indent ++ "reg bool " ++ x ++ ";" ++ LF
-       else indent ++ "reg u64 " ++ x ++ ";" ++ LF) xs).
+       else if string_in x no_spill
+       then indent ++ "reg u64 " ++ x ++ ";" ++ LF
+       else indent ++ "#[spill] reg u64 " ++ x ++ ";" ++ LF) xs).
 
 Definition pp_func (f: jasmin_func) : string :=
   let bools := dedup_strings nil (collect_bool_vars (jf_body f)) in
   let locals := function_locals f in
+  (* Variables that must NOT be spilled: MULX/ADD/ADCX/SBB results
+     (x86 instructions that cannot target memory), plus the scratch
+     registers __wtmp__ and __mulx_tmp__. *)
+  let hw := dedup_strings nil (collect_hw_constrained_vars (jf_body f)) in
+  let no_spill := "__wtmp__" :: "__mulx_tmp__" :: hw in
   (* Always declare __wtmp__ for large immediates in #SUB/#SBB *)
   let extra_decls :=
     (if string_in "__wtmp__" locals then "" else "  reg u64 __wtmp__;" ++ LF) ++
@@ -1545,7 +1592,7 @@ Definition pp_func (f: jasmin_func) : string :=
       pp_type ty ++ " " ++ name) (jf_params f)) ++
     ") {" ++ LF ++
     extra_decls ++
-    pp_locals_decls "  " bools locals ++
+    pp_locals_decls "  " bools no_spill locals ++
     pp_cmd "  " (jf_body f) ++
   "}" ++ LF.
 
