@@ -636,17 +636,19 @@ Fixpoint expr_eqb (e1 e2 : jasmin_expr) : bool :=
     [ns  = (cpn + d)]           — add second next-limb operand
     → JCadd_flags __cf sum a b; JCadcx __cf ns c d __cf
     Consumes 3 statements, emits 2 intrinsics. *)
+(** Only match when both operands of the initial add are [JEvar] —
+    prevents matching conditional-addition patterns like [x + (mask & const)]. *)
 Definition match_first_limb_adc (c1 c2 c3 : jasmin_cmd)
     : option (jasmin_cmd * jasmin_cmd) :=
   match c1, c2, c3 with
-  | JCset sum (JEadd a b),
-    JCset cpn (JEadd (JEltu (JEvar sum') a') c),
-    JCset ns (JEadd (JEvar cpn') d) =>
+  | JCset sum (JEadd (JEvar a) (JEvar b)),
+    JCset cpn (JEadd (JEltu (JEvar sum') (JEvar a')) (JEvar c)),
+    JCset ns (JEadd (JEvar cpn') (JEvar d)) =>
       if String.eqb sum sum'
-         && expr_eqb a a'
+         && String.eqb a a'
          && String.eqb cpn cpn'
-      then Some (JCadd_flags "__cf" sum a b,
-                  JCadcx "__cf" ns c d "__cf")
+      then Some (JCadd_flags "__cf" sum (JEvar a) (JEvar b),
+                  JCadcx "__cf" ns (JEvar c) (JEvar d) "__cf")
       else None
   | _, _, _ => None
   end.
@@ -657,13 +659,18 @@ Definition match_first_limb_adc (c1 c2 c3 : jasmin_cmd)
     → JCadcx __cf next c d __cf
     Where __cf already holds the carry from the previous ADCX.
     Consumes 2 statements, emits 1 intrinsic. *)
+(** Only match when the third operand [c] is a simple [JEvar] — this
+    prevents matching the conditional-addition pattern in bls12_sub
+    where c is [(x23 & constant)]. *)
+(** Both operands [c] and [d] must be plain variables —
+    prevents matching conditional-add patterns with masked constants. *)
 Definition match_cont_adc (c1 c2 : jasmin_cmd)
     : option jasmin_cmd :=
   match c1, c2 with
-  | JCset cpn (JEadd (JEadd (JEltu _ _) (JEltu _ _)) c),
-    JCset ns (JEadd (JEvar cpn') d) =>
+  | JCset cpn (JEadd (JEadd (JEltu _ _) (JEltu _ _)) (JEvar c)),
+    JCset ns (JEadd (JEvar cpn') (JEvar d)) =>
       if String.eqb cpn cpn'
-      then Some (JCadcx "__cf" ns c d "__cf")
+      then Some (JCadcx "__cf" ns (JEvar c) (JEvar d) "__cf")
       else None
   | _, _ => None
   end.
@@ -708,11 +715,23 @@ Definition match_cont_sbb (c1 c2 : jasmin_cmd)
   | _, _ => None
   end.
 
+(** Match borrow-out patterns after the last SBB.
+    Pattern 1 (from bls12_add sub phase):
+      [bout = (x <u (x - ((a <u b) + (c <u d))))]
+      → bout = 0; if __bf { bout = 1; }
+    Pattern 2 (from bls12_sub):
+      [bout = (0 + (((a <u b) + (c <u d)) == 0))]
+      → bout = 1; if __bf { bout = 0; }
+      (inverted: bout = 1 means no borrow) *)
 Definition match_borrow_out (c : jasmin_cmd) : option jasmin_cmd :=
   match c with
   | JCset bout (JEltu _ (JEsub _ (JEadd (JEltu _ _) (JEltu _ _)))) =>
       Some (JCseq (JCset bout (JElit 0))
                    (JCif (JEvar "__bf") (JCset bout (JElit 1)) JCskip))
+  | JCset bout (JEadd (JElit 0) (JEeq (JEadd (JEltu _ _) (JEltu _ _)) (JElit 0))) =>
+      (* Inverted: bout=1 means no borrow *)
+      Some (JCseq (JCset bout (JElit 1))
+                   (JCif (JEvar "__bf") (JCset bout (JElit 0)) JCskip))
   | _ => None
   end.
 
@@ -732,8 +751,10 @@ Definition match_cmov (c1 c2 c3 : jasmin_cmd)
       if String.eqb mask mask'
          && String.eqb mask mask''
          && String.eqb nmask nmask'
+      (* __bf=1 (borrow from sub p) means sum < p → keep sum.
+         __bf=0 (no borrow) means sum >= p → keep diff = sum-p. *)
       then Some (JCseq (JCset out (JEvar diff))
-                       (JCif (JEvar "__bf") JCskip (JCset out (JEvar sum))))
+                       (JCif (JEvar "__bf") (JCset out (JEvar sum)) JCskip))
       else None
   | _, _, _ => None
   end.
