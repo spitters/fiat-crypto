@@ -15,7 +15,7 @@
  *     src/Bedrock/Field/FieldExtensions/JasminBridgeReal.v
  *)
 
-From Jasmin Require Import expr psem_defs psem operators ident.
+From Jasmin Require Import expr psem_defs psem operators ident x86_instr_decl x86_extra.
 From mathcomp Require Import ssreflect ssrfun.
 From Stdlib Require Import Uint63.
 
@@ -51,9 +51,9 @@ Definition string_to_ident (s : string) : Uint63.int :=
 
 Local Close Scope string_scope.
 
-Section WithArch.
-
-  Context {asm_op : Type} {asmop : asmOp asm_op}.
+(** Specialized to x86-64 for the intrinsic constructors. *)
+Section WithX86.
+  Context {atoI : arch_toIdent}.
 
   (** Construct a Jasmin [var_i] from a string name.
       All variables are typed as [aword U64] (64-bit word) and
@@ -125,12 +125,44 @@ Section WithArch.
         (* Stack declaration: in Jasmin, stack vars are declared at
            function level, not inline.  We just emit the body. *)
         to_jasmin_cmd body
-    (* x86-64 intrinsics — mapped to Copn with appropriate sopn *)
-    | JCadd_flags _ _ _ _ => [::]  (* TODO: map to ADD sopn *)
-    | JCadcx _ _ _ _ _ => [::]     (* TODO: map to ADCX sopn *)
-    | JCmulx _ _ _ _ => [::]       (* TODO: map to MULX sopn *)
-    | JCsub_flags _ _ _ _ => [::]  (* TODO: map to SUB sopn *)
-    | JCsbb _ _ _ _ _ => [::]      (* TODO: map to SBB sopn *)
+    (* x86-64 intrinsics — mapped to Copn with architecture-specific sopn.
+       ADD/SUB output 5 bool flags + 1 word result (b5w_ty).
+       ADCX outputs 1 bool carry + 1 word result (bw_ty).
+       MULX outputs lo + hi words (w2_ty).
+       SBB outputs 5 bool flags + 1 word result (b5w_ty). *)
+    | JCadd_flags cf result a b =>
+        let none_b := Lnone_b dummy_var_info in
+        [:: MkI di (Copn
+          [:: none_b; mk_lval_from_string cf; none_b; none_b; none_b;
+              mk_lval_from_string result]
+          AT_none (Ox86 (ADD U64))
+          [:: to_pexpr a; to_pexpr b])]
+    | JCadcx cf_out result a b cf_in =>
+        [:: MkI di (Copn
+          [:: mk_lval_from_string cf_out; mk_lval_from_string result]
+          AT_none (Ox86 (ADCX U64))
+          [:: to_pexpr a; to_pexpr b;
+              Plvar (mk_var_from_string cf_in)])]
+    | JCmulx hi lo a b =>
+        [:: MkI di (Copn
+          [:: mk_lval_from_string lo; mk_lval_from_string hi]
+          AT_none (Ox86 (MULX_lo_hi U64))
+          [:: to_pexpr a; to_pexpr b])]
+    | JCsub_flags cf result a b =>
+        let none_b := Lnone_b dummy_var_info in
+        [:: MkI di (Copn
+          [:: none_b; mk_lval_from_string cf; none_b; none_b; none_b;
+              mk_lval_from_string result]
+          AT_none (Ox86 (SUB U64))
+          [:: to_pexpr a; to_pexpr b])]
+    | JCsbb cf_out result a b cf_in =>
+        let none_b := Lnone_b dummy_var_info in
+        [:: MkI di (Copn
+          [:: none_b; mk_lval_from_string cf_out; none_b; none_b; none_b;
+              mk_lval_from_string result]
+          AT_none (Ox86 (SBB U64))
+          [:: to_pexpr a; to_pexpr b;
+              Plvar (mk_var_from_string cf_in)])]
     end.
 
   (** === Key structural lemmas === *)
@@ -146,7 +178,7 @@ Section WithArch.
     to_jasmin_cmd (JCdecl x ty body) = to_jasmin_cmd body.
   Proof. reflexivity. Qed.
 
-End WithArch.
+End WithX86.
 
 (* ================================================================ *)
 (* Semantics via the translation                                     *)
@@ -157,9 +189,9 @@ Section RealSem.
   Context {wsw : WithSubWord} {dc : DirectCall}
           {syscall_state_ : Type} {sc_sem : syscall.syscall_sem syscall_state_}
           {ep : EstateParams syscall_state_}
-          {asm_op_ : Type} {sip : SemInstrParams asm_op_ syscall_state_}
+          {sip : SemInstrParams x86_extended_op syscall_state_}
           {pT : progT} {scp : semCallParams}
-          (P : @prog asm_op_ _ pT) (ev : extra_val_t).
+          (P : @prog x86_extended_op _ pT) (ev : extra_val_t).
 
   (** Jasmin semantics = [sem] applied to the translated command. *)
   Definition real_jsem (s1 : estate) (j : jasmin_cmd) (s2 : estate) : Prop :=
