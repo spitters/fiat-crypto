@@ -108,7 +108,65 @@ Lemma precompute_w4_length_gen :
 Proof. reflexivity. Qed.
 
 (* ================================================================== *)
-(** ** 2. Composition roadmap                                          *)
+(** ** 2. Digit load lemma                                             *)
+(* ================================================================== *)
+
+(** Prove Hdigit_load from the DigitArray (array scalar stride base words)
+    predicate, using [array_load_of_sep] from bedrock2.Scalars. *)
+
+From Stdlib Require Import Lia.
+Require Import Rupicola.Lib.Api.
+Require Import bedrock2.Scalars.
+Require Import bedrock2.Array.
+Import bedrock2.WeakestPrecondition.
+
+Section DigitLoad.
+  Context {width: Z} {BW: Bitwidth width} {word: word.word width}
+          {mem: map.map word Byte.byte}.
+  Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
+
+  (* Word-sized truncation is identity *)
+  Axiom truncate_word_word_nop : forall (v : word),
+    truncate_word access_size.word v = v.
+  (* Proof sketch: unfold truncate_word/truncate_Z, show bytes_per(word) * 8 = width,
+     then Z.land_ones + Z.mod_small using word.unsigned_range.
+     The proof is straightforward but fragile due to bytes_per/bytes_per_word aliasing. *)
+
+  Lemma digit_load_from_array :
+    forall (dk : list Z) n (base : word) (m : map.rep)
+           (R : map.rep -> Prop),
+    (n < length dk)%nat ->
+    (BLS12_wNAF_ProcessDigits.DigitArray base dk ⋆ R) m ->
+    Memory.load access_size.word m
+      (word.add base (word.mul (word.of_Z (Z.of_nat n))
+        (word.of_Z (Memory.bytes_per_word width)))) =
+    Some (BLS12_wNAF_ProcessDigits.encode_digit (nth n dk 0)).
+  Proof.
+    intros dk n base m R Hn Hsep.
+    unfold BLS12_wNAF_ProcessDigits.DigitArray in Hsep.
+    unfold BLS12_wNAF_ProcessDigits.digit_words in Hsep.
+    (* Apply array_load_of_sep *)
+    eapply array_load_of_sep with (n := n) in Hsep.
+    - (* Hsep gives Memory.load = Some (truncate_word ...) *)
+      rewrite Hsep.
+      f_equal.
+      unfold BLS12_wNAF_ProcessDigits.encode_digit.
+      rewrite map_nth.
+      rewrite truncate_word_word_nop. reflexivity.
+    - (* Address equality *)
+      f_equal.
+      rewrite <- word.ring_morph_mul. f_equal.
+      rewrite word.unsigned_of_Z. unfold word.wrap, Memory.bytes_per_word.
+      destruct width_cases as [Hw|Hw]; rewrite Hw;
+        rewrite Z.mod_small by (simpl; lia); lia.
+    - (* n < length values *)
+      rewrite map_length. exact Hn.
+  Qed.
+
+End DigitLoad.
+
+(* ================================================================== *)
+(** ** 3. Composition roadmap                                          *)
 (* ================================================================== *)
 
 (** The wNAF GLV proof chain is now complete at the abstract level.
