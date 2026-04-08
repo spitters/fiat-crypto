@@ -225,30 +225,45 @@ Section LoadAndProcess.
   (** wp_call uses letexists (not eexists) to prevent evar leakage
       between chained calls. Based on gcall_explicit from
       BLS12_GLV_ScalarMultBedrock.v. *)
-  (** wp_call: process a cmd.call by asserting the dexprs + call
-      in an isolated assert block to prevent evar leakage. *)
+  (** eval_dexprs_here: resolve dexprs using the gcall_explicit pattern.
+      Unlike wp_dexprs which cbv-unfolds first, this works on the
+      standard WeakestPrecondition.cmd form. *)
+  Local Ltac eval_dexprs_here :=
+    cbv [dexprs list_map list_map_body
+         WeakestPrecondition.expr WeakestPrecondition.expr_body
+         WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet];
+    repeat (first
+      [ exact eq_refl
+      | eexists; split; [solve_mapget |]
+      | eexists; split; [exact eq_refl |] ]).
+
+  (** wp_call: gcall_explicit-style tactic adapted for our specs.
+      Uses unfold1_cmd_goal + letexists + eval_dexprs_here to avoid
+      evar scoping issues between chained calls. *)
   Local Ltac wp_call spec :=
+    (* Peel cmd.seq *)
     repeat match goal with
     | |- WeakestPrecondition.cmd _ (cmd.seq _ _) _ _ _ _ =>
         unfold1_cmd_goal; cbv beta match delta [cmd_body]
     end;
-    try (unfold1_cmd_goal; cbv beta match delta [cmd_body]);
-    (* Assert the full exists args, dexprs /\ call in isolation *)
-    let H := fresh "Hcall" in
-    assert (H : ltac:(match goal with |- ?G => exact G end)) by
-      (eexists; split; [wp_dexprs|];
-       eapply Semantics.weaken_call;
-       [eapply spec; ecancel_assumption|];
-       intros ? ? ? ?; repeat (match goal with
-         | H : _ /\ _ |- _ => destruct H
-         | H : _ = _ |- _ => first [subst|idtac] end);
-       cbv [map.putmany_of_list_zip];
-       repeat (match goal with
-         | |- exists _, Some _ = Some _ /\ _ => eexists; split; [exact eq_refl|]
-         | |- exists _, _ = _ /\ _ => eexists; split; [exact eq_refl|] end);
-       try (unfold1_cmd_goal; cbv beta match delta [cmd_body]);
-       assumption);
-    exact H.
+    (* Process cmd.call *)
+    unfold1_cmd_goal; cbv beta match delta [cmd_body];
+    letexists; split; [solve [eval_dexprs_here] |];
+    eapply Semantics.weaken_call;
+    [ eapply spec; ecancel_assumption
+    | intros ? ? ? ?;
+      repeat match goal with
+      | H : _ /\ _ |- _ => destruct H
+      | H : _ = _ |- _ => first [ subst | idtac ]
+      end;
+      cbv [map.putmany_of_list_zip];
+      repeat match goal with
+      | |- exists _, Some ?x = Some _ /\ _ =>
+          eexists; split; [exact eq_refl|]
+      | |- exists _, _ = _ /\ _ =>
+          eexists; split; [exact eq_refl|]
+      end;
+      try (unfold1_cmd_goal; cbv beta match delta [cmd_body]) ].
 
   (** Close the postcondition: existentials, eq, sep, map.get chain. *)
   Local Ltac wp_postcond :=
@@ -358,27 +373,39 @@ Section LoadAndProcess.
       assert (Hd_ne : d <> 0).
       { intro Heq. apply Hdne. unfold encode_digit. rewrite Heq.
         rewrite word.unsigned_of_Z_0. reflexivity. }
-      eexists. split.
-      { (* DEXPR: lts d1 0 *)
-        cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
-             WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet].
-        eexists. split. 1: subst l1; apply map.get_put_same.
-        reflexivity. }
-      split.
-      { (* d < 0: lookup_d := -d1 *)
-        intros Hltc.
-        eexists. split. 1: wp_dexpr. cbv [dlet.dlet].
-        wp_cmd_set. wp_cmd_set. cbv [dlet.dlet].
-        (* After tab_idx and tab_off are set, the remaining WP
-           is 3 felem_copy + cond negate + curve_add + postcondition.
-           wp_call HFelemCopy works for the FIRST call but the SECOND
-           call has an evar scoping issue. See ALIASING_COOKBOOK.md. *)
-        admit. }
-      { (* d >= 0: lookup_d := d1 *)
-        intros Hge.
-        eexists. split. 1: wp_dexpr. cbv [dlet.dlet].
-        wp_cmd_set. wp_cmd_set. cbv [dlet.dlet].
-        admit. }
+      (* Inner cmd.cond on lts d1 0: use unfold1_cmd_goal pattern *)
+      unfold1_cmd_goal; cbv beta match delta [cmd_body];
+      letexists; split; [solve [eval_dexprs_here] |];
+      split;
+      all: (
+        intros ?;
+        (* lookup_d (cmd.set) *)
+        unfold1_cmd_goal; cbv beta match delta [cmd_body];
+        letexists; split; [solve [eval_dexprs_here] |];
+        cbv beta match delta [dlet.dlet];
+        (* tab_idx (cmd.set via cmd.seq) *)
+        unfold1_cmd_goal; cbv beta match delta [cmd_body];
+        unfold1_cmd_goal; cbv beta match delta [cmd_body];
+        letexists; split; [solve [eval_dexprs_here] |];
+        cbv beta match delta [dlet.dlet];
+        (* tab_off (cmd.set via cmd.seq) *)
+        unfold1_cmd_goal; cbv beta match delta [cmd_body];
+        unfold1_cmd_goal; cbv beta match delta [cmd_body];
+        letexists; split; [solve [eval_dexprs_here] |];
+        cbv beta match delta [dlet.dlet];
+        unfold1_cmd_goal; cbv beta match delta [cmd_body];
+        (* 3x felem_copy *)
+        wp_call HFelemCopy;
+        wp_call HFelemCopy;
+        wp_call HFelemCopy;
+        (* inner cond negate *)
+        unfold1_cmd_goal; cbv beta match delta [cmd_body];
+        letexists; split; [solve [eval_dexprs_here] |];
+        split;
+        [ intros _; wp_call HOppInplace; wp_call HCurveAddInplace; admit
+        | intros _;
+          unfold1_cmd_goal; cbv beta match delta [cmd_body];
+          wp_call HCurveAddInplace; admit ]).
   Admitted.
 
 End LoadAndProcess.
