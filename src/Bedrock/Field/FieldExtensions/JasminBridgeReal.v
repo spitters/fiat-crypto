@@ -189,6 +189,45 @@ Section RealSem.
     intros. unfold real_jsem. rewrite to_jasmin_cmd_decl. assumption.
   Qed.
 
+  (** [jsem_set]: single assignment via Eseq + EmkI + Eassgn.
+      We state this as an existential: there EXISTS a post-state. *)
+  Lemma real_jsem_set : forall s x e,
+    (exists s', real_jsem s (JCset x e) s') \/
+    (* If evaluation/write fails, the assignment is stuck.
+       The existential captures the successful case. *)
+    True.
+  Proof. left. (* Would need concrete evaluation of to_pexpr + write_lval. *)
+  Abort.
+
+  (** [jsem_if_true]: via Eif_true constructor. *)
+  Lemma real_jsem_if_true : forall s1 s2 e ct cf,
+    real_jsem s1 ct s2 ->
+    real_jsem s1 (JCif e ct cf) s2.
+  Proof.
+    intros s1 s2 e ct cf Hct.
+    unfold real_jsem. simpl.
+    (* Goal: sem P ev s1 [:: MkI di (Cif (to_pexpr e) ... ...)] s2
+       Needs: to show (to_pexpr e) evaluates to true in s1.
+       This is the key semantic gap: we need evaluation evidence. *)
+  Abort.
+
+  (** The remaining axioms (jsem_set, jsem_if, jsem_while, jsem_call)
+      each require:
+      1. A concrete evaluation of [to_pexpr e] in the current state
+      2. A write-back of the result via [write_lval] or [write_lvals]
+      3. Evidence that the evaluation succeeds (no undefined behavior)
+
+      These are NOT structural lemmas — they require connecting the
+      bedrock2 expression semantics (word-level arithmetic) to Jasmin's
+      [sem_pexpr] (which uses the [sem_t] value type system).
+
+      Proving them requires a SEMANTIC bridge between bedrock2 and Jasmin
+      at the expression level, not just the command level.  This is the
+      core work of a full [JasminSemantics] instantiation.
+
+      For now, the 3 structural lemmas (skip, seq, decl) are Qed, and
+      the full instance is blocked on the expression-level bridge. *)
+
 End RealSem.
 
 (** === Summary ===
