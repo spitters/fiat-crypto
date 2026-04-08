@@ -138,11 +138,14 @@ type jasmin_expr =
 | JEadd of jasmin_expr * jasmin_expr
 | JEsub of jasmin_expr * jasmin_expr
 | JEmul of jasmin_expr * jasmin_expr
+| JEmulhuu of jasmin_expr * jasmin_expr
 | JEand of jasmin_expr * jasmin_expr
 | JEor of jasmin_expr * jasmin_expr
 | JExor of jasmin_expr * jasmin_expr
 | JEshr of jasmin_expr * jasmin_expr
 | JEshl of jasmin_expr * jasmin_expr
+| JEltu of jasmin_expr * jasmin_expr
+| JEeq of jasmin_expr * jasmin_expr
 | JEload of jasmin_expr * z
 
 type jasmin_cmd =
@@ -154,6 +157,9 @@ type jasmin_cmd =
 | JCif of jasmin_expr * jasmin_cmd * jasmin_cmd
 | JCwhile of jasmin_expr * jasmin_cmd
 | JCdecl of char list * jasmin_type * jasmin_cmd
+| JCadd_flags of char list * char list * jasmin_expr * jasmin_expr
+| JCadcx of char list * char list * jasmin_expr * jasmin_expr * char list
+| JCmulx of char list * char list * jasmin_expr * jasmin_expr
 
 type jasmin_func = { jf_name : char list;
                      jf_params : (char list * jasmin_type) list;
@@ -178,7 +184,10 @@ val dedup_strings : char list list -> char list list -> char list list
 
 val function_locals : jasmin_func -> char list list
 
-val pp_locals_decls : char list -> char list list -> char list
+val collect_bool_vars : jasmin_cmd -> char list list
+
+val pp_locals_decls :
+  char list -> char list list -> char list list -> char list
 
 val pp_func : jasmin_func -> char list
 
