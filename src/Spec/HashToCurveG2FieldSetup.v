@@ -239,7 +239,20 @@ Local Transparent F.add F.mul F.sub F.opp F.inv.
 (** Characteristic ≥ 3 for Fp2 (p is 381-bit prime, so char > 3). *)
 #[export] Instance Fp2_char_ge_3 :
   @Ring.char_ge Fp2 (@eq Fp2) fp2_zero fp2_one fp2_neg fp2_add fp2_sub fp2_mul 3.
-Admitted. (* True: BLS12-381 prime >> 3. Will prove via Fp char_ge bridge. *)
+Proof.
+  unfold Ring.char_ge, Hierarchy.char_ge.
+  intros p Hp Heq.
+  assert (Hfst : fst (Ring.of_Z (BinInt.Z.pos p)) = @F.zero p_pos)
+    by (rewrite Heq; reflexivity).
+  destruct p; [destruct p|destruct p|];
+    try (exfalso; revert Hp; vm_compute; discriminate).
+  (* p = 2: fst(of_Z 2) = F.one + F.one ≠ 0 *)
+  all: simpl @Ring.of_Z in Hfst; unfold fp2_add, fp2_one in Hfst;
+       simpl fst in Hfst;
+       apply (f_equal F.to_Z) in Hfst;
+       rewrite ?F.to_Z_add in Hfst;
+       revert Hfst; native_compute; discriminate.
+Qed.
 
 Require Crypto.Algebra.Ring.
 

@@ -4,8 +4,10 @@
     Mirrors HashToCurveClosureProof.v but works over the quadratic
     extension Fp2 = Fp[u]/(u²+1) instead of Fp.
 
-    Doubling case: ADMITTED (true; nsatz limitation on Fp2 — needs
-    manual variable introduction to keep term size manageable). *)
+    Key insight: unfold fp2_cube first, then unfold fp2_sqr in a
+    second pass (to catch the fp2_sqr introduced by the cube unfold).
+    Without the second pass, nsatz fails because it doesn't recognize
+    the mixed fp2_sqr/fp2_mul terms. *)
 
 From Stdlib Require Import ZArith Lia Ring.
 Require Import Crypto.Spec.ModularArithmetic.
@@ -26,18 +28,27 @@ Proof.
   intros [[x1 y1]|] [[x2 y2]|] HP HQ; try exact HP; try exact HQ.
   simpl in HP, HQ. unfold point_add_g2.
   destruct (fp2_eqb x1 x2) eqn:Hx.
-  - apply fp2_eqb_true_iff in Hx. subst x2.
-    destruct (fp2_eqb y1 (fp2_neg y2)) eqn:Hy.
-    + exact I.
-    + apply fp2_eqb_false_iff in Hy.
-      unfold on_curve_E2_opt, on_curve_E2, fp2_sqr, fp2_cube, bls12_b_g2 in *.
-      (* Doubling case: requires manual nsatz preprocessing for Fp2 *)
-      admit.
-  - apply fp2_eqb_false_iff in Hx.
-    unfold on_curve_E2_opt, on_curve_E2, fp2_sqr, fp2_cube, bls12_b_g2 in *.
-    (* General addition case: requires manual nsatz preprocessing for Fp2 *)
-    admit.
-Admitted.
+  2: { (* General addition: x1 ≠ x2 *)
+    apply fp2_eqb_false_iff in Hx.
+    unfold on_curve_E2_opt, on_curve_E2, fp2_cube, bls12_b_g2 in *.
+    unfold fp2_sqr in *.
+    set (b := (F.of_Z p_pos 4, F.of_Z p_pos 4) : Fp2) in *.
+    Field.fsatz. }
+  (* Doubling: x1 = x2 *)
+  apply fp2_eqb_true_iff in Hx. subst x2.
+  destruct (fp2_eqb y1 (fp2_neg y2)) eqn:Hy.
+  { exact I. }
+  apply fp2_eqb_false_iff in Hy.
+  unfold on_curve_E2_opt, on_curve_E2, fp2_cube, bls12_b_g2 in *.
+  unfold fp2_sqr in *.
+  set (b := (F.of_Z p_pos 4, F.of_Z p_pos 4) : Fp2) in *.
+  assert (Hy1nz : y1 <> fp2_zero).
+  { intro Hy0. apply Hy. subst y1.
+    assert (fp2_mul y2 y2 = fp2_zero) by (rewrite HQ; rewrite <- HP; ring).
+    assert (y2 = fp2_zero) by Field.fsatz. subst. ring. }
+  clear HQ Hy y2.
+  Field.fsatz.
+Qed.
 
 Lemma scalar_mul_g2_preserves : forall n P,
   on_curve_E2_opt P -> on_curve_E2_opt (scalar_mul_g2 n P).
