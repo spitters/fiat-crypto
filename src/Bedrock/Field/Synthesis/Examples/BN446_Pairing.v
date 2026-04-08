@@ -506,17 +506,16 @@ Section BN446_Pairing.
       cmd_seq_list [
         cmd.set "i" (expr.op bopname.sub (expr.var "i") (expr.literal 1));
 
-        (* Extract bit i from u6p2 (2-word):
-           word_idx = i >> 6, bit_pos = i & 63
-           word = load(u6p2 + 8 * word_idx)
-           bit = (word >> bit_pos) & 1 *)
-        cmd.set "word_idx" (expr.op bopname.sru (expr.var "i") (expr.literal 6));
-        cmd.set "bit_pos" (expr.op bopname.and (expr.var "i") (expr.literal 63));
+        (* Extract bit i from two-word u6p2:
+           word = u6p2[(i >> 6) << 3], bit = (word >> (i & 63)) & 1 *)
         cmd.set "word" (expr.load access_size.word
           (expr.op bopname.add (expr.var "u6p2")
-            (expr.op bopname.slu (expr.var "word_idx") (expr.literal 3))));
+            (expr.op bopname.slu
+              (expr.op bopname.sru (expr.var "i") (expr.literal 6))
+              (expr.literal 3))));
         cmd.set "bit" (expr.op bopname.and
-          (expr.op bopname.sru (expr.var "word") (expr.var "bit_pos"))
+          (expr.op bopname.sru (expr.var "word")
+            (expr.op bopname.and (expr.var "i") (expr.literal 63)))
           (expr.literal 1));
 
         (* === Doubling step === *)
