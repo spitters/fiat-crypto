@@ -76,6 +76,10 @@ Inductive jasmin_cmd :=
       (* cf_out, result = #ADCX(a, b, cf_in) — add with carry *)
   | JCmulx (hi lo: string) (a b: jasmin_expr)
       (* (hi, lo) = #MULX(a, b) — full 64×64→128 multiply *)
+  | JCsub_flags (cf result: string) (a b: jasmin_expr)
+      (* of,cf,sf,pf,zf,result = #SUB(a, b) — sub with flags *)
+  | JCsbb (cf_out result: string) (a b: jasmin_expr) (cf_in: string)
+      (* cf_out, result = #SBB(a, b, cf_in) — sub with borrow *)
   .
 
 Record jasmin_func := {
@@ -191,8 +195,8 @@ Definition is_binop (e : jasmin_expr) : bool :=
   match e with
   | JEadd _ _ | JEsub _ _ | JEmul _ _ | JEmulhuu _ _
   | JEand _ _ | JEor _ _ | JExor _ _
-  | JEshr _ _ | JEshl _ _
-  | JEltu _ _ | JEeq _ _ => true
+  | JEshr _ _ | JEshl _ _ => true
+  (* JEltu/JEeq produce bool, not u64 — do NOT apply in-place lowering *)
   | _ => false
   end.
 
@@ -219,7 +223,9 @@ Definition binop_src1 (e : jasmin_expr) : option jasmin_expr :=
   | JEadd e1 _ | JEsub e1 _ | JEmul e1 _
   | JEand e1 _ | JEor  e1 _ | JExor e1 _
   | JEshr e1 _ | JEshl e1 _
-  | JEmulhuu e1 _ | JEltu e1 _ | JEeq e1 _ => Some e1
+  | JEmulhuu e1 _ => Some e1
+  (* JEltu/JEeq return bool — exclude from binop lowering *)
+  | JEltu _ _ | JEeq _ _ => None
   | _ => None
   end.
 
@@ -239,8 +245,10 @@ Definition is_atom (e : jasmin_expr) : bool :=
     These names live alongside the bedrock2 [x_<n>] series and are
     declared by [function_locals] (which collects every variable
     appearing on the LHS of a [JCset]). *)
+(** Generate a fresh variable name.  Uses decimal representation so
+    indices >= 10 produce valid identifiers (not `:` etc). *)
 Definition fresh_name (x : string) (n : nat) : string :=
-  (x ++ "_bp" ++ String (Ascii.ascii_of_nat (48 + n)) "")%string.
+  (x ++ "_bp" ++ DecimalString.NilZero.string_of_int (Z.to_int (Z.of_nat n)))%string.
 
 (** Convert an expression into a sequence of [JCset]s + an atomic
     final expression.  The counter [n] threads fresh-temp suffixes
@@ -387,6 +395,8 @@ Fixpoint lower_binop_assigns (c : jasmin_cmd) : jasmin_cmd :=
   | JCadd_flags cf r a b => JCadd_flags cf r a b
   | JCadcx co r a b ci => JCadcx co r a b ci
   | JCmulx h l a b => JCmulx h l a b
+  | JCsub_flags cf r a b => JCsub_flags cf r a b
+  | JCsbb co r a b ci => JCsbb co r a b ci
   end.
 
 (** Apply [lower_binop_assigns] to a [jasmin_func]'s body. *)
@@ -458,6 +468,10 @@ Fixpoint normalize_neg_lits_cmd (c : jasmin_cmd) : jasmin_cmd :=
       JCadcx co r (normalize_neg_lits_expr a) (normalize_neg_lits_expr b) ci
   | JCmulx h l a b =>
       JCmulx h l (normalize_neg_lits_expr a) (normalize_neg_lits_expr b)
+  | JCsub_flags cf r a b =>
+      JCsub_flags cf r (normalize_neg_lits_expr a) (normalize_neg_lits_expr b)
+  | JCsbb co r a b ci =>
+      JCsbb co r (normalize_neg_lits_expr a) (normalize_neg_lits_expr b) ci
   end.
 
 Definition normalize_func (f : jasmin_func) : jasmin_func :=
@@ -560,6 +574,10 @@ Fixpoint simplify_cmd (c : jasmin_cmd) : jasmin_cmd :=
       JCadcx co r (simplify_expr a) (simplify_expr b) ci
   | JCmulx h l a b =>
       JCmulx h l (simplify_expr a) (simplify_expr b)
+  | JCsub_flags cf r a b =>
+      JCsub_flags cf r (simplify_expr a) (simplify_expr b)
+  | JCsbb co r a b ci =>
+      JCsbb co r (simplify_expr a) (simplify_expr b) ci
   end.
 
 Definition simplify_func (f : jasmin_func) : jasmin_func :=
@@ -650,6 +668,76 @@ Definition match_cont_adc (c1 c2 : jasmin_cmd)
   | _, _ => None
   end.
 
+(** Match carry-out computation after the last ADCX:
+    [carry_out = ((prev <u a) + (ns <u b))]
+    → carry_out = 0; if __cf { carry_out = 1; }
+    Consumes 1 statement, emits the bool→u64 conversion. *)
+Definition match_carry_out (c : jasmin_cmd) : option jasmin_cmd :=
+  match c with
+  | JCset cout (JEadd (JEltu _ _) (JEltu _ _)) =>
+      Some (JCseq (JCset cout (JElit 0))
+                   (JCif (JEvar "__cf") (JCset cout (JElit 1)) JCskip))
+  | _ => None
+  end.
+
+(** Subtraction chain detection (mirrors addition chain). *)
+
+Definition match_first_limb_sbb (c1 c2 c3 : jasmin_cmd)
+    : option (jasmin_cmd * jasmin_cmd) :=
+  match c1, c2, c3 with
+  | JCset result1 (JEsub (JEvar sum1) const1),
+    JCset result2 (JEsub (JEvar sum2) const2),
+    JCset adj (JEsub (JEvar result2') (JEltu (JEvar sum1') (JEvar result1'))) =>
+      if String.eqb result2 result2'
+         && String.eqb sum1 sum1'
+         && String.eqb result1 result1'
+      then Some (JCsub_flags "__bf" result1 (JEvar sum1) const1,
+                  JCsbb "__bf" adj (JEvar sum2) const2 "__bf")
+      else None
+  | _, _, _ => None
+  end.
+
+Definition match_cont_sbb (c1 c2 : jasmin_cmd)
+    : option jasmin_cmd :=
+  match c1, c2 with
+  | JCset result (JEsub (JEvar sum) const),
+    JCset adj (JEsub (JEvar result') (JEadd (JEltu _ _) (JEltu _ _))) =>
+      if String.eqb result result'
+      then Some (JCsbb "__bf" adj (JEvar sum) const "__bf")
+      else None
+  | _, _ => None
+  end.
+
+Definition match_borrow_out (c : jasmin_cmd) : option jasmin_cmd :=
+  match c with
+  | JCset bout (JEltu _ (JEsub _ (JEadd (JEltu _ _) (JEltu _ _)))) =>
+      Some (JCseq (JCset bout (JElit 0))
+                   (JCif (JEvar "__bf") (JCset bout (JElit 1)) JCskip))
+  | _ => None
+  end.
+
+(** Conditional-select pattern:
+    [mask = (0 + (flag == 0))]
+    [nmask = (mask ^ 0xFFFFFFFFFFFFFFFF)]
+    [out = (sum & mask) | (diff & nmask)]
+    → out = diff; out = sum if !__bf;
+    Consumes 3, emits 2. *)
+Definition match_cmov (c1 c2 c3 : jasmin_cmd)
+    : option jasmin_cmd :=
+  match c1, c2, c3 with
+  | JCset mask (JEadd (JElit 0) (JEeq (JEvar _) (JElit 0))),
+    JCset nmask (JExor (JEvar mask') (JElit _)),
+    JCset out (JEor (JEand (JEvar sum) (JEvar mask''))
+                     (JEand (JEvar diff) (JEvar nmask'))) =>
+      if String.eqb mask mask'
+         && String.eqb mask mask''
+         && String.eqb nmask nmask'
+      then Some (JCseq (JCset out (JEvar diff))
+                       (JCif (JEvar "__bf") JCskip (JCset out (JEvar sum))))
+      else None
+  | _, _, _ => None
+  end.
+
 (** Match simple [x = (a + b); y = (x <u a)] → JCadd_flags y x a b. *)
 Definition match_add_carry (c1 c2 : jasmin_cmd)
     : option jasmin_cmd :=
@@ -687,32 +775,56 @@ Fixpoint lower_carry_chain_list (fuel : nat) (cs : list jasmin_cmd)
     match cs with
     | nil => nil
     | c1 :: c2 :: c3 :: rest =>
-        (* First try 3-statement fused first-limb ADC *)
+        (* First try 3-statement conditional move *)
+        match match_cmov c1 c2 c3 with
+        | Some instr => instr :: lower_carry_chain_list fuel' rest
+        | None =>
+        (* Then try 3-statement fused first-limb ADC *)
         match match_first_limb_adc c1 c2 c3 with
         | Some (i1, i2) =>
             i1 :: i2 :: lower_carry_chain_list fuel' rest
         | None =>
-        (* Then try 2-statement continuation ADC *)
+        (* Try 3-statement first-limb SBB *)
+        match match_first_limb_sbb c1 c2 c3 with
+        | Some (i1, i2) =>
+            i1 :: i2 :: lower_carry_chain_list fuel' rest
+        | None =>
+        (* Then try 2-statement continuation ADC/SBB *)
         match match_cont_adc c1 c2 with
         | Some instr => instr :: lower_carry_chain_list fuel' (c3 :: rest)
         | None =>
-        (* Then try simple add+carry or mulx *)
+        match match_cont_sbb c1 c2 with
+        | Some instr => instr :: lower_carry_chain_list fuel' (c3 :: rest)
+        | None =>
+        (* Try carry/borrow out *)
+        match match_carry_out c1 with
+        | Some conv => conv :: lower_carry_chain_list fuel' (c2 :: c3 :: rest)
+        | None =>
+        match match_borrow_out c1 with
+        | Some conv => conv :: lower_carry_chain_list fuel' (c2 :: c3 :: rest)
+        | None =>
+        (* Simple add+carry or mulx *)
         match match_add_carry c1 c2 with
         | Some instr => instr :: lower_carry_chain_list fuel' (c3 :: rest)
         | None =>
         match match_mulx c1 c2 with
         | Some instr => instr :: lower_carry_chain_list fuel' (c3 :: rest)
         | None => c1 :: lower_carry_chain_list fuel' (c2 :: c3 :: rest)
-        end end end end
+        end end end end end end end end end
     | c1 :: c2 :: nil =>
+        match match_cont_sbb c1 c2 with
+        | Some instr => instr :: nil
+        | None =>
+        match match_cont_adc c1 c2 with
+        | Some instr => instr :: nil
+        | None =>
         match match_add_carry c1 c2 with
         | Some instr => instr :: nil
         | None =>
-          match match_mulx c1 c2 with
-          | Some instr => instr :: nil
-          | None => c1 :: c2 :: nil
-          end
-        end
+        match match_mulx c1 c2 with
+        | Some instr => instr :: nil
+        | None => c1 :: c2 :: nil
+        end end end end
     | c :: rest => c :: lower_carry_chain_list fuel' rest
     end
   end.
@@ -762,20 +874,27 @@ Fixpoint extract_comparisons (n : nat) (x : string) (e : jasmin_expr)
     : nat * jasmin_cmd * jasmin_expr :=
   match e with
   | JEltu a b =>
-      let bname := ltu_bool_name (fresh_name x n) in
-      let tmp := fresh_name x n in
-      (S n,
-       JCseq (JCset bname (JEltu a b))
-             (JCseq (JCset tmp (JElit 0))
-                    (JCif (JEvar bname) (JCset tmp (JElit 1)) JCskip)),
+      (* First extract any nested comparisons from operands *)
+      let '(n1, p1, a') := extract_comparisons n x a in
+      let '(n2, p2, b') := extract_comparisons n1 x b in
+      let bname := ltu_bool_name (fresh_name x n2) in
+      let tmp := fresh_name x n2 in
+      (S n2,
+       JCseq p1 (JCseq p2
+         (JCseq (JCset bname (JEltu a' b'))
+                (JCseq (JCset tmp (JElit 0))
+                       (JCif (JEvar bname) (JCset tmp (JElit 1)) JCskip)))),
        JEvar tmp)
   | JEeq a b =>
-      let bname := ("__eq_" ++ fresh_name x n)%string in
-      let tmp := fresh_name x n in
-      (S n,
-       JCseq (JCset bname (JEeq a b))
-             (JCseq (JCset tmp (JElit 0))
-                    (JCif (JEvar bname) (JCset tmp (JElit 1)) JCskip)),
+      let '(n1, p1, a') := extract_comparisons n x a in
+      let '(n2, p2, b') := extract_comparisons n1 x b in
+      let bname := ("__eq_" ++ fresh_name x n2)%string in
+      let tmp := fresh_name x n2 in
+      (S n2,
+       JCseq p1 (JCseq p2
+         (JCseq (JCset bname (JEeq a' b'))
+                (JCseq (JCset tmp (JElit 0))
+                       (JCif (JEvar bname) (JCset tmp (JElit 1)) JCskip)))),
        JEvar tmp)
   | JEadd e1 e2 =>
       let '(n1, p1, e1') := extract_comparisons n x e1 in
@@ -828,11 +947,15 @@ Definition lower_comparisons_func (f : jasmin_func) : jasmin_func :=
      jf_locals := jf_locals f;
      jf_body := body' |}.
 
-(** Combined polish: comparison lowering → simplify → normalize → lower → simplify.
-    Carry-chain detection infrastructure exists but is disabled pending
-    lifetime analysis for the dangling-reference issue. *)
+(** Combined polish pipeline:
+    1. carry_func: detect ADD/ADCX/MULX patterns + carry-out conversion
+    2. lower_comparisons_func: remaining <u/== → bool conditionals
+    3. simplify_func: constant fold, dead-code elim
+    4. normalize_func: negative literals → two's complement
+    5. lower_func: flatten binops for jasminc
+    6. simplify_func: clean up after lowering *)
 Definition polish_func (f : jasmin_func) : jasmin_func :=
-  simplify_func (lower_func (normalize_func (simplify_func (lower_comparisons_func f)))).
+  simplify_func (lower_func (normalize_func (simplify_func (lower_comparisons_func (carry_func f))))).
 
 (* ================================================================ *)
 (* Pretty-printing: jasmin_cmd → string (Jasmin source text)        *)
@@ -931,6 +1054,15 @@ Fixpoint pp_cmd (indent: string) (c: jasmin_cmd) : string :=
       indent ++ cf_out ++ ", " ++ result ++ " = #ADCX(" ++ pp_expr a ++ ", " ++ pp_expr b ++ ", " ++ cf_in ++ ");" ++ LF
   | JCmulx hi lo a b =>
       indent ++ "(" ++ hi ++ ", " ++ lo ++ ") = #MULX(" ++ pp_expr a ++ ", " ++ pp_expr b ++ ");" ++ LF
+  | JCsub_flags cf result a b =>
+      (* load large immediate into __wtmp, copy src to dest, in-place SUB *)
+      indent ++ "__wtmp__ = " ++ pp_expr b ++ ";" ++ LF ++
+      indent ++ result ++ " = " ++ pp_expr a ++ ";" ++ LF ++
+      indent ++ "_, " ++ cf ++ ", _, _, _, " ++ result ++ " = #SUB(" ++ result ++ ", __wtmp__);" ++ LF
+  | JCsbb cf_out result a b cf_in =>
+      indent ++ "__wtmp__ = " ++ pp_expr b ++ ";" ++ LF ++
+      indent ++ result ++ " = " ++ pp_expr a ++ ";" ++ LF ++
+      indent ++ "_, " ++ cf_out ++ ", _, _, _, " ++ result ++ " = #SBB(" ++ result ++ ", __wtmp__, " ++ cf_in ++ ");" ++ LF
   end.
 
 (** Collect every variable assigned via [JCset] in a [jasmin_cmd],
@@ -957,6 +1089,8 @@ Fixpoint collect_set_vars (c : jasmin_cmd) : list string :=
   | JCadd_flags cf result _ _ => cf :: result :: nil
   | JCadcx cf_out result _ _ _ => cf_out :: result :: nil
   | JCmulx hi lo _ _ => hi :: lo :: nil
+  | JCsub_flags cf result _ _ => cf :: result :: nil
+  | JCsbb cf_out result _ _ _ => cf_out :: result :: nil
   end.
 
 (** Deduplicate a list of strings, preserving order of first occurrence. *)
@@ -986,6 +1120,10 @@ Fixpoint collect_bool_vars (c : jasmin_cmd) : list string :=
   | JCseq c1 c2 => collect_bool_vars c1 ++ collect_bool_vars c2
   | JCadd_flags cf _ _ _ => cf :: nil
   | JCadcx cf_out _ _ _ _ => cf_out :: nil
+  | JCsub_flags cf _ _ _ => cf :: nil
+  | JCsbb cf_out _ _ _ _ => cf_out :: nil
+  | JCset x (JEltu _ _) => x :: nil   (* comparison → bool *)
+  | JCset x (JEeq _ _) => x :: nil    (* comparison → bool *)
   | JCif _ ct cf => collect_bool_vars ct ++ collect_bool_vars cf
   | JCwhile _ body => collect_bool_vars body
   | JCdecl _ _ body => collect_bool_vars body
@@ -1002,11 +1140,16 @@ Definition pp_locals_decls (indent : string) (bool_vars : list string)
 
 Definition pp_func (f: jasmin_func) : string :=
   let bools := dedup_strings nil (collect_bool_vars (jf_body f)) in
+  let locals := function_locals f in
+  (* Always declare __wtmp__ for large immediates in #SUB/#SBB *)
+  let extra_decls :=
+    if string_in "__wtmp__" locals then "" else "  reg u64 __wtmp__;" ++ LF in
   "export fn " ++ jf_name f ++ "(" ++
     String.concat ", " (List.map (fun '(name, ty) =>
       pp_type ty ++ " " ++ name) (jf_params f)) ++
     ") {" ++ LF ++
-    pp_locals_decls "  " bools (function_locals f) ++
+    extra_decls ++
+    pp_locals_decls "  " bools locals ++
     pp_cmd "  " (jf_body f) ++
   "}" ++ LF.
 

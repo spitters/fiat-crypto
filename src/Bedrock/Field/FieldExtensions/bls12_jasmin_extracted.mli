@@ -160,6 +160,8 @@ type jasmin_cmd =
 | JCadd_flags of char list * char list * jasmin_expr * jasmin_expr
 | JCadcx of char list * char list * jasmin_expr * jasmin_expr * char list
 | JCmulx of char list * char list * jasmin_expr * jasmin_expr
+| JCsub_flags of char list * char list * jasmin_expr * jasmin_expr
+| JCsbb of char list * char list * jasmin_expr * jasmin_expr * char list
 
 type jasmin_func = { jf_name : char list;
                      jf_params : (char list * jasmin_type) list;
