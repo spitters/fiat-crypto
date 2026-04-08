@@ -223,8 +223,16 @@ Section LoadAndProcess.
           | H : _ /\ _ |- _ => destruct H
           | H : _ = _ |- _ => first [ subst | idtac ]
           end);
+        (* Reduce map.putmany_of_list_zip for empty return lists *)
         cbv [map.putmany_of_list_zip];
-        try (eexists; split; [exact eq_refl|]) ] ].
+        repeat match goal with
+        | |- exists _, Some ?x = Some _ /\ _ =>
+            eexists; split; [exact eq_refl|]
+        | |- exists _, _ = _ /\ _ =>
+            eexists; split; [exact eq_refl|]
+        end;
+        (* Peel any remaining cmd.seq layers *)
+        try (cbn [WeakestPrecondition.cmd WeakestPrecondition.cmd_body]) ] ].
 
   (** Close the postcondition: existentials, eq, sep, map.get chain. *)
   Local Ltac wp_postcond :=
