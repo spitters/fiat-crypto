@@ -242,22 +242,47 @@ Section LoadAndProcess.
          all: try (subst l1; intros k v Hk1 Hk2 Hk3 Hk4 Hgk;
                    rewrite map.get_put_diff by auto; exact Hgk). }
 
-    (* === Step 4: d ≠ 0 case (THEN branch) ===
-       The remaining proof is the bulk: ~150 lines stepping through
-       the THEN branch of process_one_digit:
-       - Phase A: abs value (cmd.cond + cmd.set "lookup_d")
-       - Phase B: tab_idx, tab_off (2x cmd.set)
-       - Phase C: 3x felem_copy via HFelemCopy
+    + (* === Step 4: d ≠ 0 case (THEN branch) === *)
+      intros Hdne.
+      pose proof (Hdigits_bounded1 n Hn) as Hdb. fold d in Hdb.
+      assert (Hd_ne : d <> 0).
+      { intro Heq. apply Hdne. unfold encode_digit. rewrite Heq.
+        rewrite word.unsigned_of_Z_0. reflexivity. }
+      eexists. split.
+      { (* DEXPR: lts d1 0 *)
+        cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
+             WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet].
+        eexists. split. 1: subst l1; apply map.get_put_same.
+        reflexivity. }
+      split.
+      { (* lts result is non-zero ⇒ d < 0 (THEN: lookup_d := -d1) *)
+        intros Hltc.
+        eexists. split.
+        { cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
+               WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet].
+          eexists. split. 1: subst l1; apply map.get_put_same.
+          reflexivity. }
+        (* After lookup_d := -d1, we are in the d<0 sub-branch.
+           Remaining: tab_idx, tab_off, 3 felem_copy, conditional negate,
+           curve_add, postcondition. ~100 lines, mechanical. *)
+        admit. }
+      { (* lts result is zero ⇒ d ≥ 0 (ELSE: lookup_d := d1) *)
+        intros Hltc.
+        eexists. split.
+        { cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
+               WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet].
+          eexists. split. 1: subst l1; apply map.get_put_same.
+          reflexivity. }
+        admit. }
+
+    (* The two admits above cover the d<0 and d≥0 sub-branches.
+       Each requires ~100 lines of mechanical stepping through:
+       - Phase B: tab_idx (cmd.set + DEXPR sru), tab_off (cmd.set + DEXPR mul)
+       - Phase C: 3x felem_copy via HFelemCopy + Semantics.weaken_call
        - Phase D: conditional negate via HOppInplace
        - Phase E: curve_add(out, aux, out) via HCurveAddInplace
-       - Phase F: postcondition closure with table_correctness lemma
-
-       Proof structure follows exactly the same pattern as Steps 1-3:
-       - cbv to expose existentials
-       - eexists/split to instantiate fresh variables
-       - eapply Semantics.weaken_call + apply spec for function calls
-       - rewrite map.get_put_diff for locals tracking
-       - The KEY algebraic step at the end uses digit_point_is_sm_Z
+       - Phase F: postcondition closure
+         The KEY algebraic step at the end uses digit_point_is_sm_Z
          (from BLS12_wNAF_HornerAlgebra.v) to convert table_lookup +
          conditional negate into the abstract digit_point form. *)
   Admitted.
