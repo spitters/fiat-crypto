@@ -203,36 +203,45 @@ Section LoadAndProcess.
       [spec] is the hypothesis (e.g., HFelemCopy, HCurveAddInplace).
       Handles cmd.seq nesting and the full pattern:
         WP (cmd.seq (cmd.call ...) rest) post *)
+  (** Solve a dexprs goal by stepping through the list. *)
+  Local Ltac solve_dexprs_goal :=
+    lazymatch goal with
+    | |- dexprs _ _ _ _ => wp_dexprs
+    | _ =>
+      (* Partially unfolded dexprs — try straightline then manual *)
+      repeat straightline;
+      try wp_dexprs;
+      (* If still stuck, provide witnesses manually *)
+      repeat (first
+        [ eexists; split; [solve_mapget|]
+        | split; [reflexivity|]
+        | cbn [Semantics.interp_binop]; reflexivity
+        | reflexivity ])
+    end.
+
+  (** wp_call_via_straightline handles the full cmd.call pattern using
+      bedrock2's native straightline to resolve dexprs, avoiding evar issues.
+      After straightline resolves arguments and exposes the Semantics.call,
+      we apply the spec via weaken_call + ecancel_assumption. *)
   Local Ltac wp_call spec :=
-    (* Peel cmd.seq layers to expose the cmd.call *)
-    repeat match goal with
-    | |- WeakestPrecondition.cmd _ (cmd.seq _ _) _ _ _ _ =>
-        cbn [WeakestPrecondition.cmd WeakestPrecondition.cmd_body]
-    end;
-    (* Now goal should be: exists args, dexprs ... args /\ Semantics.call ... *)
+    (* Use straightline to handle cmd.seq + cmd.call + dexprs fully *)
     repeat straightline;
-    (* Provide the argument witness and split into dexprs + call *)
-    eexists; split;
-    [ (* Solve dexprs — use repeat for the argument list *)
-      wp_dexprs
-    | (* Apply the function spec via weaken_call *)
-      eapply Semantics.weaken_call;
-      [ eapply spec; ecancel_assumption
-      | intros ? ? ? ?; repeat (
-          match goal with
-          | H : _ /\ _ |- _ => destruct H
-          | H : _ = _ |- _ => first [ subst | idtac ]
-          end);
-        (* Reduce map.putmany_of_list_zip for empty return lists *)
-        cbv [map.putmany_of_list_zip];
-        repeat match goal with
-        | |- exists _, Some ?x = Some _ /\ _ =>
-            eexists; split; [exact eq_refl|]
-        | |- exists _, _ = _ /\ _ =>
-            eexists; split; [exact eq_refl|]
-        end;
-        (* Peel any remaining cmd.seq layers *)
-        try (cbn [WeakestPrecondition.cmd WeakestPrecondition.cmd_body]) ] ].
+    (* Now the goal should be Semantics.call with concrete args *)
+    eapply Semantics.weaken_call;
+    [ eapply spec; ecancel_assumption
+    | intros ? ? ? ?; repeat (
+        match goal with
+        | H : _ /\ _ |- _ => destruct H
+        | H : _ = _ |- _ => first [ subst | idtac ]
+        end);
+      cbv [map.putmany_of_list_zip];
+      repeat match goal with
+      | |- exists _, Some ?x = Some _ /\ _ =>
+          eexists; split; [exact eq_refl|]
+      | |- exists _, _ = _ /\ _ =>
+          eexists; split; [exact eq_refl|]
+      end;
+      try (cbn [WeakestPrecondition.cmd WeakestPrecondition.cmd_body]) ].
 
   (** Close the postcondition: existentials, eq, sep, map.get chain. *)
   Local Ltac wp_postcond :=
@@ -349,36 +358,20 @@ Section LoadAndProcess.
         eexists. split. 1: subst l1; apply map.get_put_same.
         reflexivity. }
       split.
-      { (* lts result is non-zero ⇒ d < 0 (THEN: lookup_d := -d1) *)
+      { (* d < 0: lookup_d := -d1 *)
         intros Hltc.
-        eexists. split.
-        { cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
-               WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet].
-          eexists. split. 1: subst l1; apply map.get_put_same.
-          reflexivity. }
-        (* After lookup_d := -d1, we are in the d<0 sub-branch.
-           Remaining: tab_idx, tab_off, 3 felem_copy, conditional negate,
-           curve_add, postcondition. ~100 lines, mechanical. *)
+        eexists. split. 1: wp_dexpr. cbv [dlet.dlet].
+        wp_cmd_set. wp_cmd_set. cbv [dlet.dlet].
+        (* After tab_idx and tab_off are set, the remaining WP
+           is 3 felem_copy + cond negate + curve_add + postcondition.
+           wp_call HFelemCopy works for the FIRST call but the SECOND
+           call has an evar scoping issue. See ALIASING_COOKBOOK.md. *)
         admit. }
-      { (* lts result is zero ⇒ d ≥ 0 (ELSE: lookup_d := d1) *)
-        intros Hltc.
-        eexists. split.
-        { cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
-               WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet].
-          eexists. split. 1: subst l1; apply map.get_put_same.
-          reflexivity. }
+      { (* d >= 0: lookup_d := d1 *)
+        intros Hge.
+        eexists. split. 1: wp_dexpr. cbv [dlet.dlet].
+        wp_cmd_set. wp_cmd_set. cbv [dlet.dlet].
         admit. }
-
-    (* The two admits above cover the d<0 and d≥0 sub-branches.
-       Each requires ~100 lines of mechanical stepping through:
-       - Phase B: tab_idx (cmd.set + DEXPR sru), tab_off (cmd.set + DEXPR mul)
-       - Phase C: 3x felem_copy via HFelemCopy + Semantics.weaken_call
-       - Phase D: conditional negate via HOppInplace
-       - Phase E: curve_add(out, aux, out) via HCurveAddInplace
-       - Phase F: postcondition closure
-         The KEY algebraic step at the end uses digit_point_is_sm_Z
-         (from BLS12_wNAF_HornerAlgebra.v) to convert table_lookup +
-         conditional negate into the abstract digit_point form. *)
   Admitted.
 
 End LoadAndProcess.
