@@ -737,10 +737,102 @@ Definition carry_func (f : jasmin_func) : jasmin_func :=
 (** Combined polish: simplify + normalize + carry-chain + lower + simplify.
     Carry-chain runs before binop lowering because it matches multi-statement
     patterns that lowering would break apart. *)
-(** Carry detection first (before simplify breaks patterns), then
-    simplify + normalize + lower + simplify. *)
+(* ================================================================ *)
+(* Codegen polish 5: lower ltu/eq to bool conditionals              *)
+(* ================================================================ *)
+
+(** Jasmin's [<u] and [==] return [reg bool], not [reg u64].
+    bedrock2 treats these as u64 (0 or 1).  This pass converts every
+    [JEltu a b] embedded in an expression to a conditional assignment
+    through a fresh bool variable + if-then-else.  *)
+
+Definition ltu_bool_name (x : string) : string := ("__ltu_" ++ x)%string.
+
+Fixpoint has_comparison (e : jasmin_expr) : bool :=
+  match e with
+  | JEltu _ _ | JEeq _ _ => true
+  | JEadd e1 e2 | JEsub e1 e2 | JEmul e1 e2 | JEmulhuu e1 e2
+  | JEand e1 e2 | JEor e1 e2 | JExor e1 e2
+  | JEshr e1 e2 | JEshl e1 e2 => has_comparison e1 || has_comparison e2
+  | JEload base _ => has_comparison base
+  | _ => false
+  end.
+
+Fixpoint extract_comparisons (n : nat) (x : string) (e : jasmin_expr)
+    : nat * jasmin_cmd * jasmin_expr :=
+  match e with
+  | JEltu a b =>
+      let bname := ltu_bool_name (fresh_name x n) in
+      let tmp := fresh_name x n in
+      (S n,
+       JCseq (JCset bname (JEltu a b))
+             (JCseq (JCset tmp (JElit 0))
+                    (JCif (JEvar bname) (JCset tmp (JElit 1)) JCskip)),
+       JEvar tmp)
+  | JEeq a b =>
+      let bname := ("__eq_" ++ fresh_name x n)%string in
+      let tmp := fresh_name x n in
+      (S n,
+       JCseq (JCset bname (JEeq a b))
+             (JCseq (JCset tmp (JElit 0))
+                    (JCif (JEvar bname) (JCset tmp (JElit 1)) JCskip)),
+       JEvar tmp)
+  | JEadd e1 e2 =>
+      let '(n1, p1, e1') := extract_comparisons n x e1 in
+      let '(n2, p2, e2') := extract_comparisons n1 x e2 in
+      (n2, JCseq p1 p2, JEadd e1' e2')
+  | JEsub e1 e2 =>
+      let '(n1, p1, e1') := extract_comparisons n x e1 in
+      let '(n2, p2, e2') := extract_comparisons n1 x e2 in
+      (n2, JCseq p1 p2, JEsub e1' e2')
+  | JEor e1 e2 =>
+      let '(n1, p1, e1') := extract_comparisons n x e1 in
+      let '(n2, p2, e2') := extract_comparisons n1 x e2 in
+      (n2, JCseq p1 p2, JEor e1' e2')
+  | JEand e1 e2 =>
+      let '(n1, p1, e1') := extract_comparisons n x e1 in
+      let '(n2, p2, e2') := extract_comparisons n1 x e2 in
+      (n2, JCseq p1 p2, JEand e1' e2')
+  | _ => (n, JCskip, e)
+  end.
+
+Fixpoint lower_comparisons_cmd (n : nat) (c : jasmin_cmd) : nat * jasmin_cmd :=
+  match c with
+  | JCskip => (n, JCskip)
+  | JCseq c1 c2 =>
+      let '(n1, c1') := lower_comparisons_cmd n c1 in
+      let '(n2, c2') := lower_comparisons_cmd n1 c2 in
+      (n2, JCseq c1' c2')
+  | JCset x e =>
+      if has_comparison e then
+        let '(n', prefix, e') := extract_comparisons n x e in
+        (n', JCseq prefix (JCset x e'))
+      else (n, JCset x e)
+  | JCif e ct cf =>
+      let '(n1, ct') := lower_comparisons_cmd n ct in
+      let '(n2, cf') := lower_comparisons_cmd n1 cf in
+      (n2, JCif e ct' cf')
+  | JCwhile e body =>
+      let '(n', body') := lower_comparisons_cmd n body in
+      (n', JCwhile e body')
+  | JCdecl x ty body =>
+      let '(n', body') := lower_comparisons_cmd n body in
+      (n', JCdecl x ty body')
+  | _ => (n, c) (* store, call, intrinsics: pass through *)
+  end.
+
+Definition lower_comparisons_func (f : jasmin_func) : jasmin_func :=
+  let '(_, body') := lower_comparisons_cmd 0 (jf_body f) in
+  {| jf_name := jf_name f;
+     jf_params := jf_params f;
+     jf_locals := jf_locals f;
+     jf_body := body' |}.
+
+(** Combined polish: comparison lowering → simplify → normalize → lower → simplify.
+    Carry-chain detection infrastructure exists but is disabled pending
+    lifetime analysis for the dangling-reference issue. *)
 Definition polish_func (f : jasmin_func) : jasmin_func :=
-  simplify_func (lower_func (normalize_func (simplify_func (carry_func f)))).
+  simplify_func (lower_func (normalize_func (simplify_func (lower_comparisons_func f)))).
 
 (* ================================================================ *)
 (* Pretty-printing: jasmin_cmd → string (Jasmin source text)        *)
@@ -809,10 +901,22 @@ Fixpoint pp_cmd (indent: string) (c: jasmin_cmd) : string :=
   | JCcall f args =>
       indent ++ f ++ "(" ++ String.concat ", " (List.map pp_expr args) ++ ");" ++ LF
   | JCif e ct cf =>
-      indent ++ "if (" ++ pp_expr e ++ " != 0) {" ++ LF ++
+      (* For bool-typed conditions (from ltu/eq lowering), emit
+         [if bname {] without [!= 0].  For u64 conditions, keep
+         the [!= 0] test. *)
+      let cond_str :=
+        match e with
+        | JEvar x => x  (* bool var: Jasmin accepts [if bname {] *)
+        | _ => "(" ++ pp_expr e ++ " != 0)"
+        end in
+      let else_part :=
+        match cf with
+        | JCskip => ""  (* omit empty else *)
+        | _ => indent ++ "} else {" ++ LF ++ pp_cmd ("  " ++ indent) cf
+        end in
+      indent ++ "if " ++ cond_str ++ " {" ++ LF ++
         pp_cmd ("  " ++ indent) ct ++
-      indent ++ "} else {" ++ LF ++
-        pp_cmd ("  " ++ indent) cf ++
+      else_part ++
       indent ++ "}" ++ LF
   | JCwhile e body =>
       indent ++ "while (" ++ pp_expr e ++ " != 0) {" ++ LF ++
