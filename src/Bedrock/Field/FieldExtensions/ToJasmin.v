@@ -915,20 +915,25 @@ Definition match_borrow_out (c : jasmin_cmd) : option jasmin_cmd :=
 Definition match_cmov (c1 c2 c3 : jasmin_cmd)
     : option jasmin_cmd :=
   match c1, c2, c3 with
-  | JCset mask (JEadd (JElit 0) (JEeq (JEvar flag) (JElit 0))),
+  (* Two forms of the mask depending on op1.opp presence:
+     Form A: mask = (0 + (flag == 0))        → JEadd (JElit 0) (JEeq ...)
+     Form B: mask = ((0 - 1) + (flag == 0))  → JEadd (JEsub ...) (JEeq ...)
+     We match both by using [_] for the first operand of the outer add. *)
+  | JCset mask (JEadd _ (JEeq (JEvar flag) (JElit 0))),
     JCset nmask (JExor (JEvar mask') (JElit _)),
     JCset out (JEor (JEand (JEvar sum) (JEvar mask''))
                      (JEand (JEvar diff) (JEvar nmask'))) =>
       if String.eqb mask mask'
          && String.eqb mask mask''
          && String.eqb nmask nmask'
-      (* For bls12_add: flag (e.g. x35) = 1 if borrow when subtracting p
-         (sum < p, keep sum), 0 if no borrow (sum >= p, use diff).
-         Emit: out = sum; if (flag == 0) { out = diff; } *)
-      then Some (JCseq (JCset out (JEvar sum))
-                       (JCif (JEeq (JEvar flag) (JElit 0))
-                             (JCset out (JEvar diff))
-                             JCskip))
+      (* Flag is the borrow-out: flag=1 means borrow (sum < p, keep sum),
+         flag=0 means no borrow (sum >= p, use diff = sum-p).
+         Inline the comparison: if (flag == 0) { out = diff; } else { out = sum; }
+         Jasmin compiles the inline [flag == 0] test to testq + cmovcc
+         without needing a separate reg bool variable. *)
+      then Some (JCif (JEeq (JEvar flag) (JElit 0))
+                      (JCset out (JEvar diff))
+                      (JCset out (JEvar sum)))
       else None
   | _, _, _ => None
   end.
@@ -1532,7 +1537,9 @@ Definition pp_func (f: jasmin_func) : string :=
   let locals := function_locals f in
   (* Always declare __wtmp__ for large immediates in #SUB/#SBB *)
   let extra_decls :=
-    if string_in "__wtmp__" locals then "" else "  reg u64 __wtmp__;" ++ LF in
+    (if string_in "__wtmp__" locals then "" else "  reg u64 __wtmp__;" ++ LF) ++
+    (* Declare __mulx_tmp__ for short-lived RDX copy in split MULX *)
+    (if string_in "__mulx_tmp__" locals then "" else "  reg u64 __mulx_tmp__;" ++ LF) in
   "export fn " ++ jf_name f ++ "(" ++
     String.concat ", " (List.map (fun '(name, ty) =>
       pp_type ty ++ " " ++ name) (jf_params f)) ++
