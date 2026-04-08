@@ -190,14 +190,14 @@ Section LoadAndProcess.
          WeakestPrecondition.expr WeakestPrecondition.expr_body
          WeakestPrecondition.get WeakestPrecondition.literal
          dlet.dlet list_map list_map_body];
-    (* Also reduce partially-unfolded expr fixpoints *)
-    cbn [Semantics.interp_binop];
+    (* Reduce partially-unfolded expr fixpoints and binop interp *)
     repeat (first
-      [ exact (conj eq_refl eq_refl)
-      | split; [ (eexists; split; [solve_mapget|]; cbn [Semantics.interp_binop]; reflexivity) | ]
+      [ cbn beta iota delta [Semantics.interp_binop]
+      | exact (conj eq_refl eq_refl)
+      | split; [ (eexists; split; [solve_mapget|]; try (cbn [Semantics.interp_binop]; reflexivity)) | ]
       | split; [ reflexivity | ]
-      | eexists; split; [solve_mapget|]; cbn [Semantics.interp_binop]; reflexivity
-      | eexists; split; [solve_mapget|] ]).
+      | eexists; split; [solve_mapget|]
+      | reflexivity ]).
 
   (** Process a full bedrock2 cmd.call: peel cmd.seq + dexprs + weaken_call.
       [spec] is the hypothesis (e.g., HFelemCopy, HCurveAddInplace).
