@@ -933,6 +933,149 @@ Definition match_cmov (c1 c2 c3 : jasmin_cmd)
   | _, _, _ => None
   end.
 
+(** Match the conditional-addition pattern from sub's "maybe add p":
+    [sum = a + (mask & const1)]                  — first masked add
+    [intermediate = (sum <u a) + next_a]         — carry + next limb operand
+    [ns = intermediate + (mask & const2)]        — second masked add
+    → __wtmp__ = (mask & const1);
+      _, __cf, _, _, _, sum = #ADD(a, __wtmp__);
+      __wtmp2__ = (mask & const2);
+      __cf, ns = #ADCX(next_a, __wtmp2__, __cf);
+    Consumes 3, emits the equivalent of 2 carry-chain ops with 2 mask
+    materializations.
+
+    We emit JCset for the masked values rather than custom intrinsics —
+    pp_cmd already lifts large literals via __wtmp__. *)
+Definition match_first_limb_adc_masked (c1 c2 c3 : jasmin_cmd)
+    : option (jasmin_cmd * jasmin_cmd) :=
+  match c1, c2, c3 with
+  | JCset sum (JEadd (JEvar a) (JEand (JEvar mask1) c1lit)),
+    JCset cpn (JEadd (JEltu (JEvar sum') (JEvar a')) (JEvar nexta)),
+    JCset ns (JEadd (JEvar cpn') (JEand (JEvar mask2) c2lit)) =>
+      if String.eqb sum sum' && String.eqb a a' && String.eqb cpn cpn'
+         && String.eqb mask1 mask2
+      then
+        let m1 := "__masked1__"%string in
+        let m2 := "__masked2__"%string in
+        Some (JCseq (JCset m1 (JEand (JEvar mask1) c1lit))
+                    (JCadd_flags "__cf" sum (JEvar a) (JEvar m1)),
+              JCseq (JCset m2 (JEand (JEvar mask2) c2lit))
+                    (JCadcx "__cf" ns (JEvar nexta) (JEvar m2) "__cf"))
+      else None
+  | _, _, _ => None
+  end.
+
+(** Continuation: [next = ((c1 <u c2) + (c3 <u c4)) + next_a]
+                   [adj = next + (mask & const)]
+    → __wtmp__ = (mask & const); __cf, adj = #ADCX(next_a, __wtmp__, __cf) *)
+Definition match_cont_adc_masked (c1 c2 : jasmin_cmd)
+    : option jasmin_cmd :=
+  match c1, c2 with
+  | JCset cpn (JEadd (JEadd (JEltu _ _) (JEltu _ _)) (JEvar nexta)),
+    JCset adj (JEadd (JEvar cpn') (JEand (JEvar mask) clit)) =>
+      if String.eqb cpn cpn'
+      then
+        let m := "__masked__"%string in
+        Some (JCseq (JCset m (JEand (JEvar mask) clit))
+                    (JCadcx "__cf" adj (JEvar nexta) (JEvar m) "__cf"))
+      else None
+  | _, _ => None
+  end.
+
+(** Triple-fused last limb of conditional addition:
+    [adj = ((((c1 <u c2) + (c3 <u c4)) + next_a) + (mask & const))] *)
+Definition match_last_adc_masked (c : jasmin_cmd) : option jasmin_cmd :=
+  match c with
+  | JCset adj (JEadd (JEadd (JEadd (JEltu _ _) (JEltu _ _)) (JEvar nexta))
+                      (JEand (JEvar mask) clit)) =>
+      let m := "__masked__"%string in
+      Some (JCseq (JCset m (JEand (JEvar mask) clit))
+                  (JCadcx "__cf" adj (JEvar nexta) (JEvar m) "__cf"))
+  | _ => None
+  end.
+
+(** Full conditional-addition pattern: 11 statements covering all 6 limbs.
+    Hoists all 6 masked computations BEFORE the carry chain so [andq]
+    doesn't clobber CF between [#ADD] and [#ADCX] uses.
+
+    Pattern (s1..s11):
+      s1:  out0 = a0 + (mask & p0)
+      s2:  cpn1 = (out0 <u a0) + a1                     -- carry+next
+      s3:  out1 = cpn1 + (mask & p1)
+      s4:  cpn2 = ((cpn1 <u a1) + (out1 <u (mask&p1))) + a2
+      s5:  out2 = cpn2 + (mask & p2)
+      s6:  cpn3 = ((cpn2 <u a2) + (out2 <u (mask&p2))) + a3
+      s7:  out3 = cpn3 + (mask & p3)
+      s8:  cpn4 = ((cpn3 <u a3) + (out3 <u (mask&p3))) + a4
+      s9:  out4 = cpn4 + (mask & p4)
+      s10: cpn5 = ((cpn4 <u a4) + (out4 <u (mask&p4))) + a5
+      s11: out5 = (((cpn5 <u a5) + ...) + a5) + (mask & p5)  -- triple fused
+
+    Emits:
+      __m0 = mask & p0; __m1 = mask & p1; ... __m5 = mask & p5;
+      _, __cf, _, _, _, out0 = #ADD(a0, __m0);
+      __cf, out1 = #ADCX(a1, __m1, __cf);
+      __cf, out2 = #ADCX(a2, __m2, __cf);
+      __cf, out3 = #ADCX(a3, __m3, __cf);
+      __cf, out4 = #ADCX(a4, __m4, __cf);
+      __cf, out5 = #ADCX(a5, __m5, __cf);
+
+    Total: 6 mask comp + 1 #ADD + 5 #ADCX = 12 statements (vs 11 input). *)
+(** Match the 10-statement conditional addition pattern.
+    s1: x_n = a0 + (mask & p0)        — first masked add
+    s2: x_{n+1} = (s1_carry + a1)     — intermediate
+    s3: x_{n+2} = s2 + (mask & p1)
+    s4: x_{n+3} = ((..) + a2)
+    s5: x_{n+4} = s4 + (mask & p2)
+    s6: x_{n+5} = ((..) + a3)
+    s7: x_{n+6} = s6 + (mask & p3)
+    s8: x_{n+7} = ((..) + a4)
+    s9: x_{n+8} = s8 + (mask & p4)
+    s10: x_{n+9} = ((((..)) + a5) + (mask & p5))   — triple-fused last *)
+Definition match_full_cond_add (c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 : jasmin_cmd)
+    : option (list jasmin_cmd) :=
+  match c1, c3, c5, c7, c9 with
+  | JCset out0 (JEadd (JEvar a0) (JEand (JEvar mask) p0)),
+    JCset out1 (JEadd (JEvar _) (JEand (JEvar _) p1)),
+    JCset out2 (JEadd (JEvar _) (JEand (JEvar _) p2)),
+    JCset out3 (JEadd (JEvar _) (JEand (JEvar _) p3)),
+    JCset out4 (JEadd (JEvar _) (JEand (JEvar _) p4)) =>
+      let extract_a c :=
+        match c with
+        | JCset _ (JEadd _ (JEvar v)) => Some v
+        | _ => None
+        end in
+      match extract_a c2, extract_a c4, extract_a c6, extract_a c8 with
+      | Some a1, Some a2, Some a3, Some a4 =>
+        match c10 with
+        | JCset out5 (JEadd (JEadd (JEadd _ _) (JEvar a5))
+                             (JEand (JEvar _) p5)) =>
+          let m0 := "__m0__"%string in
+          let m1 := "__m1__"%string in
+          let m2 := "__m2__"%string in
+          let m3 := "__m3__"%string in
+          let m4 := "__m4__"%string in
+          let m5 := "__m5__"%string in
+          Some (
+            JCset m0 (JEand (JEvar mask) p0) ::
+            JCset m1 (JEand (JEvar mask) p1) ::
+            JCset m2 (JEand (JEvar mask) p2) ::
+            JCset m3 (JEand (JEvar mask) p3) ::
+            JCset m4 (JEand (JEvar mask) p4) ::
+            JCset m5 (JEand (JEvar mask) p5) ::
+            JCadd_flags "__cf" out0 (JEvar a0) (JEvar m0) ::
+            JCadcx "__cf" out1 (JEvar a1) (JEvar m1) "__cf" ::
+            JCadcx "__cf" out2 (JEvar a2) (JEvar m2) "__cf" ::
+            JCadcx "__cf" out3 (JEvar a3) (JEvar m3) "__cf" ::
+            JCadcx "__cf" out4 (JEvar a4) (JEvar m4) "__cf" ::
+            JCadcx "__cf" out5 (JEvar a5) (JEvar m5) "__cf" :: nil)
+        | _ => None
+        end
+      | _, _, _, _ => None
+      end
+  | _, _, _, _, _ => None
+  end.
+
 (** Match simple [x = (a + b); y = (x <u a)] → JCadd_flags __cf_y x a b
     followed by a bool→u64 promotion of [y].
 
@@ -983,7 +1126,26 @@ Fixpoint lower_carry_chain_list (fuel : nat) (cs : list jasmin_cmd)
     match cs with
     | nil => nil
     | c1 :: c2 :: c3 :: rest =>
-        (* First try 3-statement conditional move *)
+        (* Try 11-statement full conditional addition first if enough stmts.
+           Use a pre-check to avoid false matches: the first statement must
+           be [JCset _ (JEadd (JEvar _) (JEand _ _))]. *)
+        let try_full_cond_add :=
+          match c1 with
+          | JCset _ (JEadd (JEvar _) (JEand _ _)) =>
+              (match rest with
+               | c4 :: c5 :: c6 :: c7 :: c8 :: c9 :: c10 :: rest' =>
+                   match match_full_cond_add c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 with
+                   | Some instrs => Some (instrs, rest')
+                   | None => None
+                   end
+               | _ => None
+               end)
+          | _ => None
+          end in
+        match try_full_cond_add with
+        | Some (instrs, rest') => instrs ++ lower_carry_chain_list fuel' rest'
+        | None =>
+        (* Try 3-statement conditional move *)
         match match_cmov c1 c2 c3 with
         | Some instr => instr :: lower_carry_chain_list fuel' rest
         | None =>
@@ -997,7 +1159,6 @@ Fixpoint lower_carry_chain_list (fuel : nat) (cs : list jasmin_cmd)
         | Some (i1, i2) =>
             i1 :: i2 :: lower_carry_chain_list fuel' rest
         | None =>
-        (* Then try 2-statement continuation ADC/SBB *)
         match match_cont_adc c1 c2 with
         | Some instr => instr :: lower_carry_chain_list fuel' (c3 :: rest)
         | None =>
@@ -1018,7 +1179,7 @@ Fixpoint lower_carry_chain_list (fuel : nat) (cs : list jasmin_cmd)
         match match_mulx c1 c2 with
         | Some instr => instr :: lower_carry_chain_list fuel' (c3 :: rest)
         | None => c1 :: lower_carry_chain_list fuel' (c2 :: c3 :: rest)
-        end end end end end end end end end
+        end end end end end end end end end end
     | c1 :: c2 :: nil =>
         match match_cont_sbb c1 c2 with
         | Some instr => instr :: nil
