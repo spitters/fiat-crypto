@@ -265,8 +265,15 @@ Fixpoint horner_eval_fp2 (cs : list Fp2) (x : Fp2) : Fp2 :=
 Definition horner_eval_monic_fp2 (cs : list Fp2) (x : Fp2) : Fp2 :=
   horner_eval_fp2 (cs ++ [fp2_one]) x.
 
-(** The 3-isogeny map. Same projective trick as G1: branch on
-    z = xden·yden = 0 to handle kernel points cleanly. *)
+(** Fixed sentinel for kernel points: (2, 0) is the x-coordinate,
+    y-coordinate satisfies y² = 2³ + 4(1+u) = (12, 4).
+    We verify (12, 4) IS a square in Fp2 (unlike (4, 4) which is not). *)
+Definition sentinel_x_g2 : Fp2 := (of_Z 2, 0f).
+Definition sentinel_rhs_g2 : Fp2 := fp2_add (fp2_cube sentinel_x_g2) bls12_b_g2.
+Definition sentinel_y_g2 : Fp2 := fp2_sqrt sentinel_rhs_g2.
+
+(** The 3-isogeny map. Branch on z = xden·yden = 0 for kernel points.
+    Kernel points map to a fixed point on E2 (the sentinel). *)
 Definition iso_map_g2 (pt : Fp2 * Fp2) : Fp2 * Fp2 :=
   let '(x', y') := pt in
   let xn := horner_eval_fp2 iso_xnum_g2 x' in
@@ -275,12 +282,7 @@ Definition iso_map_g2 (pt : Fp2 * Fp2) : Fp2 * Fp2 :=
   let yd := horner_eval_monic_fp2 iso_yden_g2 x' in
   let z := fp2_mul xd yd in
   if fp2_eqb z fp2_zero then
-    (* Kernel point: (0, ±2) is on E2 since 4 = 0³ + 4·(1+u) implies... wait,
-       4 ≠ 4·(1+u). Need a point with y² = 4·(1+u). The point at infinity is
-       what kernel points map to. We pick a fixed sentinel y₀ with y₀² = bls12_b_g2.
-       Such a y₀ exists iff 4·(1+u) is a square in Fp2. It IS (sqrt computable),
-       so we use fp2_sqrt to get one. *)
-    (fp2_zero, fp2_sqrt bls12_b_g2)
+    (sentinel_x_g2, sentinel_y_g2)
   else
     let inv_z := fp2_inv z in
     (fp2_mul (fp2_mul xn yd) inv_z,
