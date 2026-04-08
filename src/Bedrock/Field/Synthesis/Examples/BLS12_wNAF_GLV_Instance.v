@@ -126,11 +126,23 @@ Section DigitLoad.
   Context {word_ok : word.ok word} {mem_ok : map.ok mem}.
 
   (* Word-sized truncation is identity *)
-  Axiom truncate_word_word_nop : forall (v : word),
+  Lemma truncate_word_word_nop (v : word) :
     truncate_word access_size.word v = v.
-  (* Proof sketch: unfold truncate_word/truncate_Z, show bytes_per(word) * 8 = width,
-     then Z.land_ones + Z.mod_small using word.unsigned_range.
-     The proof is straightforward but fragile due to bytes_per/bytes_per_word aliasing. *)
+  Proof.
+    unfold truncate_word, truncate_Z.
+    (* bytes_per access_size.word = Z.to_nat (bytes_per_word width) *)
+    change (Memory.bytes_per access_size.word)
+      with (Z.to_nat (Memory.bytes_per_word width)).
+    apply word.unsigned_inj.
+    rewrite word.unsigned_of_Z. unfold word.wrap.
+    destruct width_cases as [Hw|Hw]; subst;
+      unfold Memory.bytes_per_word;
+      (change ((32 + 7) / 8)%Z with 4%Z || change ((64 + 7) / 8)%Z with 8%Z);
+      (change (Z.to_nat 4) with 4%nat || change (Z.to_nat 8) with 8%nat);
+      (change (Z.of_nat 4 * 8)%Z with 32%Z || change (Z.of_nat 8 * 8)%Z with 64%Z);
+      rewrite Z.land_ones by lia;
+      apply Zmod_mod.
+  Qed.
 
   Lemma digit_load_from_array :
     forall (dk : list Z) n (base : word) (m : map.rep)
