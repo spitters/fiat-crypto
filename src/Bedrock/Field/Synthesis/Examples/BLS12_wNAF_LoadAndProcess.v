@@ -34,6 +34,7 @@ Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS12_GLV_LoopInvariant.
 Require Import Crypto.Bedrock.Field.Synthesis.Examples.BLS12_wNAF_ProcessDigits.
 Require Import bedrock2.Scalars.
 Require Import bedrock2.Array.
+From coqutil.Tactics Require Import letexists.
 Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope.
 
@@ -197,7 +198,9 @@ Section LoadAndProcess.
       | split; [ (eexists; split; [solve_mapget|]; try (cbn [Semantics.interp_binop]; reflexivity)) | ]
       | split; [ reflexivity | ]
       | eexists; split; [solve_mapget|]
-      | reflexivity ]).
+      | reflexivity ]);
+    (* Close any remaining let-bound arg list equation *)
+    try exact eq_refl.
 
   (** Process a full bedrock2 cmd.call: peel cmd.seq + dexprs + weaken_call.
       [spec] is the hypothesis (e.g., HFelemCopy, HCurveAddInplace).
@@ -219,29 +222,33 @@ Section LoadAndProcess.
         | reflexivity ])
     end.
 
-  (** wp_call_via_straightline handles the full cmd.call pattern using
-      bedrock2's native straightline to resolve dexprs, avoiding evar issues.
-      After straightline resolves arguments and exposes the Semantics.call,
-      we apply the spec via weaken_call + ecancel_assumption. *)
+  (** wp_call uses letexists (not eexists) to prevent evar leakage
+      between chained calls. Based on gcall_explicit from
+      BLS12_GLV_ScalarMultBedrock.v. *)
+  (** wp_call: process a cmd.call by asserting the dexprs + call
+      in an isolated assert block to prevent evar leakage. *)
   Local Ltac wp_call spec :=
-    (* Use straightline to handle cmd.seq + cmd.call + dexprs fully *)
-    repeat straightline;
-    (* Now the goal should be Semantics.call with concrete args *)
-    eapply Semantics.weaken_call;
-    [ eapply spec; ecancel_assumption
-    | intros ? ? ? ?; repeat (
-        match goal with
-        | H : _ /\ _ |- _ => destruct H
-        | H : _ = _ |- _ => first [ subst | idtac ]
-        end);
-      cbv [map.putmany_of_list_zip];
-      repeat match goal with
-      | |- exists _, Some ?x = Some _ /\ _ =>
-          eexists; split; [exact eq_refl|]
-      | |- exists _, _ = _ /\ _ =>
-          eexists; split; [exact eq_refl|]
-      end;
-      try (cbn [WeakestPrecondition.cmd WeakestPrecondition.cmd_body]) ].
+    repeat match goal with
+    | |- WeakestPrecondition.cmd _ (cmd.seq _ _) _ _ _ _ =>
+        unfold1_cmd_goal; cbv beta match delta [cmd_body]
+    end;
+    try (unfold1_cmd_goal; cbv beta match delta [cmd_body]);
+    (* Assert the full exists args, dexprs /\ call in isolation *)
+    let H := fresh "Hcall" in
+    assert (H : ltac:(match goal with |- ?G => exact G end)) by
+      (eexists; split; [wp_dexprs|];
+       eapply Semantics.weaken_call;
+       [eapply spec; ecancel_assumption|];
+       intros ? ? ? ?; repeat (match goal with
+         | H : _ /\ _ |- _ => destruct H
+         | H : _ = _ |- _ => first [subst|idtac] end);
+       cbv [map.putmany_of_list_zip];
+       repeat (match goal with
+         | |- exists _, Some _ = Some _ /\ _ => eexists; split; [exact eq_refl|]
+         | |- exists _, _ = _ /\ _ => eexists; split; [exact eq_refl|] end);
+       try (unfold1_cmd_goal; cbv beta match delta [cmd_body]);
+       assumption);
+    exact H.
 
   (** Close the postcondition: existentials, eq, sep, map.get chain. *)
   Local Ltac wp_postcond :=
