@@ -21,18 +21,9 @@ From Stdlib Require Import ZArith BinPos List Bool.
 Import ListNotations.
 Require Import Crypto.Spec.ModularArithmetic.
 Require Import Crypto.Spec.SHA256_axiom.
+Require Import Crypto.Spec.HashToCurve.
 
 Local Open Scope Z_scope.
-
-(* ================================================================== *)
-(** * BLS12-381 base field prime                                       *)
-(* ================================================================== *)
-
-Definition p : Z :=
-  0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab.
-
-Definition p_pos : positive :=
-  Eval vm_compute in (Z.to_pos p).
 
 Local Notation Fp := (F p_pos).
 Local Notation "x +f y" := (@F.add p_pos x y) (at level 50, left associativity).
@@ -43,9 +34,6 @@ Local Notation "0f" := (@F.zero p_pos).
 Local Notation "1f" := (@F.one p_pos).
 Local Notation invFp := (@F.inv p_pos).
 Local Notation of_Z := (F.of_Z p_pos).
-
-Definition fp_eqb (x y : Fp) : bool :=
-  BinInt.Z.eqb (F.to_Z x) (F.to_Z y).
 
 (* ================================================================== *)
 (** * Fp2 = Fp[u]/(u² + 1)                                              *)
@@ -100,21 +88,6 @@ Definition fp2_of_Z (re im : Z) : Fp2 := (of_Z re, of_Z im).
 (** * Fp2 sqrt and is_square                                            *)
 (* ================================================================== *)
 
-(** Fp-level is_square via Euler criterion: x is a QR iff
-    x^((p-1)/2) = 1 (or x = 0). *)
-Definition legendre_exp : Z := Eval vm_compute in ((p - 1) / 2).
-
-Definition fp_is_square (x : Fp) : bool :=
-  let e := F.pow x (Z.to_N legendre_exp) in
-  if fp_eqb e 1f then true
-  else if fp_eqb x 0f then true
-  else false.
-
-(** Fp sqrt via x^((p+1)/4), valid since p ≡ 3 (mod 4). *)
-Definition sqrt_exp_fp : Z := Eval vm_compute in ((p + 1) / 4).
-
-Definition fp_sqrt (x : Fp) : Fp := F.pow x (Z.to_N sqrt_exp_fp).
-
 (** is_square for Fp2 uses the norm: an Fp2 element (c0 + c1·u) is
     a QR in Fp2 iff its norm (c0² - β·c1²) is a QR in Fp.
 
@@ -123,7 +96,7 @@ Definition fp2_norm (a : Fp2) : Fp :=
   fst a *f fst a +f snd a *f snd a.
 
 Definition fp2_is_square (a : Fp2) : bool :=
-  fp_is_square (fp2_norm a).
+  is_square (fp2_norm a).
 
 (** fp2_sqrt via the "complex method" for p ≡ 3 mod 4, β = -1:
 
@@ -145,7 +118,7 @@ Definition fp2_sqrt (a : Fp2) : Fp2 :=
   let c0 := fst a in
   let c1 := snd a in
   if fp_eqb c1 0f then
-    if fp_is_square c0
+    if is_square c0
     then (fp_sqrt c0, 0f)
     else (0f, fp_sqrt (-f c0))
   else
@@ -153,19 +126,17 @@ Definition fp2_sqrt (a : Fp2) : Fp2 :=
     let half := invFp (of_Z 2) in
     let d0 := (t +f c0) *f half in
     let d :=
-      if fp_is_square d0 then d0
+      if is_square d0 then d0
       else (c0 -f t) *f half in
     let r := fp_sqrt d in
     (r, c1 *f invFp (of_Z 2 *f r)).
 
 (** sgn0 for Fp2: sgn0(a0 + a1·u) = sgn0(a0) ∨ (a0 == 0 ∧ sgn0(a1)).
     This is the "sign or imaginary sign" convention from RFC 9380 §4.1. *)
-Definition sgn0_fp (x : Fp) : Z := F.to_Z x mod 2.
-
 Definition sgn0_fp2 (a : Fp2) : Z :=
-  let s0 := sgn0_fp (fst a) in
+  let s0 := sgn0 (fst a) in
   let z0 := if fp_eqb (fst a) 0f then 1 else 0 in
-  let s1 := sgn0_fp (snd a) in
+  let s1 := sgn0 (snd a) in
   Z.lor s0 (Z.land z0 s1).
 
 (* ================================================================== *)
