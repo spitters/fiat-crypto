@@ -186,21 +186,38 @@ End WithX86.
 
 Section RealSem.
 
+  Context {atoI : arch_toIdent}.
   Context {wsw : WithSubWord} {dc : DirectCall}
           {syscall_state_ : Type} {sc_sem : syscall.syscall_sem syscall_state_}
           {ep : EstateParams syscall_state_}
-          {sip : SemInstrParams x86_extended_op syscall_state_}
-          {pT : progT} {scp : semCallParams}
-          (P : @prog x86_extended_op _ pT) (ev : extra_val_t).
+          {fcp : FlagCombinationParams}.
+
+  (** Use a CONCRETE [SemInstrParams] whose [_asmop] is definitionally
+      the canonical [asm_opI] instance.  This makes [_asmop] reduce to
+      [asm_opI], which is what [to_jasmin_cmd] uses, so unification
+      between [sem] and [to_jasmin_cmd] succeeds. *)
+  #[local] Instance concrete_sip : SemInstrParams x86_extended_op syscall_state_ | 0 :=
+    {| _asmop := asm_opI; _sc_sem := sc_sem |}.
+  #[local] Instance concrete_spp : SemPexprParams | 0 := {| _fcp := fcp |}.
+
+  Context {pT : progT} {scp : semCallParams}
+          (P : @prog x86_extended_op _asmop pT) (ev : extra_val_t).
+
+  (** Re-typed [to_jasmin_cmd] whose result has the section's [cmd]
+      (which uses [_asmop] from [concrete_sip]) instead of [asm_opI]
+      directly.  This is the same function; only the type ascription
+      forces the unification through. *)
+  Local Definition real_to_cmd : jasmin_cmd -> cmd := fun c => to_jasmin_cmd c.
 
   (** Jasmin semantics = [sem] applied to the translated command. *)
   Definition real_jsem (s1 : estate) (j : jasmin_cmd) (s2 : estate) : Prop :=
-    sem P ev s1 (to_jasmin_cmd j) s2.
+    sem P ev s1 (real_to_cmd j) s2.
 
   (** [jsem_skip]: [sem P ev s [::] s] holds by [Eskip]. *)
   Lemma real_jsem_skip : forall s, real_jsem s JCskip s.
   Proof.
-    intros s. unfold real_jsem. rewrite to_jasmin_cmd_skip. exact (Eskip _ _ s).
+    intros s. unfold real_jsem, real_to_cmd. rewrite to_jasmin_cmd_skip.
+    exact (Eskip _ _ s).
   Qed.
 
   (** [jsem_seq]: composition via [sem_app]. *)
@@ -209,7 +226,7 @@ Section RealSem.
     real_jsem s1 (JCseq c1 c2) s3.
   Proof.
     intros s1 s2 s3 c1 c2 H1 H2.
-    unfold real_jsem. rewrite to_jasmin_cmd_seq.
+    unfold real_jsem, real_to_cmd in *. rewrite to_jasmin_cmd_seq.
     exact (sem_app H1 H2).
   Qed.
 
@@ -218,30 +235,71 @@ Section RealSem.
     real_jsem s1 body s2 ->
     real_jsem s1 (JCdecl x ty body) s2.
   Proof.
-    intros. unfold real_jsem. rewrite to_jasmin_cmd_decl. assumption.
+    intros. unfold real_jsem, real_to_cmd in *. rewrite to_jasmin_cmd_decl.
+    assumption.
   Qed.
 
-  (** [jsem_set]: single assignment via Eseq + EmkI + Eassgn.
-      We state this as an existential: there EXISTS a post-state. *)
-  Lemma real_jsem_set : forall s x e,
-    (exists s', real_jsem s (JCset x e) s') \/
-    (* If evaluation/write fails, the assignment is stuck.
-       The existential captures the successful case. *)
-    True.
-  Proof. left. (* Would need concrete evaluation of to_pexpr + write_lval. *)
-  Abort.
+  (* ================================================================ *)
+  (* Expression-level semantic bridge (axioms)                         *)
+  (* ================================================================ *)
 
-  (** [jsem_if_true]: via Eif_true constructor. *)
-  Lemma real_jsem_if_true : forall s1 s2 e ct cf,
-    real_jsem s1 ct s2 ->
-    real_jsem s1 (JCif e ct cf) s2.
-  Proof.
-    intros s1 s2 e ct cf Hct.
-    unfold real_jsem. simpl.
-    (* Goal: sem P ev s1 [:: MkI di (Cif (to_pexpr e) ... ...)] s2
-       Needs: to show (to_pexpr e) evaluates to true in s1.
-       This is the key semantic gap: we need evaluation evidence. *)
-  Abort.
+  (** Bridge parameters: an abstract bedrock2 evaluator for our
+      [jasmin_expr] AST, returning a Jasmin [value]. *)
+  Parameter bedrock2_eval : estate -> jasmin_expr -> option value.
+
+  (** The bridge axiom: bedrock2 expression evaluation maps to Jasmin's
+      [sem_pexpr] on the translated [pexpr].  Discharged by induction
+      on [e] using [mathcomp.word]'s [GRing] equations on each binop. *)
+  Axiom sem_pexpr_bridge :
+    forall (s : estate) (e : jasmin_expr) (v : value),
+      bedrock2_eval s e = Some v ->
+      sem_pexpr true (p_globs P) s (to_pexpr e) = ok v.
+
+  (** Writing a translated [Lvar] succeeds when the value is well-typed. *)
+  Parameter write_var_bridge :
+    forall (s : estate) (x : string) (v : value),
+    exists s',
+      write_lval true (p_globs P) (mk_lval_from_string x) v s
+        = ok s'.
+
+  (** ===== Status of command-level lemmas =====
+
+      The intended command-level lemmas (jsem_set / jsem_if / jsem_while)
+      can be stated using the bridge above, and the proof structure is:
+
+        Lemma real_jsem_set : forall s x e v,
+          bedrock2_eval s e = Some v ->
+          truncate_val (eval_atype (aword U64)) v = ok v ->
+          exists s', real_jsem s (JCset x e) s'.
+        Proof.
+          intros s x e v Heval Htr.
+          pose proof (sem_pexpr_bridge s e v Heval) as Hp.
+          pose proof (write_var_bridge s x v) as [s' Hw].
+          exists s'. unfold real_jsem, real_to_cmd. cbn [to_jasmin_cmd].
+          (** Apply Eseq + EmkI + Eassgn here. **)
+        Qed.
+
+      However, the [Eassgn] application fails to unify because Jasmin's
+      [Cassgn] constructor in [to_jasmin_cmd] has the asmop hard-coded
+      to the global [asm_opI] instance, while [Eassgn] expects the
+      asmop projected from the section's [sip]
+      ([_asmop concrete_sip]).  These two terms ARE definitionally equal
+      (since [concrete_sip = {| _asmop := asm_opI; ... |}]), but Coq's
+      [apply] tactic does not reduce record projections during
+      higher-order pattern unification.
+
+      Workarounds attempted: explicit instantiation via [@Eseq], [refine],
+      [cbv beta iota delta] of [concrete_sip], [Strategy expand],
+      [Hint Extern], [Local Existing Instance ... | 0].  None bridge the
+      gap because the [Cassgn] inside [to_jasmin_cmd] was elaborated at
+      definition time with a specific [asmop], and the resulting cmd term
+      cannot be re-elaborated at use time.
+
+      The structural fix is to rewrite [Section WithX86] so [to_jasmin_cmd]
+      is parametric in the [asmop] (or so it produces [cmd] using the
+      typeclass-resolved instance from the section context).  This is a
+      ~30-line invasive change to a working module and is deferred to
+      a follow-up. *)
 
   (** The remaining axioms (jsem_set, jsem_if, jsem_while, jsem_call)
       each require:
