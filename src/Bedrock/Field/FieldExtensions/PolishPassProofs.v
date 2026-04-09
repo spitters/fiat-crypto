@@ -456,33 +456,487 @@ Section WithWordCmd.
   Definition wtmp_helper (x : string) : bool :=
     String.eqb x "__wtmp__".
 
-  (** [lift_lits_correct] (proof obligation):
-      For any [c] that does not read or write [__wtmp__], the lifted
-      command produces a state that agrees with the original on every
-      variable except [__wtmp__].
+  (** Predicate: an expression does not reference [__wtmp__] as a free
+      variable.  Used as the freshness precondition for [lift_lits]. *)
+  Fixpoint expr_no_wtmp (e : jasmin_expr) : bool :=
+    match e with
+    | JEvar x => negb (String.eqb x "__wtmp__"%string)
+    | JElit _ => true
+    | JEadd e1 e2 | JEsub e1 e2 | JEmul e1 e2 | JEmulhuu e1 e2
+    | JEand e1 e2 | JEor e1 e2 | JExor e1 e2
+    | JEshr e1 e2 | JEshl e1 e2 | JEltu e1 e2 | JEeq e1 e2 =>
+        expr_no_wtmp e1 && expr_no_wtmp e2
+    | JEload base _ => expr_no_wtmp base
+    end.
 
-      Proof structure:
-      - Induction on the [jeval] derivation of the original command.
-      - For [JCset x e]: case on [subst_first_large_lit e]:
-        + [None]: identity transformation, trivial.
-        + [Some lit]: produces [JCseq (JCset "__wtmp__" lit) (JCset x e')].
-          Step 1 sets [__wtmp__] to [word.of_Z lit].
-          Step 2 evaluates [e'] under the updated env.  Need a lemma
-          [subst_first_large_lit_correct]: if the user expression [e]
-          does not use [__wtmp__], then evaluating [e'] in
-          [update env "__wtmp__" (word.of_Z lit)] gives the same value
-          as evaluating [e] in [env].
-      - All other constructors: structural recursion.
+  Fixpoint cmd_no_wtmp (c : jasmin_cmd) : bool :=
+    match c with
+    | JCskip => true
+    | JCseq c1 c2 => cmd_no_wtmp c1 && cmd_no_wtmp c2
+    | JCset x e => negb (String.eqb x "__wtmp__"%string) && expr_no_wtmp e
+    | JCstore base _ vv => expr_no_wtmp base && expr_no_wtmp vv
+    | JCcall _ args => forallb expr_no_wtmp args
+    | JCif e ct cf => expr_no_wtmp e && cmd_no_wtmp ct && cmd_no_wtmp cf
+    | JCwhile e body => expr_no_wtmp e && cmd_no_wtmp body
+    | JCdecl _ _ body => cmd_no_wtmp body
+    | JCadd_flags cf r a b | JCsub_flags cf r a b =>
+        negb (String.eqb cf "__wtmp__"%string) &&
+        negb (String.eqb r "__wtmp__"%string) &&
+        expr_no_wtmp a && expr_no_wtmp b
+    | JCadcx co r a b ci | JCsbb co r a b ci =>
+        negb (String.eqb co "__wtmp__"%string) &&
+        negb (String.eqb r "__wtmp__"%string) &&
+        negb (String.eqb ci "__wtmp__"%string) &&
+        expr_no_wtmp a && expr_no_wtmp b
+    | JCmulx h l a b =>
+        negb (String.eqb h "__wtmp__"%string) &&
+        negb (String.eqb l "__wtmp__"%string) &&
+        expr_no_wtmp a && expr_no_wtmp b
+    end.
 
-      Status: AXIOMATIZED.  The freshness/agreement framework is in
-      place; the substitution lemma needs ~80 lines of induction on the
-      expression structure (one case per binary op). *)
-  Axiom lift_lits_cmd_correct :
+  (** Helper: if [e] does not reference [__wtmp__], updating [__wtmp__]
+      in the environment does not change [e]'s evaluation. *)
+  Lemma eval_jexpr_no_wtmp_irrelevant :
+    forall (env_v : env) (e : jasmin_expr) (w : word),
+      expr_no_wtmp e = true ->
+      eval_jexpr env_v e =
+      eval_jexpr (update env_v "__wtmp__" w) e.
+  Proof.
+    intros env_v e w.
+    induction e; simpl; intros Hno; try reflexivity;
+      try (apply andb_prop in Hno as [Hno1 Hno2];
+           rewrite (IHe1 Hno1), (IHe2 Hno2); reflexivity).
+    - (* JEvar *) unfold update.
+      destruct (String.eqb x "__wtmp__"%string) eqn:Heq.
+      + apply String.eqb_eq in Heq. subst x. simpl in Hno. discriminate.
+      + reflexivity.
+  Qed.
+
+  (** Helper: [subst_first_large_lit] preserves evaluation under the
+      [__wtmp__]-updated environment, when the original [e] does not
+      reference [__wtmp__]. *)
+  Lemma subst_first_large_lit_correct :
+    forall (env_v : env) (e e' : jasmin_expr) (lit : Z),
+      expr_no_wtmp e = true ->
+      subst_first_large_lit e = (Some lit, e') ->
+      forall w,
+        eval_jexpr env_v e = Some w ->
+        eval_jexpr (update env_v "__wtmp__" (word.of_Z lit)) e' = Some w.
+  Proof.
+    intros env_v.
+    induction e; simpl; intros e' lit Hno Hsub w0 Hev;
+      try discriminate.
+    - (* JElit *)
+      destruct (is_large_lit v) eqn:Hlarge; [|discriminate].
+      injection Hsub as <- <-. simpl. unfold update.
+      rewrite String.eqb_refl.
+      injection Hev as <-. reflexivity.
+    - (* JEadd *)
+      apply andb_prop in Hno as [Hno1 Hno2].
+      destruct (subst_first_large_lit e1) as [[lit1|] e1'] eqn:Hs1.
+      + injection Hsub as <- <-.
+        destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+        injection Hev as <-. simpl.
+        erewrite (IHe1 _ _ Hno1 eq_refl _ eq_refl).
+        rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno2), He2.
+        reflexivity.
+      + destruct (subst_first_large_lit e2) as [[lit2|] e2'] eqn:Hs2;
+          [|discriminate].
+        injection Hsub as <- <-.
+        destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+        injection Hev as <-. simpl.
+        rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno1), He1.
+        erewrite (IHe2 _ _ Hno2 eq_refl _ eq_refl). reflexivity.
+    - (* JEsub *)
+      apply andb_prop in Hno as [Hno1 Hno2].
+      destruct (subst_first_large_lit e1) as [[lit1|] e1'] eqn:Hs1.
+      + injection Hsub as <- <-.
+        destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+        injection Hev as <-. simpl.
+        erewrite (IHe1 _ _ Hno1 eq_refl _ eq_refl).
+        rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno2), He2.
+        reflexivity.
+      + destruct (subst_first_large_lit e2) as [[lit2|] e2'] eqn:Hs2;
+          [|discriminate].
+        injection Hsub as <- <-.
+        destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+        injection Hev as <-. simpl.
+        rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno1), He1.
+        erewrite (IHe2 _ _ Hno2 eq_refl _ eq_refl). reflexivity.
+    - (* JEmul *)
+      apply andb_prop in Hno as [Hno1 Hno2].
+      destruct (subst_first_large_lit e1) as [[lit1|] e1'] eqn:Hs1.
+      + injection Hsub as <- <-.
+        destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+        injection Hev as <-. simpl.
+        erewrite (IHe1 _ _ Hno1 eq_refl _ eq_refl).
+        rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno2), He2.
+        reflexivity.
+      + destruct (subst_first_large_lit e2) as [[lit2|] e2'] eqn:Hs2;
+          [|discriminate].
+        injection Hsub as <- <-.
+        destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+        injection Hev as <-. simpl.
+        rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno1), He1.
+        erewrite (IHe2 _ _ Hno2 eq_refl _ eq_refl). reflexivity.
+    - (* JEand *)
+      apply andb_prop in Hno as [Hno1 Hno2].
+      destruct (subst_first_large_lit e1) as [[lit1|] e1'] eqn:Hs1.
+      + injection Hsub as <- <-.
+        destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+        injection Hev as <-. simpl.
+        erewrite (IHe1 _ _ Hno1 eq_refl _ eq_refl).
+        rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno2), He2.
+        reflexivity.
+      + destruct (subst_first_large_lit e2) as [[lit2|] e2'] eqn:Hs2;
+          [|discriminate].
+        injection Hsub as <- <-.
+        destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+        injection Hev as <-. simpl.
+        rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno1), He1.
+        erewrite (IHe2 _ _ Hno2 eq_refl _ eq_refl). reflexivity.
+    - (* JEor *)
+      apply andb_prop in Hno as [Hno1 Hno2].
+      destruct (subst_first_large_lit e1) as [[lit1|] e1'] eqn:Hs1.
+      + injection Hsub as <- <-.
+        destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+        injection Hev as <-. simpl.
+        erewrite (IHe1 _ _ Hno1 eq_refl _ eq_refl).
+        rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno2), He2.
+        reflexivity.
+      + destruct (subst_first_large_lit e2) as [[lit2|] e2'] eqn:Hs2;
+          [|discriminate].
+        injection Hsub as <- <-.
+        destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+        injection Hev as <-. simpl.
+        rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno1), He1.
+        erewrite (IHe2 _ _ Hno2 eq_refl _ eq_refl). reflexivity.
+    - (* JExor *)
+      apply andb_prop in Hno as [Hno1 Hno2].
+      destruct (subst_first_large_lit e1) as [[lit1|] e1'] eqn:Hs1.
+      + injection Hsub as <- <-.
+        destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+        injection Hev as <-. simpl.
+        erewrite (IHe1 _ _ Hno1 eq_refl _ eq_refl).
+        rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno2), He2.
+        reflexivity.
+      + destruct (subst_first_large_lit e2) as [[lit2|] e2'] eqn:Hs2;
+          [|discriminate].
+        injection Hsub as <- <-.
+        destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+        injection Hev as <-. simpl.
+        rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno1), He1.
+        erewrite (IHe2 _ _ Hno2 eq_refl _ eq_refl). reflexivity.
+    - (* JEshr — only e1 is checked for large literals *)
+      apply andb_prop in Hno as [Hno1 Hno2].
+      destruct (subst_first_large_lit e1) as [[lit1|] e1'] eqn:Hs1;
+        [|discriminate].
+      injection Hsub as <- <-.
+      destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+      destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+      injection Hev as <-. simpl.
+      erewrite (IHe1 _ _ Hno1 eq_refl _ eq_refl).
+      rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno2), He2.
+      reflexivity.
+    - (* JEshl — same *)
+      apply andb_prop in Hno as [Hno1 Hno2].
+      destruct (subst_first_large_lit e1) as [[lit1|] e1'] eqn:Hs1;
+        [|discriminate].
+      injection Hsub as <- <-.
+      destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+      destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+      injection Hev as <-. simpl.
+      erewrite (IHe1 _ _ Hno1 eq_refl _ eq_refl).
+      rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno2), He2.
+      reflexivity.
+    - (* JEltu *)
+      apply andb_prop in Hno as [Hno1 Hno2].
+      destruct (subst_first_large_lit e1) as [[lit1|] e1'] eqn:Hs1.
+      + injection Hsub as <- <-.
+        destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+        injection Hev as <-. simpl.
+        erewrite (IHe1 _ _ Hno1 eq_refl _ eq_refl).
+        rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno2), He2.
+        reflexivity.
+      + destruct (subst_first_large_lit e2) as [[lit2|] e2'] eqn:Hs2;
+          [|discriminate].
+        injection Hsub as <- <-.
+        destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+        injection Hev as <-. simpl.
+        rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno1), He1.
+        erewrite (IHe2 _ _ Hno2 eq_refl _ eq_refl). reflexivity.
+    - (* JEeq *)
+      apply andb_prop in Hno as [Hno1 Hno2].
+      destruct (subst_first_large_lit e1) as [[lit1|] e1'] eqn:Hs1.
+      + injection Hsub as <- <-.
+        destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+        injection Hev as <-. simpl.
+        erewrite (IHe1 _ _ Hno1 eq_refl _ eq_refl).
+        rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno2), He2.
+        reflexivity.
+      + destruct (subst_first_large_lit e2) as [[lit2|] e2'] eqn:Hs2;
+          [|discriminate].
+        injection Hsub as <- <-.
+        destruct (eval_jexpr env_v e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env_v e2) as [v2|] eqn:He2; [|discriminate].
+        injection Hev as <-. simpl.
+        rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hno1), He1.
+        erewrite (IHe2 _ _ Hno2 eq_refl _ eq_refl). reflexivity.
+  Qed.
+
+  (** Helper: pointwise-equal environments give the same evaluation. *)
+  Lemma eval_jexpr_pointwise :
+    forall (env1 env2 : env) (e : jasmin_expr),
+      (forall x, env1 x = env2 x) ->
+      eval_jexpr env1 e = eval_jexpr env2 e.
+  Proof.
+    intros env1 env2 e Hpw.
+    induction e; simpl; try reflexivity;
+      try (rewrite IHe1, IHe2; reflexivity).
+    - (* JEvar *) f_equal. apply Hpw.
+  Qed.
+
+  (** Helper: if [env1] and [env2] agree on non-[__wtmp__] vars, then
+      updating [__wtmp__] in both makes them pointwise equal. *)
+  Lemma update_wtmp_pointwise :
+    forall (env1 env2 : env) (w : word),
+      agrees_except wtmp_helper env1 env2 ->
+      forall y, update env1 "__wtmp__" w y = update env2 "__wtmp__" w y.
+  Proof.
+    intros env1 env2 w H y. unfold update.
+    destruct (String.eqb y "__wtmp__"%string) eqn:Heq; [reflexivity|].
+    apply H. unfold wtmp_helper. exact Heq.
+  Qed.
+
+  (** Helper: if [e] does not reference [__wtmp__], then evaluation is
+      preserved across environments that agree on non-[__wtmp__] vars. *)
+  Lemma eval_jexpr_agrees_except_wtmp :
+    forall (env1 env2 : env) (e : jasmin_expr) (v : word),
+      expr_no_wtmp e = true ->
+      agrees_except wtmp_helper env1 env2 ->
+      eval_jexpr env1 e = Some v ->
+      eval_jexpr env2 e = Some v.
+  Proof.
+    intros env1 env2 e. revert env2.
+    induction e; intros env2 v0 Hno Hag Hev; simpl in *;
+    (* For binary ops: destruct evals in Hev, apply IH, finish *)
+    match goal with
+    | |- match eval_jexpr _ ?e1 with _ => _ end = _ =>
+        let Hno1 := fresh "Hno1" in let Hno2 := fresh "Hno2" in
+        apply andb_prop in Hno as [Hno1 Hno2];
+        destruct (eval_jexpr env1 e1) as [v1|] eqn:He1; [|discriminate Hev];
+        match goal with
+        | |- match _ with Some _ => match eval_jexpr _ ?e2 with _ => _ end | None => _ end = _ =>
+            destruct (eval_jexpr env1 e2) as [v2|] eqn:He2; [|discriminate Hev];
+            rewrite (IHe1 _ _ Hno1 Hag eq_refl), (IHe2 _ _ Hno2 Hag eq_refl);
+            exact Hev
+        end
+    | _ => idtac
+    end.
+    - (* JEvar *)
+      injection Hev as <-. rewrite <- (Hag x).
+      + reflexivity.
+      + unfold wtmp_helper. destruct (String.eqb x "__wtmp__"%string) eqn:Heq;
+          [discriminate Hno|reflexivity].
+    - (* JElit *) exact Hev.
+    - (* JEmulhuu *) discriminate Hev.
+    - (* JEload *) discriminate Hev.
+  Qed.
+
+  (** [lift_lits_cmd_correct] (strong form): if the original program
+      runs to completion in some env, the lifted program runs in any
+      env that agrees on non-helper vars to a state that also agrees.
+      The non-strong form is the [env1 = env2] specialisation. *)
+  Theorem lift_lits_cmd_correct_strong :
+    forall (c : jasmin_cmd) (env1 env1' : env),
+      cmd_no_wtmp c = true ->
+      jeval env1 c env1' ->
+      forall (env2 : env),
+        agrees_except wtmp_helper env1 env2 ->
+        exists env2',
+          jeval env2 (lift_lits_cmd c) env2' /\
+          agrees_except wtmp_helper env1' env2'.
+  Proof.
+    intros c env1 env1' Hno H. induction H; intros env2 Hag; simpl.
+    - (* JCskip *) exists env2. split; [constructor | exact Hag].
+    - (* JCseq *)
+      apply andb_prop in Hno as [Hno1 Hno2].
+      destruct (IHjeval1 Hno1 _ Hag) as [env_mid [Hmid Hag_mid]].
+      destruct (IHjeval2 Hno2 _ Hag_mid) as [env_end [Hend Hag_end]].
+      exists env_end. split; [|exact Hag_end].
+      eapply jeval_seq; eassumption.
+    - (* JCset *)
+      apply andb_prop in Hno as [Hxno Heno].
+      apply Bool.negb_true_iff in Hxno.
+      pose proof (eval_jexpr_agrees_except_wtmp _ _ _ _ Heno Hag H) as Heval2.
+      unfold lift_one_set.
+      destruct (subst_first_large_lit ex) as [[lit|] e'] eqn:Hsub.
+      + (* Subst happened *)
+        exists (update (update env2 "__wtmp__"%string (word.of_Z lit)) x w).
+        split.
+        * eapply jeval_seq.
+          -- apply jeval_set. simpl. reflexivity.
+          -- apply jeval_set.
+             eapply (subst_first_large_lit_correct _ _ _ _ Heno Hsub).
+             exact Heval2.
+        * intros y Hy. unfold update.
+          destruct (String.eqb y x) eqn:Heqx; [reflexivity|].
+          destruct (String.eqb y "__wtmp__"%string) eqn:Heqw.
+          ++ exfalso. apply String.eqb_eq in Heqw. subst y.
+             unfold wtmp_helper in Hy. rewrite String.eqb_refl in Hy. discriminate.
+          ++ apply Hag. exact Hy.
+      + (* No subst *)
+        exists (update env2 x w). split.
+        * apply jeval_set. exact Heval2.
+        * apply agrees_except_update. exact Hag.
+    - (* JCdecl *)
+      destruct (IHjeval Hno _ Hag) as [env_end [Hend Hag_end]].
+      exists env_end. split; [|exact Hag_end].
+      apply jeval_decl. exact Hend.
+    - (* JCif true *)
+      apply andb_prop in Hno as [Hcond_no Hbranches].
+      apply andb_prop in Hcond_no as [Hcond_no Hct_no].
+      pose proof (eval_jexpr_agrees_except_wtmp _ _ _ _ Hcond_no Hag H) as Heval2.
+      destruct (IHjeval Hct_no _ Hag) as [env_end [Hend Hag_end]].
+      exists env_end. split; [|exact Hag_end].
+      eapply jeval_if_true; [exact Heval2 | exact H0 | exact Hend].
+    - (* JCif false *)
+      apply andb_prop in Hno as [Hcond_no Hbranches].
+      apply andb_prop in Hcond_no as [Hcond_no _].
+      pose proof (eval_jexpr_agrees_except_wtmp _ _ _ _ Hcond_no Hag H) as Heval2.
+      destruct (IHjeval Hbranches _ Hag) as [env_end [Hend Hag_end]].
+      exists env_end. split; [|exact Hag_end].
+      apply jeval_if_false; [exact Heval2 | exact Hend].
+    - (* JCwhile false *)
+      apply andb_prop in Hno as [Hcond_no _].
+      pose proof (eval_jexpr_agrees_except_wtmp _ _ _ _ Hcond_no Hag H) as Heval2.
+      exists env2. split; [|exact Hag].
+      apply jeval_while_false. exact Heval2.
+    - (* JCwhile true *)
+      apply andb_prop in Hno as [Hcond_no Hbody_no].
+      pose proof (eval_jexpr_agrees_except_wtmp _ _ _ _ Hcond_no Hag H) as Heval2.
+      destruct (IHjeval1 Hbody_no _ Hag) as [env_mid [Hmid Hag_mid]].
+      assert (Hwhile_no : cmd_no_wtmp (JCwhile econd body) = true).
+      { simpl. apply andb_true_intro. split; assumption. }
+      destruct (IHjeval2 Hwhile_no _ Hag_mid) as [env_end [Hend Hag_end]].
+      exists env_end. split; [|exact Hag_end].
+      eapply jeval_while_true; [exact Heval2 | exact H0 | exact Hmid | exact Hend].
+    - (* JCstore *)
+      apply andb_prop in Hno as [Hb_no Hv_no].
+      pose proof (eval_jexpr_agrees_except_wtmp _ _ _ _ Hb_no Hag H) as Heval_b.
+      pose proof (eval_jexpr_agrees_except_wtmp _ _ _ _ Hv_no Hag H0) as Heval_v.
+      destruct (subst_first_large_lit v) as [[lit|] v'] eqn:Hsub.
+      + (* Lifted: __wtmp__ = lit; store base off v' *)
+        exists (update env2 "__wtmp__"%string (word.of_Z lit)).
+        split.
+        * eapply jeval_seq.
+          -- apply jeval_set. simpl. reflexivity.
+          -- (* store with v' under updated env *)
+             eapply jeval_store.
+             ++ rewrite <- (eval_jexpr_no_wtmp_irrelevant _ _ _ Hb_no).
+                exact Heval_b.
+             ++ eapply (subst_first_large_lit_correct _ _ _ _ Hv_no Hsub).
+                exact Heval_v.
+        * intros y Hy. unfold update.
+          destruct (String.eqb y "__wtmp__"%string) eqn:Hwy.
+          ++ exfalso. apply String.eqb_eq in Hwy. subst y.
+             unfold wtmp_helper in Hy. rewrite String.eqb_refl in Hy. discriminate.
+          ++ apply Hag. exact Hy.
+      + (* No lift *)
+        exists env2. split; [|exact Hag].
+        eapply jeval_store; [exact Heval_b | exact Heval_v].
+    - (* JCcall *) exists env2. split; [constructor | exact Hag].
+    - (* JCadd_flags *)
+      apply andb_prop in Hno as [Hno' Hb_no].
+      apply andb_prop in Hno' as [Hno'' Ha_no].
+      apply andb_prop in Hno'' as [Hcfno Hrno].
+      pose proof (eval_jexpr_agrees_except_wtmp _ _ _ _ Ha_no Hag H) as Heval_a.
+      pose proof (eval_jexpr_agrees_except_wtmp _ _ _ _ Hb_no Hag H0) as Heval_b.
+      eexists. split; [eapply jeval_add_flags; eassumption|].
+      apply Bool.negb_true_iff in Hrno, Hcfno.
+      intros y Hy. unfold update.
+      destruct (String.eqb y r) eqn:Heq1; [reflexivity|].
+      destruct (String.eqb y cf) eqn:Heq2; [reflexivity|].
+      apply Hag. exact Hy.
+    - (* JCadcx *)
+      apply andb_prop in Hno as [Hno' Hb_no].
+      apply andb_prop in Hno' as [Hno'' Ha_no].
+      apply andb_prop in Hno'' as [Hno''' Hcino].
+      apply andb_prop in Hno''' as [Hcono Hrno].
+      pose proof (eval_jexpr_agrees_except_wtmp _ _ _ _ Ha_no Hag H) as Heval_a.
+      pose proof (eval_jexpr_agrees_except_wtmp _ _ _ _ Hb_no Hag H0) as Heval_b.
+      eexists. split; [eapply jeval_adcx; eassumption|].
+      apply Bool.negb_true_iff in Hrno, Hcono.
+      intros y Hy. unfold update.
+      destruct (String.eqb y r) eqn:Heq1; [reflexivity|].
+      destruct (String.eqb y co) eqn:Heq2; [reflexivity|].
+      apply Hag. exact Hy.
+    - (* JCmulx *)
+      apply andb_prop in Hno as [Hno' Hb_no].
+      apply andb_prop in Hno' as [Hno'' Ha_no].
+      apply andb_prop in Hno'' as [Hhno Hlno].
+      pose proof (eval_jexpr_agrees_except_wtmp _ _ _ _ Ha_no Hag H) as Heval_a.
+      pose proof (eval_jexpr_agrees_except_wtmp _ _ _ _ Hb_no Hag H0) as Heval_b.
+      eexists. split; [eapply jeval_mulx; eassumption|].
+      apply Bool.negb_true_iff in Hhno, Hlno.
+      intros y Hy. unfold update.
+      destruct (String.eqb y l) eqn:Heq1; [reflexivity|].
+      destruct (String.eqb y h) eqn:Heq2; [reflexivity|].
+      apply Hag. exact Hy.
+    - (* JCsub_flags *)
+      apply andb_prop in Hno as [Hno' Hb_no].
+      apply andb_prop in Hno' as [Hno'' Ha_no].
+      apply andb_prop in Hno'' as [Hcfno Hrno].
+      pose proof (eval_jexpr_agrees_except_wtmp _ _ _ _ Ha_no Hag H) as Heval_a.
+      pose proof (eval_jexpr_agrees_except_wtmp _ _ _ _ Hb_no Hag H0) as Heval_b.
+      eexists. split; [eapply jeval_sub_flags; eassumption|].
+      apply Bool.negb_true_iff in Hrno, Hcfno.
+      intros y Hy. unfold update.
+      destruct (String.eqb y r) eqn:Heq1; [reflexivity|].
+      destruct (String.eqb y cf) eqn:Heq2; [reflexivity|].
+      apply Hag. exact Hy.
+    - (* JCsbb *)
+      apply andb_prop in Hno as [Hno' Hb_no].
+      apply andb_prop in Hno' as [Hno'' Ha_no].
+      apply andb_prop in Hno'' as [Hno''' Hcino].
+      apply andb_prop in Hno''' as [Hcono Hrno].
+      pose proof (eval_jexpr_agrees_except_wtmp _ _ _ _ Ha_no Hag H) as Heval_a.
+      pose proof (eval_jexpr_agrees_except_wtmp _ _ _ _ Hb_no Hag H0) as Heval_b.
+      eexists. split; [eapply jeval_sbb; eassumption|].
+      apply Bool.negb_true_iff in Hrno, Hcono.
+      intros y Hy. unfold update.
+      destruct (String.eqb y r) eqn:Heq1; [reflexivity|].
+      destruct (String.eqb y co) eqn:Heq2; [reflexivity|].
+      apply Hag. exact Hy.
+  Qed.
+
+  (** The standard form is the [env1 = env2] specialisation. *)
+  Theorem lift_lits_cmd_correct :
     forall (c : jasmin_cmd) (e e' : env),
+      cmd_no_wtmp c = true ->
       jeval e c e' ->
       exists e'',
         jeval e (lift_lits_cmd c) e'' /\
         agrees_except wtmp_helper e' e''.
+  Proof.
+    intros c e e' Hno H.
+    apply (lift_lits_cmd_correct_strong c e e' Hno H e (agrees_except_refl _ _)).
+  Qed.
 
   (** ** lower_comparisons: introduces numbered helper variables *)
 
