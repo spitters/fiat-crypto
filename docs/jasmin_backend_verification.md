@@ -244,3 +244,120 @@ that would extend the verification:
 
 3. **End-to-end composition** — instantiate `JasminSemantics` from the
    discharged lemmas and check `RealBridge.bridge_simulation`.
+
+## CryptOpt and the Jasmin bridge
+
+CryptOpt is a randomized superoptimizer that takes fiat-crypto's
+reference implementation and emits highly-tuned x86-64 assembly. Its
+correctness model is **post-hoc**: each output is independently
+checked by fiat-crypto's verified `check_equivalence` Coq function
+against the reference. CryptOpt itself is untrusted.
+
+### Key files
+
+| File | Purpose |
+|---|---|
+| `src/Assembly/Equivalence.v` | `check_equivalence` — verified equivalence checker entrypoint |
+| `src/Assembly/EquivalenceProofs.v` | Qed correctness proofs for the checker |
+| `src/Assembly/Symbolic.v` | Symbolic execution engine used internally |
+| `src/Assembly/Syntax.v`, `Parse.v` | Assembly AST and parser |
+| `fiat-amd64/<primitive>/seed*_ratio*.asm` | Pre-checked assemblies for many curves |
+
+The `fiat-amd64/` directory contains verified assemblies for
+curve25519, p224, p256, p384, p434, p448, p521, poly1305, secp256k1
+(both dettman and montgomery). **No BLS12-381 by default** — these
+have to be generated and pushed through `check_equivalence`.
+
+### CryptOpt's Jasmin bridge
+
+CryptOpt has a `src/bridge/jasmin-bridge/` that lets it **consume**
+Jasmin source as input (the bridge is a frontend, not a backend).
+The flow:
+
+1. Take a `.jazz` file
+2. Run `jasminc -until_makeref` to dump a textual intermediate
+   representation (post register-allocation, pre-assembly emission)
+3. The bridge parses each line of the makeref into CryptOpt's
+   internal `Fiat.DynArgument[]` representation (in TypeScript)
+4. CryptOpt then runs its standard random-search optimization on the
+   converted Fiat IR
+5. Output: optimized `.s` assembly
+
+Crucially, **once converted, the program is just CryptOpt's internal
+Fiat IR — indistinguishable from a fiat-crypto-derived one**, so
+fiat-crypto's `check_equivalence` validates the optimized assembly
+against this Fiat IR without modification.
+
+The TypeScript bridge converter writes the Fiat IR as JSON
+(`jasmin.json`) which can be inspected and used as the reference for
+`check_equivalence`.
+
+### Trust chain via the Jasmin bridge
+
+```
+.jazz (verified Jasmin source)
+  ↓ jasminc -until_makeref (Jasmin verified compiler)
+makeref (Jasmin IR, textual)
+  ↓ CryptOpt jasmin-bridge converter (TypeScript, untrusted)
+Fiat IR (in jasmin.json)
+  ↓ CryptOpt random search optimization (untrusted)
+optimized .s assembly
+  ↓ check_equivalence(jasmin.json, optimized .s) — verified Coq
+✓ optimized assembly proven equivalent to the Fiat IR
+```
+
+The TypeScript bridge converter is the only piece that's not formally
+verified, but its output (the Fiat IR) is checked end-to-end against
+the assembly via `check_equivalence`. The bridge can be replaced by a
+verified Coq converter to eliminate it from the TCB (~1-2 weeks of
+work, see Future work below).
+
+### Comparison with bedrock2→jasminc pipeline
+
+| Aspect | bedrock2→jasminc | CryptOpt + check_equivalence |
+|---|---|---|
+| Source | bedrock2 (Gallina-like) | fiat-crypto reference (Coq) |
+| Translation | `to_jasmin_cmd` (Qed) | none — CryptOpt is a black box |
+| Optimization | jasminc compiler passes | random search (CryptOpt) |
+| Verification | end-to-end Coq proofs through translation + jasminc | post-hoc symbolic-execution check |
+| Performance | within ~5% of hand-tuned for linear ops | best-in-class for mul/square |
+| TCB | bedrock2, jasminc, RustBelt, Jasmin module opacity | fiat-crypto reference, check_equivalence (verified) |
+| Best for | linear ops (add, sub, select, copy, store) | mul, square, more complex straight-line code |
+
+**Recommendation**: use both. The bedrock2→jasminc pipeline for
+linear ops, and CryptOpt + `check_equivalence` for mul/square. The
+two pipelines are independent and have disjoint TCBs that can be
+combined without strengthening the trust assumptions of either.
+
+### Why the Jasmin bridge changes the calculus
+
+Before knowing about the Jasmin bridge, the natural way to bring
+mul/square under verification was either:
+- Use fiat-crypto's slower verified Montgomery mul (~2-3× slower)
+- Run mul/square through the bedrock2→jasminc pipeline (needs general-case
+  polish pass proofs, multi-week effort)
+- Verify CryptOpt's superoptimizer itself (research project)
+
+With the Jasmin bridge, the path becomes:
+1. Write mul/square as a `.jazz` source (or use an existing fiat-crypto JSON)
+2. Run CryptOpt with the Jasmin bridge → get optimized assembly
+3. Run `check_equivalence` to validate
+4. ~3-5 days total, no new proofs to write, full CryptOpt performance
+
+### Effort estimates
+
+**Step A — verify existing CryptOpt assembly** (~2-3 days)
+The `bls12-jasmin-rs/cryptopt/fiat_bls12_381_p_mul.asm` (842 lines)
+and `_square.asm` were generated outside any verification chain. Run
+`check_equivalence` against the BLS12-381 fiat-crypto reference. If
+it passes, the assembly is verified.
+
+**Step B — full CryptOpt-Jasmin-bridge pipeline** (~3-5 days)
+Take a `.jazz` source for Montgomery mul, push it through CryptOpt
+with the Jasmin bridge, validate via `check_equivalence`. This
+exercises the entire chain including the bridge converter.
+
+**Step C — eliminate TypeScript bridge converter from the TCB** (+~1-2 weeks)
+Write a verified Coq parser/converter from Jasmin's IR to the Fiat IR
+used by `check_equivalence`. After this, the trust chain has zero
+new components vs fiat-crypto's existing `fiat-amd64/` curves.
