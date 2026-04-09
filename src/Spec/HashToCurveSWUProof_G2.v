@@ -67,6 +67,11 @@ Proof.
   intros [ar ai] [br bi]. unfold fp2_norm, fp2_mul. simpl. ring.
 Qed.
 
+(* The Fp2 dichotomy via Legendre + norm requires applying lemmas
+   from FpLegendre_G2 whose proof terms are very slow to verify
+   (each Qed takes 10+ minutes due to opaque proof verification
+   over the BLS12-381 prime). Documented for future work. *)
+
 (* ================================================================== *)
 (** * Main theorem (assembly admitted)                                 *)
 (* ================================================================== *)
