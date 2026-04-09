@@ -22,7 +22,8 @@
 Require Import coqutil.Word.Interface.
 Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Word.Properties.
-From Stdlib Require Import ZArith String Bool List.
+From Stdlib Require Import ZArith String Bool List Lia.
+From Stdlib Require Import FunctionalExtensionality.
 Import ListNotations.
 Local Open Scope Z_scope.
 
@@ -53,8 +54,14 @@ Section WithWord.
   Lemma word_sub_0_r : forall (x : word), word.sub x (word.of_Z 0) = x.
   Proof. apply Properties.word.sub_0_r. Qed.
 
-  (* xor_0_r not directly available in coqutil; stated as axiom *)
-  Axiom word_xor_0_r : forall (x : word), word.xor x (word.of_Z 0) = x.
+  Lemma word_xor_0_r : forall (x : word), word.xor x (word.of_Z 0) = x.
+  Proof.
+    intros. apply Properties.word.unsigned_inj.
+    rewrite Properties.word.unsigned_xor_nowrap.
+    rewrite Properties.word.unsigned_of_Z_0.
+    rewrite Z.lxor_0_r.
+    reflexivity.
+  Qed.
 
   (** [simplify_expr] preserves the evaluation of expressions. *)
   Variable eval_var : string -> word.
@@ -65,50 +72,88 @@ Section WithWord.
       eval_jexpr eval_var (simplify_expr e) = Some w.
   Proof.
     induction e; simpl; intros w0 Heval; try exact Heval.
+    all: destruct (eval_jexpr eval_var e1) as [v1|] eqn:He1; [|discriminate].
+    all: destruct (eval_jexpr eval_var e2) as [v2|] eqn:He2; [|discriminate].
+    all: injection Heval as <-.
+    all: specialize (IHe1 _ eq_refl).
+    all: specialize (IHe2 _ eq_refl).
+    all: try (rewrite IHe1, IHe2; reflexivity).
     - (* JEadd *)
-      destruct (eval_jexpr eval_var e1) as [v1|] eqn:He1; try discriminate.
-      destruct (eval_jexpr eval_var e2) as [v2|] eqn:He2; try discriminate.
-      inversion Heval; subst.
-      specialize (IHe1 v1 eq_refl). specialize (IHe2 v2 eq_refl).
-      simpl. destruct (simplify_expr e1) eqn:Hs1; destruct (simplify_expr e2) eqn:Hs2;
-        simpl; try (rewrite IHe1; rewrite IHe2; reflexivity).
-      (* Case: JElit 0 + e2 *)
-      all: try (destruct v; simpl in *;
-                try (rewrite IHe1; rewrite IHe2; simpl;
-                     f_equal; apply word_add_0_l)).
-      all: try (rewrite IHe1; rewrite IHe2; reflexivity).
-  Abort.
-
-  (** The full proof requires careful case analysis on [simplify_expr]'s
-      output, which has nested pattern matching.  The identities
-      (word_add_0_l, word_sub_0_r, word_xor_0_r) are the key lemmas.
-
-      We state the result and defer the combinatorial proof: *)
-  Axiom simplify_expr_correct :
-    forall (e : jasmin_expr) (w : word),
-      eval_jexpr eval_var e = Some w ->
-      eval_jexpr eval_var (simplify_expr e) = Some w.
+      assert (Hadd_unfold : forall a b,
+        eval_jexpr eval_var (JEadd a b) =
+        match eval_jexpr eval_var a, eval_jexpr eval_var b with
+        | Some va, Some vb => Some (word.add va vb)
+        | _, _ => None
+        end) by reflexivity.
+      destruct (simplify_expr e1) eqn:Hs1;
+        try (destruct (simplify_expr e2) eqn:Hs2;
+             try (rewrite Hadd_unfold, IHe1, IHe2; reflexivity);
+             destruct v; try (rewrite Hadd_unfold, IHe1, IHe2; reflexivity);
+             simpl in IHe2; injection IHe2 as <-;
+             rewrite IHe1; f_equal; symmetry; apply word_add_0_r).
+      destruct v as [|p|p].
+      + simpl in IHe1; injection IHe1 as <-;
+        rewrite IHe2; f_equal; symmetry; apply word_add_0_l.
+      + destruct (simplify_expr e2) eqn:Hs2;
+          try (rewrite Hadd_unfold, IHe1, IHe2; reflexivity).
+        destruct v; try (rewrite Hadd_unfold, IHe1, IHe2; reflexivity).
+        simpl in IHe2; injection IHe2 as <-;
+        rewrite IHe1; f_equal; symmetry; apply word_add_0_r.
+      + destruct (simplify_expr e2) eqn:Hs2;
+          try (rewrite Hadd_unfold, IHe1, IHe2; reflexivity).
+        destruct v; try (rewrite Hadd_unfold, IHe1, IHe2; reflexivity).
+        simpl in IHe2; injection IHe2 as <-;
+        rewrite IHe1; f_equal; symmetry; apply word_add_0_r.
+    - (* JEsub *)
+      assert (Hsub_unfold : forall a b,
+        eval_jexpr eval_var (JEsub a b) =
+        match eval_jexpr eval_var a, eval_jexpr eval_var b with
+        | Some va, Some vb => Some (word.sub va vb)
+        | _, _ => None
+        end) by reflexivity.
+      destruct (simplify_expr e2) eqn:Hs2;
+        try (rewrite Hsub_unfold, IHe1, IHe2; reflexivity).
+      destruct v as [|p|p]; try (rewrite Hsub_unfold, IHe1, IHe2; reflexivity).
+      simpl in IHe2; injection IHe2 as <-;
+      rewrite IHe1; f_equal; symmetry; apply word_sub_0_r.
+    - (* JExor *)
+      assert (Hxor_unfold : forall a b,
+        eval_jexpr eval_var (JExor a b) =
+        match eval_jexpr eval_var a, eval_jexpr eval_var b with
+        | Some va, Some vb => Some (word.xor va vb)
+        | _, _ => None
+        end) by reflexivity.
+      destruct (simplify_expr e2) eqn:Hs2;
+        try (rewrite Hxor_unfold, IHe1, IHe2; reflexivity).
+      destruct v as [|p|p]; try (rewrite Hxor_unfold, IHe1, IHe2; reflexivity).
+      simpl in IHe2; injection IHe2 as <-;
+      rewrite IHe1; f_equal; symmetry; apply word_xor_0_r.
+  Qed.
 
   (* ================================================================ *)
   (* normalize_lit preserves word.of_Z                                 *)
   (* ================================================================ *)
 
-  (** Two's complement: [word.of_Z v = word.of_Z (v + 2^64)] when
-      [v < 0], because [word.of_Z] reduces modulo [2^width]. *)
-  (** [normalize_lit v] adds [2^64] to negative values.
-      Since [word.of_Z] reduces modulo [2^width]:
-        [word.of_Z (v + 2^64) = word.of_Z v]
-      because [(v + 2^64) mod 2^64 = v mod 2^64].
-
-      The proof uses [Z.add_mod] + [Z.mod_same].
-      For width=64 (BLS12-381), this is immediate. *)
   (** [normalize_lit_correct]: adding 2^64 to a negative Z preserves
       [word.of_Z] because [word.of_Z] reduces modulo [2^width].
       For width=64: [(v + 2^64) mod 2^64 = v mod 2^64].
       Proof: [Z.add_mod] + [Z.mod_same]. *)
-  Axiom normalize_lit_correct :
+  Lemma normalize_lit_correct :
     forall (v : Z),
+      2 ^ 64 mod 2 ^ width = 0 ->
       word.of_Z (normalize_lit v) = @word.of_Z _ word v.
+  Proof.
+    intros v Hmod. unfold normalize_lit, u64_max.
+    destruct (v <? 0)%Z eqn:Hneg; [|reflexivity].
+    apply Properties.word.unsigned_inj.
+    rewrite !word.unsigned_of_Z. unfold word.wrap.
+    assert (Hnz : 2 ^ width <> 0).
+    { apply Z.pow_nonzero; [lia | destruct width_cases as [Hw | Hw]; lia]. }
+    rewrite Z.add_mod by exact Hnz.
+    rewrite Hmod. rewrite Z.add_0_r.
+    rewrite Z.mod_mod by exact Hnz.
+    reflexivity.
+  Qed.
 
   (* ================================================================ *)
   (* Summary of pass correctness                                       *)
@@ -118,9 +163,8 @@ Section WithWord.
       of the [jasmin_cmd] it transforms:
 
       1. [simplify_func]: uses word arithmetic identities
-         (0+x=x, x-0=x, x^0=x, self-assign=noop).
-         Axiomatized above; proof requires case analysis on
-         simplify_expr's nested match.
+         (0+x=x, x+0=x, x-0=x, x^0=x).
+         Proved by [simplify_expr_correct] (Qed above).
 
       2. [normalize_func]: uses [normalize_lit_correct] (Qed above).
          Lifting from expressions to commands is structural induction.
@@ -146,8 +190,8 @@ Section WithWord.
          - SBB: same as ADD for subtraction
          - CMOV: [mask + xor + and-or] ≡ [if flag { ... }]
 
-      Total: 1 Qed lemma (normalize_lit_correct), 1 axiom
-      (simplify_expr_correct), rest documented as proof obligations.
+      Total: 2 Qed lemmas (simplify_expr_correct, normalize_lit_correct),
+      rest documented as proof obligations.
 
       The [tr_expr_preserves_eval] theorem from [JasminExprBridge.v]
       provides the foundation: expressions are preserved by [tr_expr].
@@ -155,3 +199,217 @@ Section WithWord.
       induction on [jasmin_cmd]. *)
 
 End WithWord.
+
+(* ================================================================ *)
+(* Command-level lifting: simplify_cmd_correct, normalize_cmd_correct *)
+(* ================================================================ *)
+
+Section WithWordCmd.
+
+  Context {width : Z} {BW : Bitwidth width}
+          {word : word.word width} {word_ok : word.ok word}.
+
+  (** A command-level environment maps variable names to words. *)
+  Definition env := string -> word.
+
+  Definition update (e : env) (x : string) (w : word) : env :=
+    fun y => if String.eqb y x then w else e y.
+
+  Lemma update_self : forall e x, update e x (e x) = e.
+  Proof.
+    intros. apply functional_extensionality. intros y.
+    unfold update. destruct (String.eqb y x) eqn:H; [|reflexivity].
+    apply String.eqb_eq in H. subst. reflexivity.
+  Qed.
+
+  (** Big-step relational semantics for [jasmin_cmd] over the variable
+      environment.  Memory and function-call effects are abstracted as
+      identity on the variable environment (only their input expressions
+      are evaluated).  Intrinsics model their direct variable updates. *)
+  Inductive jeval : env -> jasmin_cmd -> env -> Prop :=
+  | jeval_skip : forall e, jeval e JCskip e
+  | jeval_seq : forall e1 e2 e3 c1 c2,
+      jeval e1 c1 e2 -> jeval e2 c2 e3 ->
+      jeval e1 (JCseq c1 c2) e3
+  | jeval_set : forall e x ex w,
+      eval_jexpr e ex = Some w ->
+      jeval e (JCset x ex) (update e x w)
+  | jeval_decl : forall e x ty body e',
+      jeval e body e' ->
+      jeval e (JCdecl x ty body) e'
+  | jeval_if_true : forall e econd ct cf w e',
+      eval_jexpr e econd = Some w ->
+      w <> word.of_Z 0 ->
+      jeval e ct e' ->
+      jeval e (JCif econd ct cf) e'
+  | jeval_if_false : forall e econd ct cf e',
+      eval_jexpr e econd = Some (word.of_Z 0) ->
+      jeval e cf e' ->
+      jeval e (JCif econd ct cf) e'
+  | jeval_while_false : forall e econd body,
+      eval_jexpr e econd = Some (word.of_Z 0) ->
+      jeval e (JCwhile econd body) e
+  | jeval_while_true : forall e e' e'' econd body w,
+      eval_jexpr e econd = Some w ->
+      w <> word.of_Z 0 ->
+      jeval e body e' ->
+      jeval e' (JCwhile econd body) e'' ->
+      jeval e (JCwhile econd body) e''
+  | jeval_store : forall e base off v vbase vv,
+      eval_jexpr e base = Some vbase ->
+      eval_jexpr e v = Some vv ->
+      jeval e (JCstore base off v) e
+  | jeval_call : forall e f args,
+      jeval e (JCcall f args) e
+  | jeval_add_flags : forall e cf r a b va vb,
+      eval_jexpr e a = Some va ->
+      eval_jexpr e b = Some vb ->
+      jeval e (JCadd_flags cf r a b)
+        (update (update e cf (word.of_Z 0)) r (word.add va vb))
+  | jeval_adcx : forall e co r a b ci va vb,
+      eval_jexpr e a = Some va ->
+      eval_jexpr e b = Some vb ->
+      jeval e (JCadcx co r a b ci)
+        (update (update e co (word.of_Z 0)) r (word.add va vb))
+  | jeval_mulx : forall e h l a b va vb,
+      eval_jexpr e a = Some va ->
+      eval_jexpr e b = Some vb ->
+      jeval e (JCmulx h l a b)
+        (update (update e h (word.of_Z 0)) l (word.mul va vb))
+  | jeval_sub_flags : forall e cf r a b va vb,
+      eval_jexpr e a = Some va ->
+      eval_jexpr e b = Some vb ->
+      jeval e (JCsub_flags cf r a b)
+        (update (update e cf (word.of_Z 0)) r (word.sub va vb))
+  | jeval_sbb : forall e co r a b ci va vb,
+      eval_jexpr e a = Some va ->
+      eval_jexpr e b = Some vb ->
+      jeval e (JCsbb co r a b ci)
+        (update (update e co (word.of_Z 0)) r (word.sub va vb))
+  .
+
+  (** Helper for the [JCseq] case of [simplify_cmd]: the optimization
+      [JCskip; c → c] and [c; JCskip → c] preserves [jeval]. *)
+  Lemma simplify_seq_correct : forall c1 c2 e e1 e',
+    jeval e c1 e1 -> jeval e1 c2 e' ->
+    jeval e (match c1, c2 with
+             | JCskip, _ => c2
+             | _, JCskip => c1
+             | _, _ => JCseq c1 c2
+             end) e'.
+  Proof.
+    intros c1 c2 e e1 e' H1 H2.
+    destruct c1.
+    { (* JCskip *) inversion H1; subst. exact H2. }
+    all: destruct c2; try (eapply jeval_seq; eassumption);
+         inversion H2; subst; exact H1.
+  Qed.
+
+  (** [simplify_cmd] preserves [jeval] semantics.
+
+      Proof by structural induction on [c], using:
+      - [simplify_expr_correct] for expression cases
+      - [simplify_seq_correct] for the [JCseq] optimization
+      - [update_self] for the self-assign elimination *)
+  Theorem simplify_cmd_correct :
+    forall (e : env) (c : jasmin_cmd) (e' : env),
+      jeval e c e' ->
+      jeval e (simplify_cmd c) e'.
+  Proof.
+    intros e c e' H. induction H; simpl.
+    - (* JCskip *) constructor.
+    - (* JCseq *)
+      apply (simplify_seq_correct _ _ _ e2 _); assumption.
+    - (* JCset *)
+      pose proof (simplify_expr_correct e ex w H) as Hsimp.
+      destruct (simplify_expr ex) eqn:Hse;
+        try solve [econstructor; exact Hsimp].
+      destruct (String.eqb x x0) eqn:Heq;
+        [|econstructor; exact Hsimp].
+      apply String.eqb_eq in Heq. subst x0.
+      simpl in Hsimp. injection Hsimp as <-.
+      rewrite update_self. constructor.
+    - (* JCdecl *) apply jeval_decl. assumption.
+    - (* JCif true *)
+      eapply jeval_if_true;
+        [apply simplify_expr_correct; eassumption | eassumption | assumption].
+    - (* JCif false *)
+      apply jeval_if_false;
+        [apply simplify_expr_correct; eassumption | assumption].
+    - (* JCwhile false *)
+      apply jeval_while_false.
+      apply simplify_expr_correct; eassumption.
+    - (* JCwhile true *)
+      eapply jeval_while_true;
+        [apply simplify_expr_correct; eassumption
+        | eassumption
+        | eassumption
+        | (* recursive while uses IHjeval2, but needs to match the simplified form *)
+          eassumption].
+    - (* JCstore *)
+      eapply jeval_store; apply simplify_expr_correct; eassumption.
+    - (* JCcall *) constructor.
+    - (* JCadd_flags *)
+      eapply jeval_add_flags; apply simplify_expr_correct; eassumption.
+    - (* JCadcx *)
+      eapply jeval_adcx; apply simplify_expr_correct; eassumption.
+    - (* JCmulx *)
+      eapply jeval_mulx; apply simplify_expr_correct; eassumption.
+    - (* JCsub_flags *)
+      eapply jeval_sub_flags; apply simplify_expr_correct; eassumption.
+    - (* JCsbb *)
+      eapply jeval_sbb; apply simplify_expr_correct; eassumption.
+  Qed.
+
+  (** [normalize_neg_lits_cmd] preserves [jeval] semantics, given the
+      precondition [2^64 mod 2^width = 0] (true for width = 64). *)
+  Theorem normalize_cmd_correct :
+    2 ^ 64 mod 2 ^ width = 0 ->
+    forall (c : jasmin_cmd) (e e' : env),
+      jeval e c e' ->
+      jeval e (normalize_neg_lits_cmd c) e'.
+  Proof.
+    intros Hmod.
+    (* Helper: normalize_neg_lits_expr preserves evaluation *)
+    assert (Hexpr : forall (env : string -> word) (e : jasmin_expr) (w : word),
+      eval_jexpr env e = Some w ->
+      eval_jexpr env (normalize_neg_lits_expr e) = Some w).
+    { intros env. induction e; simpl; intros w0 Heval; try exact Heval.
+      - (* JElit *) injection Heval as <-. f_equal. apply normalize_lit_correct. exact Hmod.
+      - (* JEadd *) destruct (eval_jexpr env e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env e2) as [v2|] eqn:He2; [|discriminate].
+        rewrite (IHe1 _ eq_refl), (IHe2 _ eq_refl). exact Heval.
+      - (* JEsub *) destruct (eval_jexpr env e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env e2) as [v2|] eqn:He2; [|discriminate].
+        rewrite (IHe1 _ eq_refl), (IHe2 _ eq_refl). exact Heval.
+      - (* JEmul *) destruct (eval_jexpr env e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env e2) as [v2|] eqn:He2; [|discriminate].
+        rewrite (IHe1 _ eq_refl), (IHe2 _ eq_refl). exact Heval.
+      - (* JEand *) destruct (eval_jexpr env e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env e2) as [v2|] eqn:He2; [|discriminate].
+        rewrite (IHe1 _ eq_refl), (IHe2 _ eq_refl). exact Heval.
+      - (* JEor *) destruct (eval_jexpr env e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env e2) as [v2|] eqn:He2; [|discriminate].
+        rewrite (IHe1 _ eq_refl), (IHe2 _ eq_refl). exact Heval.
+      - (* JExor *) destruct (eval_jexpr env e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env e2) as [v2|] eqn:He2; [|discriminate].
+        rewrite (IHe1 _ eq_refl), (IHe2 _ eq_refl). exact Heval.
+      - (* JEshr *) destruct (eval_jexpr env e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env e2) as [v2|] eqn:He2; [|discriminate].
+        rewrite (IHe1 _ eq_refl), (IHe2 _ eq_refl). exact Heval.
+      - (* JEshl *) destruct (eval_jexpr env e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env e2) as [v2|] eqn:He2; [|discriminate].
+        rewrite (IHe1 _ eq_refl), (IHe2 _ eq_refl). exact Heval.
+      - (* JEltu *) destruct (eval_jexpr env e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env e2) as [v2|] eqn:He2; [|discriminate].
+        rewrite (IHe1 _ eq_refl), (IHe2 _ eq_refl). exact Heval.
+      - (* JEeq *) destruct (eval_jexpr env e1) as [v1|] eqn:He1; [|discriminate].
+        destruct (eval_jexpr env e2) as [v2|] eqn:He2; [|discriminate].
+        rewrite (IHe1 _ eq_refl), (IHe2 _ eq_refl). exact Heval. }
+    intros c e e' H. induction H; simpl;
+      try (econstructor; eauto using Hexpr; fail);
+      try (eapply jeval_if_true; eauto using Hexpr; fail);
+      try (eapply jeval_while_true; eauto using Hexpr; fail).
+  Qed.
+
+End WithWordCmd.

@@ -78,11 +78,53 @@ Section BorrowBridge.
        m = map.putmany (map.putmany (map.putmany m_out m_in1) m_in2) m_frame) ->
       sep P_out (sep P_in1 (sep P_in2 R)) m.
   Proof.
-    intros. apply (rust_borrow_implies_sep [P_out; P_in1; P_in2] R m).
-    destruct H as (mo & Ho & mi1 & Hi1 & mi2 & Hi2 & mf & Hf & _).
+    intros P_out P_in1 P_in2 R m H.
+    apply (rust_borrow_implies_sep [P_out; P_in1; P_in2] R m).
+    destruct H as (mo & Ho & mi1 & Hi1 & mi2 & Hi2 & mf & Hf
+                 & D01 & D02 & D12 & D0f & D1f & D2f & Hm).
     exists [mo; mi1; mi2].
-    (* The all_disjoint proof for 3 elements is straightforward case
-       analysis on indices. Deferred to tactic automation. *)
+    split; [reflexivity|].
+    split.
+    { (* Forall2 *)
+      apply List.Forall2_cons; [exact Ho|].
+      apply List.Forall2_cons; [exact Hi1|].
+      apply List.Forall2_cons; [exact Hi2|].
+      apply List.Forall2_nil. }
+    split.
+    { (* all_disjoint: pairwise disjoint among 3 elements *)
+      assert (Dsym : forall (a b : mem),
+        map.disjoint a b -> map.disjoint b a).
+      { intros a b Hab k v1 v2 H1 H2. eapply Hab; eauto. }
+      intros i j ri rj Hi Hj Hij.
+      assert (Hcase : forall k r, nth_error [mo; mi1; mi2] k = Some r ->
+                k = 0%nat /\ r = mo \/ k = 1%nat /\ r = mi1 \/ k = 2%nat /\ r = mi2).
+      { intros k r. destruct k as [|[|[|k']]]; simpl; intros HH;
+          inversion HH; subst.
+        - left; split; reflexivity.
+        - right; left; split; reflexivity.
+        - right; right; split; reflexivity.
+        - destruct k'; discriminate. }
+      apply Hcase in Hi as [[? ?]|[[? ?]|[? ?]]]; subst;
+      apply Hcase in Hj as [[? ?]|[[? ?]|[? ?]]]; subst;
+        try (exfalso; apply Hij; reflexivity).
+      + exact D01.
+      + exact D02.
+      + apply Dsym; exact D01.
+      + exact D12.
+      + apply Dsym; exact D02.
+      + apply Dsym; exact D12. }
+    (* frame: need to show
+       m = putmany (putmany mo (putmany mi1 (putmany mi2 empty))) mf
+       From Hm we have
+       m = putmany (putmany (putmany mo mi1) mi2) mf
+       which differs only by associativity of putmany and the right-identity
+       [putmany _ empty = _].  Both hold for [map.ok] but [map.putmany_empty_r]
+       requires a [key_eqb] instance which is not provided in this section
+       (the [word] context lacks a [Decidable Equality] instance).  This
+       reduces to a pure map-algebra fact and is independent of the trust
+       assumption [rust_borrow_implies_sep]. *)
+    exists mf. split; [exact Hf|].
+    simpl.
   Admitted.
 
 End BorrowBridge.
