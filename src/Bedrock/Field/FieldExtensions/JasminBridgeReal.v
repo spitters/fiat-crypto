@@ -392,6 +392,29 @@ Section RealSem.
     eapply Ewhile_true; [exact Hbody | exact Hp | constructor | exact Hloop_i].
   Qed.
 
+  (** [jsem_call]: opaque function call.  The proof packages Jasmin's
+      [Ecall] constructor.  The semantic content (that the call's body
+      runs to completion and returns the right values) is delegated to
+      the three preconditions [sem_pexprs] / [sem_call] / [write_lvals],
+      which the user must provide.  In a full integration these would be
+      derived from a [WfProgram] hypothesis. *)
+  Lemma real_jsem_call :
+    forall (s1 s2 : estate) (f : string) (args : list jasmin_expr)
+           (vargs vs : list value) (scs2 : syscall_state_) (m2 : mem),
+      sem_pexprs (negb direct_call) (p_globs P) s1 (map to_pexpr args) = ok vargs ->
+      sem_call P ev (escs s1) (emem s1)
+               (int_to_funname (string_to_ident f)) vargs scs2 m2 vs ->
+      write_lvals (negb direct_call) (p_globs P)
+                  (with_scs (with_mem s1 m2) scs2) [::] vs = ok s2 ->
+      real_jsem s1 (JCcall f args) s2.
+  Proof.
+    intros s1 s2 f args vargs vs scs2 m2 Hargs Hcall Hwrite.
+    unfold real_jsem. cbn [to_jasmin_cmd].
+    eapply sem_seq1.
+    eapply EmkI.
+    eapply Ecall; eassumption.
+  Qed.
+
   (** The remaining axioms (jsem_set, jsem_if, jsem_while, jsem_call)
       each require:
       1. A concrete evaluation of [to_pexpr e] in the current state
