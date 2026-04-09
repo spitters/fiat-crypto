@@ -361,3 +361,51 @@ exercises the entire chain including the bridge converter.
 Write a verified Coq parser/converter from Jasmin's IR to the Fiat IR
 used by `check_equivalence`. After this, the trust chain has zero
 new components vs fiat-crypto's existing `fiat-amd64/` curves.
+
+### Results from running steps A and B
+
+**Step A (executed)**: BLS12-381 mul/square verified via check_equivalence:
+
+```sh
+./src/ExtractionOCaml/word_by_word_montgomery 'bls12_381_p' 64 \
+  '(-0xd201000000010000 -1)^2 * \
+   ((-0xd201000000010000)^4 - (-0xd201000000010000)^2 + 1)/3 + \
+   (-0xd201000000010000)' \
+  mul \
+  --hints-file /path/to/cryptopt-asm-no-xmm.asm \
+  -o /dev/null --output-asm /dev/null
+# EXIT=0 → verified equivalent to fiat-crypto's reference
+```
+
+Important: use the **pure-scalar** CryptOpt-generated assemblies (no
+xmm spilling). The previously-shipped `bls12-jasmin-rs/cryptopt/*.asm`
+used xmm registers which `check_equivalence` doesn't currently support
+(`error.unsupported_label_argument xmm0`). The pure-scalar versions in
+`CryptOpt/generated/bls12/<func>/seed*.asm` work.
+
+After replacing the shipped assemblies with the verified pure-scalar
+ones, all 14 `bls12-jasmin-rs` tests still pass and benchmark numbers
+are slightly better (mul: 57.6 ns/op vs 61.0 with xmm; square: 48.3
+vs 60.5).
+
+**Step B (executed)**: CryptOpt's Jasmin bridge runs end-to-end on
+the curve25519 add_doubl4 demo, producing both `jasmin.json` (Fiat
+IR) and optimized `.asm` files. Two structural limits prevented
+direct application to BLS12-381:
+
+1. The Jasmin bridge in CryptOpt is hardcoded for curve25519's
+   add_doubl4 signature (`OUT_WIDTHS = [4*4]; IN_WIDTHS = [4,4,4,4,4]`).
+2. `check_equivalence` validates against fiat-crypto's *built-in*
+   primitives (`--curve <name> --method mul/square/add/sub`); there's
+   no `--reference-from-json` option to use a custom Fiat IR as the
+   reference.
+
+So the Jasmin bridge is currently useful for **CryptOpt's own
+curve25519 demo**, but for our BLS12-381 verification, **Step A is
+the right path** — directly run `check_equivalence` on
+CryptOpt-generated assemblies for known primitives.
+
+To make Step B fully useful for other curves/primitives, the bridge
+would need ~5-6 days of work: (1) generalize JasminBridge.ts to
+accept any function signature, (2) write Jasmin source for the
+target primitives.
