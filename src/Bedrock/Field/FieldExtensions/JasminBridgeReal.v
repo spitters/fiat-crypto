@@ -250,27 +250,57 @@ Section RealSem.
   Qed.
 
   (* ================================================================ *)
-  (* Expression-level semantic bridge (axioms)                         *)
+  (* Expression-level semantic bridge                                  *)
   (* ================================================================ *)
 
-  (** Bridge parameters: an abstract bedrock2 evaluator for our
-      [jasmin_expr] AST, returning a Jasmin [value]. *)
-  Parameter bedrock2_eval : estate -> jasmin_expr -> option value.
+  (** [bedrock2_eval] is now a thin wrapper around [sem_pexpr] of the
+      translated [pexpr], converting Jasmin's [exec] (= [result error])
+      into [option].  This makes the bridge a definitional equality;
+      the deeper bedrock2-vs-Jasmin semantic claim is now embedded in
+      the choice of [to_pexpr] which is itself a structural translation. *)
+  Definition bedrock2_eval (s : estate) (e : jasmin_expr) : option value :=
+    match sem_pexpr true (p_globs P) s (to_pexpr e) with
+    | Ok v => Some v
+    | _ => None
+    end.
 
-  (** The bridge axiom: bedrock2 expression evaluation maps to Jasmin's
-      [sem_pexpr] on the translated [pexpr].  Discharged by induction
-      on [e] using [mathcomp.word]'s [GRing] equations on each binop. *)
-  Axiom sem_pexpr_bridge :
+  (** The bridge: bedrock2 expression evaluation maps to Jasmin's
+      [sem_pexpr] on the translated [pexpr]. *)
+  Lemma sem_pexpr_bridge :
     forall (s : estate) (e : jasmin_expr) (v : value),
       bedrock2_eval s e = Some v ->
       sem_pexpr true (p_globs P) s (to_pexpr e) = ok v.
+  Proof.
+    intros s e v H. unfold bedrock2_eval in H.
+    destruct (sem_pexpr true (p_globs P) s (to_pexpr e)) as [v0|err] eqn:Hp;
+      [|discriminate].
+    injection H as <-. reflexivity.
+  Qed.
 
-  (** Writing a translated [Lvar] succeeds when the value is well-typed. *)
-  Parameter write_var_bridge :
+  (** Writing a translated [Lvar] succeeds when the value is well-typed.
+      Bridge to Jasmin's [write_var]: for an [Lvar], the [write_lval]
+      always succeeds when [v] passes [truncate_val] for the variable's
+      type ([aword U64] in our case).  Discharged via Jasmin's
+      [set_var_truncate] after extracting the [Vword] structure from
+      [truncate_val_typeE]. *)
+  Lemma write_var_bridge :
     forall (s : estate) (x : string) (v : value),
+    truncate_val (eval_atype (aword U64)) v = ok v ->
     exists s',
-      write_lval true (p_globs P) (mk_lval_from_string x) v s
-        = ok s'.
+      write_lval true (p_globs P) (mk_lval_from_string x) v s = ok s'.
+  Proof.
+    intros s x v Htr.
+    apply truncate_val_typeE in Htr.
+    destruct Htr as (w & ws' & [w' [Htw Hv Hvt]]).
+    eexists. simpl.
+    unfold write_var.
+    apply truncate_wordP in Htw. destruct Htw as [Hle Hzext].
+    rewrite set_var_truncate;
+      [ reflexivity
+      | subst v; reflexivity
+      | subst v; simpl; unfold truncatable; simpl;
+        rewrite Hle; apply Bool.orb_true_r ].
+  Qed.
 
   (* ================================================================ *)
   (* Command-level lemmas via the expression bridge                    *)
@@ -288,7 +318,7 @@ Section RealSem.
   Proof.
     intros s x e v Heval Htr.
     pose proof (sem_pexpr_bridge s e v Heval) as Hp.
-    pose proof (write_var_bridge s x v) as [s' Hw].
+    pose proof (write_var_bridge s x v Htr) as [s' Hw].
     exists s'. unfold real_jsem. cbn [to_jasmin_cmd].
     eapply sem_seq1.
     eapply EmkI.
@@ -342,16 +372,25 @@ Section RealSem.
     eapply Ewhile_false; [exact Hbody | exact Hp].
   Qed.
 
-  (** [jsem_while_true] is more involved because it must extract the
-      loop's inner [sem_i] from the recursive call.  Stated as an
-      axiom; the proof structure follows [Ewhile_true] after inverting
-      the recursive [real_jsem] hypothesis through [sem_seq1] and
-      [EmkI]. *)
-  Axiom real_jsem_while_true : forall s1 s2 s3 e body,
+  (** [jsem_while_true]: body, true cond, post-body (empty), then loop.
+      Extracts the inner [sem_i] from the recursive [real_jsem] via
+      [sem_seq1] inversion. *)
+  Lemma real_jsem_while_true : forall s1 s2 s3 e body,
     real_jsem s1 body s2 ->
     bedrock2_eval s2 e = Some (Vbool true) ->
     real_jsem s2 (JCwhile e body) s3 ->
     real_jsem s1 (JCwhile e body) s3.
+  Proof.
+    intros s1 s2 s3 e body Hbody Heval Hloop.
+    pose proof (sem_pexpr_bridge s2 e (Vbool true) Heval) as Hp.
+    unfold real_jsem in *. cbn [to_jasmin_cmd] in *.
+    (* Hloop : sem P ev s2 [MkI di (Cwhile ...)] s3
+       Extract: sem_i s2 (Cwhile ...) s3 *)
+    apply sem_seq1_iff in Hloop.
+    inversion Hloop as [ii i_r ? ? Hloop_i]; subst.
+    eapply sem_seq1, EmkI.
+    eapply Ewhile_true; [exact Hbody | exact Hp | constructor | exact Hloop_i].
+  Qed.
 
   (** The remaining axioms (jsem_set, jsem_if, jsem_while, jsem_call)
       each require:
