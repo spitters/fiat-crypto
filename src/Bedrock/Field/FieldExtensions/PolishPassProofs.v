@@ -412,4 +412,153 @@ Section WithWordCmd.
       try (eapply jeval_while_true; eauto using Hexpr; fail).
   Qed.
 
+  (* ================================================================ *)
+  (* Equivalence modulo helper variables                               *)
+  (* ================================================================ *)
+
+  (** Some polish passes ([lower_func], [lower_comparisons_func],
+      [lift_lits_func]) introduce *fresh helper variables* that the user
+      program never reads or writes.  Their correctness theorem cannot be
+      stated as straight [jeval] preservation, because the post-state of
+      the transformed command differs from the original on the helper
+      variables.  We therefore introduce a notion of "agreement modulo a
+      set of helper variables", and a corresponding notion of "the program
+      doesn't touch the helpers". *)
+
+  Definition agrees_except (helpers : string -> bool) (e1 e2 : env) : Prop :=
+    forall x, helpers x = false -> e1 x = e2 x.
+
+  (** Reflexivity / symmetry / transitivity of [agrees_except]. *)
+  Lemma agrees_except_refl helpers e : agrees_except helpers e e.
+  Proof. intros x _; reflexivity. Qed.
+
+  Lemma agrees_except_sym helpers e1 e2 :
+    agrees_except helpers e1 e2 -> agrees_except helpers e2 e1.
+  Proof. intros H x Hx. symmetry. apply H, Hx. Qed.
+
+  Lemma agrees_except_trans helpers e1 e2 e3 :
+    agrees_except helpers e1 e2 ->
+    agrees_except helpers e2 e3 ->
+    agrees_except helpers e1 e3.
+  Proof. intros H12 H23 x Hx. rewrite (H12 _ Hx). apply (H23 _ Hx). Qed.
+
+  (** Update preserves agreement when the updated key is not a helper. *)
+  Lemma agrees_except_update helpers e1 e2 x w :
+    agrees_except helpers e1 e2 ->
+    agrees_except helpers (update e1 x w) (update e2 x w).
+  Proof.
+    intros H y Hy. unfold update.
+    destruct (String.eqb y x); [reflexivity | apply H, Hy].
+  Qed.
+
+  (** ** lift_lits: introduces [__wtmp__] *)
+
+  Definition wtmp_helper (x : string) : bool :=
+    String.eqb x "__wtmp__".
+
+  (** [lift_lits_correct] (proof obligation):
+      For any [c] that does not read or write [__wtmp__], the lifted
+      command produces a state that agrees with the original on every
+      variable except [__wtmp__].
+
+      Proof structure:
+      - Induction on the [jeval] derivation of the original command.
+      - For [JCset x e]: case on [subst_first_large_lit e]:
+        + [None]: identity transformation, trivial.
+        + [Some lit]: produces [JCseq (JCset "__wtmp__" lit) (JCset x e')].
+          Step 1 sets [__wtmp__] to [word.of_Z lit].
+          Step 2 evaluates [e'] under the updated env.  Need a lemma
+          [subst_first_large_lit_correct]: if the user expression [e]
+          does not use [__wtmp__], then evaluating [e'] in
+          [update env "__wtmp__" (word.of_Z lit)] gives the same value
+          as evaluating [e] in [env].
+      - All other constructors: structural recursion.
+
+      Status: AXIOMATIZED.  The freshness/agreement framework is in
+      place; the substitution lemma needs ~80 lines of induction on the
+      expression structure (one case per binary op). *)
+  Axiom lift_lits_cmd_correct :
+    forall (c : jasmin_cmd) (e e' : env),
+      jeval e c e' ->
+      exists e'',
+        jeval e (lift_lits_cmd c) e'' /\
+        agrees_except wtmp_helper e' e''.
+
+  (** ** lower_comparisons: introduces numbered helper variables *)
+
+  (** [lower_comparisons_cmd] uses [extract_comparisons] which generates
+      fresh variable names of the form ["__cmp_<n>__"]; the [n] threads
+      a counter through the recursion to avoid clashes.
+
+      Proof structure:
+      - Helper set: any variable starting with ["__cmp_"].
+      - The transformation:
+        [JCset x e where has_comparison e]
+        becomes
+        [prefix; JCset x e']
+        where [prefix] sets ["__cmp_<n>__"] to [if (a <u b) then 1 else 0].
+        Use [agrees_except cmp_helper].
+      - Need a lemma [extract_comparisons_correct]: evaluating [e']
+        under the post-prefix env gives the same value as [e] under the
+        pre-prefix env (when the user doesn't read [__cmp_*__] vars).
+
+      Status: AXIOMATIZED. *)
+  Definition cmp_helper (x : string) : bool :=
+    String.prefix "__cmp_" x.
+
+  Axiom lower_comparisons_cmd_correct :
+    forall (n : nat) (c : jasmin_cmd) (e e' : env),
+      jeval e c e' ->
+      let '(_, c') := lower_comparisons_cmd n c in
+      exists e'',
+        jeval e c' e'' /\
+        agrees_except cmp_helper e' e''.
+
+  (** ** lower_binop_assigns: introduces helper variables *)
+
+  (** [lower_binop_assigns] rewrites [x = e1 op e2] into the explicit
+      two-step form [x_a = e1; x = e1; x = (x op e2)] using
+      [flatten_expr] which introduces helper variables of the form
+      [x ++ "a"], [x ++ "aa"], etc.
+
+      Proof structure:
+      - Helper set: variables that are not in the original program's
+        free variables (more complex characterization needed).
+      - The transformation: [JCset x (e1 op e2)] becomes
+        [JCseq prefix1 (JCseq (JCset x a1) (JCseq prefix2 (JCset x ...)))].
+      - Each step preserves the value of [x] modulo the helpers.
+
+      Status: AXIOMATIZED.  This pass is the most involved because
+      [flatten_expr] is a deep recursive transformation. *)
+  Axiom lower_binop_assigns_correct :
+    forall (helpers : string -> bool) (c : jasmin_cmd) (e e' : env),
+      jeval e c e' ->
+      exists e'',
+        jeval e (lower_binop_assigns c) e'' /\
+        agrees_except helpers e' e''.
+
+  (** ** carry_func: pattern matching for x86 intrinsics *)
+
+  (** [lower_carry_cmd] matches sequences like
+      [r = a + b; cf = (r <u a)]
+      and replaces them with [#ADD(a, b)] which sets [cf] and [r] in
+      one step.
+
+      Proof structure:
+      - Per-pattern equivalence: each replacement is a 1-1 substitution,
+        no fresh helpers introduced.
+      - For ADD: [r = a + b; cf = (r <u a)] sets r to (a+b) and cf to
+        the carry bit.  [#ADD(a, b)] computes the same.  This requires
+        proving the carry detection [r <u a] equals the actual overflow
+        bit, which is a property of word arithmetic.
+      - Similarly for SUB/ADCX/SBB/MULX/CMOV.
+
+      Status: AXIOMATIZED.  This is a one-to-one structural replacement
+      so no helper variables; the proof reduces to per-instruction
+      semantic equivalence (one lemma per intrinsic). *)
+  Axiom carry_cmd_correct :
+    forall (c : jasmin_cmd) (e e' : env),
+      jeval e c e' ->
+      jeval e (lower_carry_cmd c) e'.
+
 End WithWordCmd.
