@@ -138,12 +138,18 @@ Lemma isogeny_identity_Fp2 : forall x' : Fp2,
     (fp2_mul (fp2_mul (fp2_mul xn xn) xn) (fp2_mul yd yd))
     (fp2_mul bls12_b_g2 (fp2_mul (fp2_mul (fp2_mul xd xd) xd) (fp2_mul yd yd))).
 Proof.
-  (* Z×Z polynomial identity verified by native_compute in
-     HashToCurveIsogenyCompute_G2.isogeny_poly_identity.
-     Bridge: horner_eval_fp2_ofZ + fp2_ofZ_mul/add.
-     Admitted pending efficient Z×Z ↔ Fp2 term matching. *)
-  admit.
-Admitted.
+  (* Expand Fp2 operations to Fp pairs, then verify each component
+     as a polynomial identity in F.to_Z(fst x'), F.to_Z(snd x')
+     using the registered Fp ring (with F.of_Z morphism). *)
+  intros [xr xi]. cbv zeta.
+  unfold horner_eval_fp2, horner_eval_monic_fp2,
+         iso_xnum_g2, iso_xden_g2, iso_ynum_g2, iso_yden_g2,
+         iso_A_g2, iso_B_g2, bls12_b_g2,
+         fp2_cube, fp2_sqr, fp2_one, fp2_zero, app,
+         fp2_add, fp2_sub, fp2_mul, fp2_neg.
+  simpl fst. simpl snd.
+  apply injective_projections; simpl fst; simpl snd; ring.
+Qed.
 
 (* ================================================================== *)
 (** * The isogeny maps E2' points to E2 points                        *)
