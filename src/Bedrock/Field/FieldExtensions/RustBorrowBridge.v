@@ -18,6 +18,7 @@ Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.Properties.
 Require Import coqutil.Word.Interface.
 Require Import coqutil.Word.Bitwidth.
+Require Import coqutil.Word.Properties.
 Require Import bedrock2.Map.Separation.
 From Stdlib Require Import List ZArith Lia.
 Import ListNotations.
@@ -113,18 +114,13 @@ Section BorrowBridge.
       + exact D12.
       + apply Dsym; exact D02.
       + apply Dsym; exact D12. }
-    (* frame: need to show
-       m = putmany (putmany mo (putmany mi1 (putmany mi2 empty))) mf
-       From Hm we have
-       m = putmany (putmany (putmany mo mi1) mi2) mf
-       which differs only by associativity of putmany and the right-identity
-       [putmany _ empty = _].  Both hold for [map.ok] but [map.putmany_empty_r]
-       requires a [key_eqb] instance which is not provided in this section
-       (the [word] context lacks a [Decidable Equality] instance).  This
-       reduces to a pure map-algebra fact and is independent of the trust
-       assumption [rust_borrow_implies_sep]. *)
+    (* frame *)
     exists mf. split; [exact Hf|].
     simpl.
-  Admitted.
+    pose proof (@word.eqb_spec _ _ word_ok) as Hweqb.
+    rewrite (map.putmany_empty_r mi2).
+    rewrite (map.putmany_assoc mo mi1 mi2).
+    exact Hm.
+  Qed.
 
 End BorrowBridge.
