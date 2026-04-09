@@ -51,9 +51,20 @@ Definition string_to_ident (s : string) : Uint63.int :=
 
 Local Close Scope string_scope.
 
-(** Specialized to x86-64 for the intrinsic constructors. *)
+(** Specialized to x86-64 for the intrinsic constructors.
+
+    Note: this section also takes an explicit [asmop : asmOp x86_extended_op]
+    instance, registered locally as a typeclass instance with the highest
+    priority.  This makes [Cassgn]/[Copn]/[Ccall] inside [to_jasmin_cmd]
+    use the section's asmop rather than the global [asm_opI], which lets
+    callers (e.g. [Section RealSem]) instantiate [to_jasmin_cmd] with
+    their own asmop (e.g. one projected from a [SemInstrParams]) without
+    needing apply-time iota reduction of record projections. *)
 Section WithX86.
   Context {atoI : arch_toIdent}.
+  Context {section_asmop : asmOp x86_extended_op}.
+  #[local] Existing Instance section_asmop | 0.
+  #[local] Remove Hints arch_extra.asm_opI : typeclass_instances.
 
   (** Construct a Jasmin [var_i] from a string name.
       All variables are typed as [aword U64] (64-bit word) and
@@ -135,32 +146,32 @@ Section WithX86.
         [:: MkI di (Copn
           [:: none_b; mk_lval_from_string cf; none_b; none_b; none_b;
               mk_lval_from_string result]
-          AT_none (Ox86 (ADD U64))
+          AT_none (Oasm (BaseOp (None, ADD U64)))
           [:: to_pexpr a; to_pexpr b])]
     | JCadcx cf_out result a b cf_in =>
         [:: MkI di (Copn
           [:: mk_lval_from_string cf_out; mk_lval_from_string result]
-          AT_none (Ox86 (ADCX U64))
+          AT_none (Oasm (BaseOp (None, ADCX U64)))
           [:: to_pexpr a; to_pexpr b;
               Plvar (mk_var_from_string cf_in)])]
     | JCmulx hi lo a b =>
         [:: MkI di (Copn
           [:: mk_lval_from_string lo; mk_lval_from_string hi]
-          AT_none (Ox86 (MULX_lo_hi U64))
+          AT_none (Oasm (BaseOp (None, MULX_lo_hi U64)))
           [:: to_pexpr a; to_pexpr b])]
     | JCsub_flags cf result a b =>
         let none_b := Lnone_b dummy_var_info in
         [:: MkI di (Copn
           [:: none_b; mk_lval_from_string cf; none_b; none_b; none_b;
               mk_lval_from_string result]
-          AT_none (Ox86 (SUB U64))
+          AT_none (Oasm (BaseOp (None, SUB U64)))
           [:: to_pexpr a; to_pexpr b])]
     | JCsbb cf_out result a b cf_in =>
         let none_b := Lnone_b dummy_var_info in
         [:: MkI di (Copn
           [:: none_b; mk_lval_from_string cf_out; none_b; none_b; none_b;
               mk_lval_from_string result]
-          AT_none (Ox86 (SBB U64))
+          AT_none (Oasm (BaseOp (None, SBB U64)))
           [:: to_pexpr a; to_pexpr b;
               Plvar (mk_var_from_string cf_in)])]
     end.
@@ -203,20 +214,19 @@ Section RealSem.
   Context {pT : progT} {scp : semCallParams}
           (P : @prog x86_extended_op _asmop pT) (ev : extra_val_t).
 
-  (** Re-typed [to_jasmin_cmd] whose result has the section's [cmd]
-      (which uses [_asmop] from [concrete_sip]) instead of [asm_opI]
-      directly.  This is the same function; only the type ascription
-      forces the unification through. *)
-  Local Definition real_to_cmd : jasmin_cmd -> cmd := fun c => to_jasmin_cmd c.
+  (** With [Section WithX86] now parametric in [section_asmop],
+      [to_jasmin_cmd] takes the asmop as an implicit argument.  When
+      called here, Coq fills it in with [_asmop] (from [concrete_sip]),
+      so the result type matches what [sem] expects. *)
 
   (** Jasmin semantics = [sem] applied to the translated command. *)
   Definition real_jsem (s1 : estate) (j : jasmin_cmd) (s2 : estate) : Prop :=
-    sem P ev s1 (real_to_cmd j) s2.
+    sem P ev s1 (to_jasmin_cmd j) s2.
 
   (** [jsem_skip]: [sem P ev s [::] s] holds by [Eskip]. *)
   Lemma real_jsem_skip : forall s, real_jsem s JCskip s.
   Proof.
-    intros s. unfold real_jsem, real_to_cmd. rewrite to_jasmin_cmd_skip.
+    intros s. unfold real_jsem. rewrite to_jasmin_cmd_skip.
     exact (Eskip _ _ s).
   Qed.
 
@@ -226,7 +236,7 @@ Section RealSem.
     real_jsem s1 (JCseq c1 c2) s3.
   Proof.
     intros s1 s2 s3 c1 c2 H1 H2.
-    unfold real_jsem, real_to_cmd in *. rewrite to_jasmin_cmd_seq.
+    unfold real_jsem in *. rewrite to_jasmin_cmd_seq.
     exact (sem_app H1 H2).
   Qed.
 
@@ -235,7 +245,7 @@ Section RealSem.
     real_jsem s1 body s2 ->
     real_jsem s1 (JCdecl x ty body) s2.
   Proof.
-    intros. unfold real_jsem, real_to_cmd in *. rewrite to_jasmin_cmd_decl.
+    intros. unfold real_jsem in *. rewrite to_jasmin_cmd_decl.
     assumption.
   Qed.
 
@@ -262,44 +272,86 @@ Section RealSem.
       write_lval true (p_globs P) (mk_lval_from_string x) v s
         = ok s'.
 
-  (** ===== Status of command-level lemmas =====
+  (* ================================================================ *)
+  (* Command-level lemmas via the expression bridge                    *)
+  (* ================================================================ *)
 
-      The intended command-level lemmas (jsem_set / jsem_if / jsem_while)
-      can be stated using the bridge above, and the proof structure is:
+  (** [jsem_set]: single assignment.  Given that the bedrock2 evaluation
+      produces some [v], the translated [pexpr] evaluates to [v]
+      (by [sem_pexpr_bridge]) and is then written into the variable
+      (by [write_var_bridge]).  The semantic step is via
+      [sem_seq1] + [EmkI] + [Eassgn]. *)
+  Lemma real_jsem_set : forall s x e v,
+    bedrock2_eval s e = Some v ->
+    truncate_val (eval_atype (aword U64)) v = ok v ->
+    exists s', real_jsem s (JCset x e) s'.
+  Proof.
+    intros s x e v Heval Htr.
+    pose proof (sem_pexpr_bridge s e v Heval) as Hp.
+    pose proof (write_var_bridge s x v) as [s' Hw].
+    exists s'. unfold real_jsem. cbn [to_jasmin_cmd].
+    eapply sem_seq1.
+    eapply EmkI.
+    eapply Eassgn; [exact Hp | exact Htr | exact Hw].
+  Qed.
 
-        Lemma real_jsem_set : forall s x e v,
-          bedrock2_eval s e = Some v ->
-          truncate_val (eval_atype (aword U64)) v = ok v ->
-          exists s', real_jsem s (JCset x e) s'.
-        Proof.
-          intros s x e v Heval Htr.
-          pose proof (sem_pexpr_bridge s e v Heval) as Hp.
-          pose proof (write_var_bridge s x v) as [s' Hw].
-          exists s'. unfold real_jsem, real_to_cmd. cbn [to_jasmin_cmd].
-          (** Apply Eseq + EmkI + Eassgn here. **)
-        Qed.
+  (** [jsem_if_true]: branch on a true condition.  Uses [Eif_true]
+      after the bridge gives the condition's evaluation. *)
+  Lemma real_jsem_if_true : forall s1 s2 e ct cf,
+    bedrock2_eval s1 e = Some (Vbool true) ->
+    real_jsem s1 ct s2 ->
+    real_jsem s1 (JCif e ct cf) s2.
+  Proof.
+    intros s1 s2 e ct cf Heval Hct.
+    pose proof (sem_pexpr_bridge s1 e (Vbool true) Heval) as Hp.
+    unfold real_jsem in *. cbn [to_jasmin_cmd].
+    eapply sem_seq1.
+    eapply EmkI.
+    eapply Eif_true; [exact Hp | exact Hct].
+  Qed.
 
-      However, the [Eassgn] application fails to unify because Jasmin's
-      [Cassgn] constructor in [to_jasmin_cmd] has the asmop hard-coded
-      to the global [asm_opI] instance, while [Eassgn] expects the
-      asmop projected from the section's [sip]
-      ([_asmop concrete_sip]).  These two terms ARE definitionally equal
-      (since [concrete_sip = {| _asmop := asm_opI; ... |}]), but Coq's
-      [apply] tactic does not reduce record projections during
-      higher-order pattern unification.
+  (** [jsem_if_false]: symmetric to [jsem_if_true]. *)
+  Lemma real_jsem_if_false : forall s1 s2 e ct cf,
+    bedrock2_eval s1 e = Some (Vbool false) ->
+    real_jsem s1 cf s2 ->
+    real_jsem s1 (JCif e ct cf) s2.
+  Proof.
+    intros s1 s2 e ct cf Heval Hcf.
+    pose proof (sem_pexpr_bridge s1 e (Vbool false) Heval) as Hp.
+    unfold real_jsem in *. cbn [to_jasmin_cmd].
+    eapply sem_seq1.
+    eapply EmkI.
+    eapply Eif_false; [exact Hp | exact Hcf].
+  Qed.
 
-      Workarounds attempted: explicit instantiation via [@Eseq], [refine],
-      [cbv beta iota delta] of [concrete_sip], [Strategy expand],
-      [Hint Extern], [Local Existing Instance ... | 0].  None bridge the
-      gap because the [Cassgn] inside [to_jasmin_cmd] was elaborated at
-      definition time with a specific [asmop], and the resulting cmd term
-      cannot be re-elaborated at use time.
+  (** [jsem_while_false]: one body iteration then exit via [Ewhile_false].
 
-      The structural fix is to rewrite [Section WithX86] so [to_jasmin_cmd]
-      is parametric in the [asmop] (or so it produces [cmd] using the
-      typeclass-resolved instance from the section context).  This is a
-      ~30-line invasive change to a working module and is deferred to
-      a follow-up. *)
+      Jasmin's [Cwhile] has the structure [Cwhile align body cond _ post_body];
+      [to_jasmin_cmd] uses [post_body = [::]], so a "false" while runs the
+      body once, then exits. *)
+  Lemma real_jsem_while_false : forall s1 s2 e body,
+    real_jsem s1 body s2 ->
+    bedrock2_eval s2 e = Some (Vbool false) ->
+    real_jsem s1 (JCwhile e body) s2.
+  Proof.
+    intros s1 s2 e body Hbody Heval.
+    pose proof (sem_pexpr_bridge s2 e (Vbool false) Heval) as Hp.
+    unfold real_jsem in *. cbn [to_jasmin_cmd].
+    eapply sem_seq1.
+    eapply EmkI.
+    eapply Ewhile_false; [exact Hbody | exact Hp].
+  Qed.
+
+  (** [jsem_while_true] is more involved because it must extract the
+      loop's inner [sem_i] from the recursive call.  Stated as an
+      axiom; the proof structure follows [Ewhile_true] after inverting
+      the recursive [real_jsem] hypothesis through [sem_seq1] and
+      [EmkI]. *)
+  Axiom real_jsem_while_true : forall s1 s2 s3 e body,
+    real_jsem s1 body s2 ->
+    bedrock2_eval s2 e = Some (Vbool true) ->
+    real_jsem s2 (JCwhile e body) s3 ->
+    real_jsem s1 (JCwhile e body) s3.
 
   (** The remaining axioms (jsem_set, jsem_if, jsem_while, jsem_call)
       each require:
