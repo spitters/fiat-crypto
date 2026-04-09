@@ -260,6 +260,84 @@ Section RealSem.
       For now, the 3 structural lemmas (skip, seq, decl) are Qed, and
       the full instance is blocked on the expression-level bridge. *)
 
+  (** ===== Roadmap for the expression bridge (step 3 from the plan) =====
+
+      To discharge [jsem_set]/[jsem_if_*]/[jsem_while_*]/[jsem_call] as
+      Qed lemmas, the following structure must be added.  These can NOT
+      be added in this section as-is because of a pre-existing elaboration
+      issue: [to_jasmin_cmd] (defined in [Section WithX86] above) hard-codes
+      the asmop instance to [x86_extra atoI], whereas [sem] expects the
+      asmop projected from [sip : SemInstrParams ... syscall_state_].
+      The two are convertible but Coq's unifier cannot bridge them
+      because [sip] is opaque.
+
+      Step 0 — fix the elaboration:
+        - Either parameterize [Section WithX86] over an [asmOp] instance
+          and pass it through the [Cassgn]/[Copn]/[Ccall] constructors.
+        - Or work in a section that fixes [sip := { _asmop := asm_opI ... x86_extra; ... }]
+          so the unification succeeds by definition.
+
+      Step 1 — add the expression-level bridge:
+        Parameter bedrock2_eval : estate -> jasmin_expr -> option (word U64).
+        Parameter value_of_word : word U64 -> value.
+        Axiom sem_pexpr_bridge :
+          forall s e w, bedrock2_eval s e = Some w ->
+            sem_pexpr true (p_globs P) s (to_pexpr e) = ok (value_of_word w).
+        Parameter write_var_bridge :
+          forall s x w, exists s',
+            write_lval true (p_globs P) (mk_lval_from_string x)
+                       (value_of_word w) s = ok s'.
+
+      Step 2 — discharge the command lemmas (Qed-able once Step 1 is done):
+
+        Lemma real_jsem_set : forall s x e w,
+          bedrock2_eval s e = Some w ->
+          exists s', real_jsem s (JCset x e) s'.
+        Proof.
+          intros s x e w Heval.
+          pose proof (sem_pexpr_bridge s e w Heval) as Hp.
+          pose proof (write_var_bridge s x w) as [s' Hw].
+          exists s'. unfold real_jsem. simpl.
+          eapply sem_seq1; econstructor.
+          eapply Eassgn; [ exact Hp | reflexivity | exact Hw ].
+        Qed.
+
+        Lemma real_jsem_if_true : forall s1 s2 e ct cf w,
+          bedrock2_eval s1 e = Some w -> w <> 0%R ->
+          real_jsem s1 ct s2 -> real_jsem s1 (JCif e ct cf) s2.
+        Proof.
+          intros. unfold real_jsem in *. simpl.
+          eapply sem_seq1. econstructor.
+          eapply Eif_true; [ <bridge for word→bool> | assumption ].
+        Qed.
+
+        Lemma real_jsem_while_false : forall s e body,
+          bedrock2_eval s e = Some 0%R ->
+          real_jsem s (JCwhile e body) s.
+        Proof.
+          intros. unfold real_jsem. simpl.
+          eapply sem_seq1. econstructor.
+          eapply Ewhile_false; [ constructor | <bridge> ].
+        Qed.
+
+      Step 3 — discharge the bridge axioms by computation:
+
+        - [bedrock2_eval] := the natural recursive evaluator on
+          [jasmin_expr] over an [estate]'s var-map.
+        - [value_of_word w] := [Vword w] (Jasmin's word-value tag).
+        - [sem_pexpr_bridge] := induction on [e]; for each constructor,
+          unfold both [bedrock2_eval] and [sem_pexpr] (via Jasmin's
+          [sem_pexpr_eq] equations) and use the fact that both call
+          into [mathcomp.word]'s [GRing.add]/[GRing.mul]/etc.
+
+      Step 4 — function-call protocol [real_jsem_call]:
+        This depends on [Ecall] which requires a function definition
+        lookup ([get_fundef]), argument value computation
+        ([sem_pexprs]), the callee's body semantics, and return-value
+        marshalling.  This is a separate, larger semantic invariant
+        about the calling convention, and is the natural place to
+        introduce a [WfProgram] hypothesis. *)
+
 End RealSem.
 
 (** === Summary ===
