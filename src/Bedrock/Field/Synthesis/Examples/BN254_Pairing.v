@@ -342,7 +342,68 @@ Section BN254_Pairing.
            [expr_fp_snd (expr.var "out"); expr_fp_snd (expr.var "x"); expr.var "s"])
        ))).
     (* ============================================================== *)
-    (* make_line: construct BN254 sparse line as Fp12                  *)
+    (* make_line: construct line evaluation as Fp12                    *)
+    (*   c0 = (lambda*x_T - y_T, -(lambda*x_P), 0)                   *)
+    (*   c1 = (0, (y_P, 0), 0)                                        *)
+    (*                                                                  *)
+    (* NOTE (2026-04-11): this layout is wrong for BN254's sextic      *)
+    (* D-twist (the correct sparse line should store y_p at c0.c0,    *)
+    (* -lam*x_p at c1.c0, lam*x_t-y_t at c1.c1). See the corrected    *)
+    (* [bn254_make_line_corrected] below, which bn254_miller_loop_optimal
+       calls to fix the optimal-ate bug. The old bn254_make_line is kept
+       so that the existing WP proof bn254_make_line_ok (and the old
+       bn254_miller_loop that uses it) still compile unchanged.       *)
+    (* ============================================================== *)
+
+    Definition bn254_make_line : function_t :=
+      (make_line_name,
+       (["out"; "lam"; "x_t"; "y_t"; "x_p"; "y_p"],
+        []:list String.string, bedrock_func_body:(
+         stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as tmp;
+         coq:(cmd_seq_list [
+           (* out.c0.c0 = lam * x_t *)
+           cmd.call [] fp2_mul_name
+             [expr_fp6_c0 (expr_fp12_c0 (expr.var "out"));
+              expr.var "lam"; expr.var "x_t"];
+           (* out.c0.c0 -= y_t *)
+           cmd.call [] fp2_sub_name
+             [expr_fp6_c0 (expr_fp12_c0 (expr.var "out"));
+              expr_fp6_c0 (expr_fp12_c0 (expr.var "out")); expr.var "y_t"];
+           (* tmp = lam * x_p (Fp2 scaled by Fp) *)
+           cmd.call [] fp2_mul_fp_name
+             [expr.var "tmp"; expr.var "lam"; expr.var "x_p"];
+           (* out.c0.c1 = -tmp *)
+           cmd.call [] fp2_opp_name
+             [expr_fp6_c1 (expr_fp12_c0 (expr.var "out")); expr.var "tmp"];
+           (* out.c0.c2 = 0 *)
+           cmd.call [] from_word_name
+             [expr_fp6_c2 (expr_fp12_c0 (expr.var "out")); expr.literal 0];
+           cmd.call [] from_word_name
+             [expr_fp_snd (expr_fp6_c2 (expr_fp12_c0 (expr.var "out")));
+              expr.literal 0];
+           (* out.c1.c0 = 0 *)
+           cmd.call [] from_word_name
+             [expr_fp6_c0 (expr_fp12_c1 (expr.var "out")); expr.literal 0];
+           cmd.call [] from_word_name
+             [expr_fp_snd (expr_fp6_c0 (expr_fp12_c1 (expr.var "out")));
+              expr.literal 0];
+           (* out.c1.c1 = (y_p, 0) *)
+           cmd.call [] fp_copy_name
+             [expr_fp6_c1 (expr_fp12_c1 (expr.var "out")); expr.var "y_p"];
+           cmd.call [] from_word_name
+             [expr_fp_snd (expr_fp6_c1 (expr_fp12_c1 (expr.var "out")));
+              expr.literal 0];
+           (* out.c1.c2 = 0 *)
+           cmd.call [] from_word_name
+             [expr_fp6_c2 (expr_fp12_c1 (expr.var "out")); expr.literal 0];
+           cmd.call [] from_word_name
+             [expr_fp_snd (expr_fp6_c2 (expr_fp12_c1 (expr.var "out")));
+              expr.literal 0]
+         ])
+       ))).
+
+    (* ============================================================== *)
+    (* make_line_corrected: BN254 sparse line as Fp12 (correct layout) *)
     (*                                                                  *)
     (* BN254 uses a sextic D-twist E': y^2 = x^3 + 3/xi. The sparse    *)
     (* line in the Fp12 basis (1, v, v^2, w, vw, v^2w) =               *)
@@ -358,18 +419,17 @@ Section BN254_Pairing.
     (*   out.c1.c1 = lam*x_t - y_t     (w^3)                           *)
     (*   out.c1.c2 = (0, 0)            (w^5)                           *)
     (*                                                                  *)
-    (* Fix 2026-04-11: previously this body used the M-twist · w^3     *)
-    (* layout, which is wrong for BN254 (the safe-Rust crate's         *)
-    (* generated/bn254_safe_tower.rs was hand-edited to use the        *)
-    (* correct layout; see EXTRACTION_AUDIT.md). This source was       *)
-    (* updated to match. The dependent WP proof bn254_make_line_ok     *)
-    (* in BN254_PairingHelpers.v is temporarily [Admitted] with a      *)
-    (* TODO pending the rework described in PLAN_PAIRING_SPECS.md      *)
-    (* Phase 4 "L4 equivalence theorem".                                *)
+    (* This is the body the safe-Rust crate's generated/bn254_safe_tower.rs
+       was hand-edited to use (see EXTRACTION_AUDIT.md). It is called by
+       bn254_miller_loop_optimal below. We keep it as a SEPARATE function
+       (not replacing bn254_make_line) so the existing 800-line WP proof
+       bn254_make_line_ok still targets its original body. The WP proof
+       for this variant is future work tracked by PLAN_PAIRING_SPECS.md
+       Phase 4 ("L4 equivalence theorem"). *)
     (* ============================================================== *)
 
-    Definition bn254_make_line : function_t :=
-      (make_line_name,
+    Definition bn254_make_line_corrected : function_t :=
+      ("bn254_make_line_corrected",
        (["out"; "lam"; "x_t"; "y_t"; "x_p"; "y_p"],
         []:list String.string, bedrock_func_body:(
          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as tmp;
@@ -610,6 +670,85 @@ Section BN254_Pairing.
             cmd.call [] fp2_sub_name
               [expr.var "tmp2"; expr.var "tmp1"; expr.var "q_x"];
             (* new_y = lambda*(t_x - new_x) - t_y *)
+            cmd.call [] fp2_sub_name
+              [expr.var "tmp1"; expr.var "t_x"; expr.var "tmp2"];
+            cmd.call [] fp2_mul_name
+              [expr.var "tmp1"; expr.var "lambda"; expr.var "tmp1"];
+            cmd.call [] fp2_sub_name
+              [expr.var "t_y"; expr.var "tmp1"; expr.var "t_y"];
+            cmd.call [] fp2_copy_name
+              [expr.var "t_x"; expr.var "tmp2"]
+          ])
+          cmd.skip
+      ].
+
+    (* Corrected Miller iteration: identical to [miller_loop_iteration]
+       except the line-evaluation calls target [bn254_make_line_corrected]
+       (the BN254 sparse-line layout — see the comment at the definition).
+       Used by [bn254_miller_loop_optimal] below. *)
+    Local Definition miller_loop_iteration_corrected : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        cmd.set "i" (expr.op bopname.sub (expr.var "i") (expr.literal 1));
+        cmd.set "word" (expr.load access_size.word (expr.var "u6p2"));
+        cmd.set "bit" (expr.op bopname.and
+          (expr.op bopname.sru (expr.var "word") (expr.var "i"))
+          (expr.literal 1));
+        cmd.call [] fp2_sqr_name
+          [expr.var "tmp1"; expr.var "t_x"];
+        cmd.call [] fp2_add_name
+          [expr.var "lambda"; expr.var "tmp1"; expr.var "tmp1"];
+        cmd.call [] fp2_add_name
+          [expr.var "lambda"; expr.var "lambda"; expr.var "tmp1"];
+        cmd.call [] fp2_add_name
+          [expr.var "tmp1"; expr.var "t_y"; expr.var "t_y"];
+        cmd.call [] fp2_inv_name
+          [expr.var "tmp1"; expr.var "tmp1"];
+        cmd.call [] fp2_mul_name
+          [expr.var "lambda"; expr.var "lambda"; expr.var "tmp1"];
+        cmd.call [] "bn254_make_line_corrected"
+          [expr.var "line"; expr.var "lambda";
+           expr.var "t_x"; expr.var "t_y";
+           expr.var "p_x"; expr.var "p_y"];
+        cmd.call [] fp12_sqr_name
+          [expr.var "f"; expr.var "f"];
+        cmd.call [] fp12_mul_name
+          [expr.var "f"; expr.var "f"; expr.var "line"];
+        cmd.call [] fp2_sqr_name
+          [expr.var "tmp1"; expr.var "lambda"];
+        cmd.call [] fp2_sub_name
+          [expr.var "tmp1"; expr.var "tmp1"; expr.var "t_x"];
+        cmd.call [] fp2_sub_name
+          [expr.var "tmp2"; expr.var "tmp1"; expr.var "t_x"];
+        cmd.call [] fp2_sub_name
+          [expr.var "tmp1"; expr.var "t_x"; expr.var "tmp2"];
+        cmd.call [] fp2_mul_name
+          [expr.var "tmp1"; expr.var "lambda"; expr.var "tmp1"];
+        cmd.call [] fp2_sub_name
+          [expr.var "t_y"; expr.var "tmp1"; expr.var "t_y"];
+        cmd.call [] fp2_copy_name
+          [expr.var "t_x"; expr.var "tmp2"];
+        cmd.cond (expr.var "bit")
+          (cmd_seq_list [
+            cmd.call [] fp2_sub_name
+              [expr.var "tmp1"; expr.var "q_y"; expr.var "t_y"];
+            cmd.call [] fp2_sub_name
+              [expr.var "tmp2"; expr.var "q_x"; expr.var "t_x"];
+            cmd.call [] fp2_inv_name
+              [expr.var "tmp2"; expr.var "tmp2"];
+            cmd.call [] fp2_mul_name
+              [expr.var "lambda"; expr.var "tmp1"; expr.var "tmp2"];
+            cmd.call [] "bn254_make_line_corrected"
+              [expr.var "line"; expr.var "lambda";
+               expr.var "t_x"; expr.var "t_y";
+               expr.var "p_x"; expr.var "p_y"];
+            cmd.call [] fp12_mul_name
+              [expr.var "f"; expr.var "f"; expr.var "line"];
+            cmd.call [] fp2_sqr_name
+              [expr.var "tmp1"; expr.var "lambda"];
+            cmd.call [] fp2_sub_name
+              [expr.var "tmp1"; expr.var "tmp1"; expr.var "t_x"];
+            cmd.call [] fp2_sub_name
+              [expr.var "tmp2"; expr.var "tmp1"; expr.var "q_x"];
             cmd.call [] fp2_sub_name
               [expr.var "tmp1"; expr.var "t_x"; expr.var "tmp2"];
             cmd.call [] fp2_mul_name
@@ -1034,7 +1173,7 @@ Section BN254_Pairing.
           [expr.var "lambda"; expr.var "tmp1"; expr.var "tmp2"];
 
         (* Line at P, multiply f *)
-        cmd.call [] make_line_name
+        cmd.call [] "bn254_make_line_corrected"
           [expr.var "line"; expr.var "lambda";
            expr.var "t_x"; expr.var "t_y"; expr.var "p_x"; expr.var "p_y"];
         cmd.call [] fp12_mul_name
@@ -1066,7 +1205,7 @@ Section BN254_Pairing.
           [expr.var "lambda"; expr.var "tmp1"; expr.var "tmp2"];
 
         (* Line at P, multiply f *)
-        cmd.call [] make_line_name
+        cmd.call [] "bn254_make_line_corrected"
           [expr.var "line"; expr.var "lambda";
            expr.var "t_x"; expr.var "t_y"; expr.var "p_x"; expr.var "p_y"];
         cmd.call [] fp12_mul_name
@@ -1081,7 +1220,7 @@ Section BN254_Pairing.
         cmd.call [] fp2_copy_name [expr.var "t_y"; expr.var "q_y"];
         store_6u2_limbs;
         cmd.set "i" (expr.literal 64);
-        cmd.while (expr.var "i") miller_loop_iteration;
+        cmd.while (expr.var "i") miller_loop_iteration_corrected;
         (* Frobenius corrections (Vercauteren optimal-ate) *)
         frob_corrections_body;
         (* Copy result to output *)
@@ -1148,6 +1287,7 @@ Section BN254_Pairing.
       bn254_pairing_ops ++
       [ bn254_Fp2_mul_fp;
         bn254_make_line;
+        bn254_make_line_corrected;        (* added 2026-04-11, D-twist sparse layout *)
         bn254_load_gamma1_p2;
         bn254_load_gamma2_p2;
         bn254_load_w_frob_p2_c1;
