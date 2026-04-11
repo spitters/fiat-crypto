@@ -342,9 +342,30 @@ Section BN254_Pairing.
            [expr_fp_snd (expr.var "out"); expr_fp_snd (expr.var "x"); expr.var "s"])
        ))).
     (* ============================================================== *)
-    (* make_line: construct line evaluation as Fp12                    *)
-    (*   c0 = (lambda*x_T - y_T, -(lambda*x_P), 0)                   *)
-    (*   c1 = (0, (y_P, 0), 0)                                        *)
+    (* make_line: construct BN254 sparse line as Fp12                  *)
+    (*                                                                  *)
+    (* BN254 uses a sextic D-twist E': y^2 = x^3 + 3/xi. The sparse    *)
+    (* line in the Fp12 basis (1, v, v^2, w, vw, v^2w) =               *)
+    (* (w^0, w^2, w^4, w^1, w^3, w^5) is:                              *)
+    (*                                                                  *)
+    (*   line = y_p (constant) + (-lam*x_p)*w + (lam*x_t - y_t)*w^3   *)
+    (*                                                                  *)
+    (* Layout:                                                          *)
+    (*   out.c0.c0 = (y_p, 0)         (w^0 constant term)              *)
+    (*   out.c0.c1 = (0, 0)            (w^2)                           *)
+    (*   out.c0.c2 = (0, 0)            (w^4)                           *)
+    (*   out.c1.c0 = -(lam * x_p)      (w^1)                           *)
+    (*   out.c1.c1 = lam*x_t - y_t     (w^3)                           *)
+    (*   out.c1.c2 = (0, 0)            (w^5)                           *)
+    (*                                                                  *)
+    (* Fix 2026-04-11: previously this body used the M-twist · w^3     *)
+    (* layout, which is wrong for BN254 (the safe-Rust crate's         *)
+    (* generated/bn254_safe_tower.rs was hand-edited to use the        *)
+    (* correct layout; see EXTRACTION_AUDIT.md). This source was       *)
+    (* updated to match. The dependent WP proof bn254_make_line_ok     *)
+    (* in BN254_PairingHelpers.v is temporarily [Admitted] with a      *)
+    (* TODO pending the rework described in PLAN_PAIRING_SPECS.md      *)
+    (* Phase 4 "L4 equivalence theorem".                                *)
     (* ============================================================== *)
 
     Definition bn254_make_line : function_t :=
@@ -353,39 +374,37 @@ Section BN254_Pairing.
         []:list String.string, bedrock_func_body:(
          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2)) as tmp;
          coq:(cmd_seq_list [
-           (* out.c0.c0 = lam * x_t *)
-           cmd.call [] fp2_mul_name
-             [expr_fp6_c0 (expr_fp12_c0 (expr.var "out"));
-              expr.var "lam"; expr.var "x_t"];
-           (* out.c0.c0 -= y_t *)
-           cmd.call [] fp2_sub_name
-             [expr_fp6_c0 (expr_fp12_c0 (expr.var "out"));
-              expr_fp6_c0 (expr_fp12_c0 (expr.var "out")); expr.var "y_t"];
-           (* tmp = lam * x_p (Fp2 scaled by Fp) *)
-           cmd.call [] fp2_mul_fp_name
-             [expr.var "tmp"; expr.var "lam"; expr.var "x_p"];
-           (* out.c0.c1 = -tmp *)
-           cmd.call [] fp2_opp_name
-             [expr_fp6_c1 (expr_fp12_c0 (expr.var "out")); expr.var "tmp"];
-           (* out.c0.c2 = 0 *)
+           (* === c0.c0 = (y_p, 0)  -- w^0 constant term === *)
+           cmd.call [] fp_copy_name
+             [expr_fp6_c0 (expr_fp12_c0 (expr.var "out")); expr.var "y_p"];
+           cmd.call [] from_word_name
+             [expr_fp_snd (expr_fp6_c0 (expr_fp12_c0 (expr.var "out")));
+              expr.literal 0];
+           (* === c0.c1 = (0, 0)  -- w^2 === *)
+           cmd.call [] from_word_name
+             [expr_fp6_c1 (expr_fp12_c0 (expr.var "out")); expr.literal 0];
+           cmd.call [] from_word_name
+             [expr_fp_snd (expr_fp6_c1 (expr_fp12_c0 (expr.var "out")));
+              expr.literal 0];
+           (* === c0.c2 = (0, 0)  -- w^4 === *)
            cmd.call [] from_word_name
              [expr_fp6_c2 (expr_fp12_c0 (expr.var "out")); expr.literal 0];
            cmd.call [] from_word_name
              [expr_fp_snd (expr_fp6_c2 (expr_fp12_c0 (expr.var "out")));
               expr.literal 0];
-           (* out.c1.c0 = 0 *)
-           cmd.call [] from_word_name
-             [expr_fp6_c0 (expr_fp12_c1 (expr.var "out")); expr.literal 0];
-           cmd.call [] from_word_name
-             [expr_fp_snd (expr_fp6_c0 (expr_fp12_c1 (expr.var "out")));
-              expr.literal 0];
-           (* out.c1.c1 = (y_p, 0) *)
-           cmd.call [] fp_copy_name
-             [expr_fp6_c1 (expr_fp12_c1 (expr.var "out")); expr.var "y_p"];
-           cmd.call [] from_word_name
-             [expr_fp_snd (expr_fp6_c1 (expr_fp12_c1 (expr.var "out")));
-              expr.literal 0];
-           (* out.c1.c2 = 0 *)
+           (* === c1.c0 = -(lam * x_p)  -- w^1 === *)
+           cmd.call [] fp2_mul_fp_name
+             [expr.var "tmp"; expr.var "lam"; expr.var "x_p"];
+           cmd.call [] fp2_opp_name
+             [expr_fp6_c0 (expr_fp12_c1 (expr.var "out")); expr.var "tmp"];
+           (* === c1.c1 = lam*x_t - y_t  -- w^3 === *)
+           cmd.call [] fp2_mul_name
+             [expr_fp6_c1 (expr_fp12_c1 (expr.var "out"));
+              expr.var "lam"; expr.var "x_t"];
+           cmd.call [] fp2_sub_name
+             [expr_fp6_c1 (expr_fp12_c1 (expr.var "out"));
+              expr_fp6_c1 (expr_fp12_c1 (expr.var "out")); expr.var "y_t"];
+           (* === c1.c2 = (0, 0)  -- w^5 === *)
            cmd.call [] from_word_name
              [expr_fp6_c2 (expr_fp12_c1 (expr.var "out")); expr.literal 0];
            cmd.call [] from_word_name
@@ -605,7 +624,23 @@ Section BN254_Pairing.
 
     (* Full Miller loop: init + while loop + copy to output.
        Processes bits 63 down to 0 of |6u+2| (bit 64 = MSB initializes T = Q).
-       BN254 has positive u, so NO conjugation after the loop. *)
+       BN254 has positive u, so NO conjugation after the loop.
+
+       KNOWN BUG (2026-04-09): the optimal ate pairing for BN curves
+       requires two additional line evaluations after the main loop:
+           Q1   =   pi_p (Q)
+           nQ2  =  -pi_p^2 (Q)
+       on the twist, with corresponding line(T, Q1, P), T += Q1,
+       line(T, nQ2, P) steps. Without these the result is not bilinear.
+       The corrections live in
+         bn254-safe-rust/generated/bn254_safe_tower.rs
+       as a hand-edit at the end of bn254_miller_loop, using the
+       new bn254_load_q1_y_const loader added below.
+       Pushing the corrections into this Coq source is blocked on
+       reworking the BN254_MillerLoop.v WP proof to match the new body
+       shape; see PLAN_PAIRING_SPECS.md Phase 4 for the structured
+       approach (the L4 equivalence theorem makes the rewrite forced
+       rather than optional). *)
     Local Definition miller_loop_full_body : Syntax.cmd.cmd :=
       cmd_seq_list [
         fp12_set_one "f";
@@ -708,6 +743,24 @@ Section BN254_Pairing.
           0x11bded5ef08a2087 0x02f34d751a1f3a7c
           0xa222ae234c492d72 0xd00f02a4565de15b
           0xdc2ff3a253dfc926 0x10a75716b3899551)).
+
+    (* q1_y_const = xi^{(p-1)/2} for BN254 in Montgomery form.
+
+       Used by the optimal-ate Frobenius corrections to compute Q1.y where
+       Q1 = pi_p(Q) on the twist:
+           Q1.y = conj(q.y) * xi^{(p-1)/2}
+       (Q1.x uses gamma1 = xi^{(p-1)/3}, which already exists above.)
+
+       This loader is new (added 2026-04-09 as part of the BN254 optimal-ate
+       fix); see PLAN_21_22.md for the bug it closes. *)
+    Definition bn254_load_q1_y_const : function_t :=
+      ("bn254_load_q1_y_const",
+       (["out"], []:list String.string,
+        store_fp2_full "out"
+          16482010305593259561 13488546290961988299
+          3578621962720924518  2681173117283399901
+          11661927080404088775 553939530661941723
+          7860678177968807019  3208568454732775116)).
     (* ============================================================== *)
     (* Final exponentiation hard part: Fuentes-Castaneda et al.       *)
     (*   "Faster hashing to G2" (SAC 2011), Algorithm 1 for BN.      *)
@@ -924,6 +977,168 @@ Section BN254_Pairing.
           coq:(pairing_dsd_body)
         ))).
     (* ============================================================== *)
+    (* Fp2 conjugate helper (BN254 Frob corrections need it)          *)
+    (*                                                                  *)
+    (* (a + b*u) -> (a - b*u). NOT the same as fp2_opp which negates  *)
+    (* both components.                                                 *)
+    (* ============================================================== *)
+
+    Definition bn254_Fp2_conjugate : function_t :=
+      ("bn254_Fp2_conjugate",
+       (["out"; "x"], []:list String.string,
+        bedrock_func_body:(
+          coq:(cmd_seq_list [
+            (* out.fst = x.fst *)
+            cmd.call [] fp_copy_name [expr.var "out"; expr.var "x"];
+            (* out.snd = -x.snd *)
+            cmd.call [] (AbstractField.opp (F:=Fp))
+              [expr_fp_snd (expr.var "out"); expr_fp_snd (expr.var "x")]
+          ])
+        ))).
+
+    (* ============================================================== *)
+    (* Miller loop with Frobenius corrections (FIXES KNOWN BUG)        *)
+    (*                                                                  *)
+    (* Computes the optimal-ate Miller phase for BN254. After the      *)
+    (* main 64-bit |6u+2| loop, applies two line evaluations:          *)
+    (*   - at Q1  = pi_p(Q)  on the twist                             *)
+    (*   - at -Q2 = -pi_p^2(Q) on the twist                            *)
+    (* This is the Vercauteren correction missing from the bare        *)
+    (* [bn254_miller_loop] above.                                      *)
+    (*                                                                  *)
+    (* Layout matches the safe-rust hand edit in                       *)
+    (* [bn254-safe-rust/generated/bn254_safe_tower.rs]. The two are    *)
+    (* line-by-line equivalent.                                        *)
+    (* ============================================================== *)
+
+    Local Definition frob_corrections_body : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        (* Load Frobenius constants *)
+        cmd.call [] "bn254_load_gamma1"     [expr.var "const_g1"];
+        cmd.call [] "bn254_load_q1_y_const" [expr.var "const_g_y"];
+        cmd.call [] "bn254_load_gamma1_p2"  [expr.var "const_g1p2"];
+
+        (* === Step 1: Q1 = (conj(q_x) * gamma1, conj(q_y) * q1_y_const) === *)
+        cmd.call [] "bn254_Fp2_conjugate" [expr.var "tmp1"; expr.var "q_x"];
+        cmd.call [] fp2_mul_name
+          [expr.var "q1_x"; expr.var "tmp1"; expr.var "const_g1"];
+        cmd.call [] "bn254_Fp2_conjugate" [expr.var "tmp1"; expr.var "q_y"];
+        cmd.call [] fp2_mul_name
+          [expr.var "q1_y"; expr.var "tmp1"; expr.var "const_g_y"];
+
+        (* Slope lambda = (Q1.y - t_y) / (Q1.x - t_x) *)
+        cmd.call [] fp2_sub_name [expr.var "tmp1"; expr.var "q1_y"; expr.var "t_y"];
+        cmd.call [] fp2_sub_name [expr.var "tmp2"; expr.var "q1_x"; expr.var "t_x"];
+        cmd.call [] fp2_inv_name [expr.var "tmp2"; expr.var "tmp2"];
+        cmd.call [] fp2_mul_name
+          [expr.var "lambda"; expr.var "tmp1"; expr.var "tmp2"];
+
+        (* Line at P, multiply f *)
+        cmd.call [] make_line_name
+          [expr.var "line"; expr.var "lambda";
+           expr.var "t_x"; expr.var "t_y"; expr.var "p_x"; expr.var "p_y"];
+        cmd.call [] fp12_mul_name
+          [expr.var "f"; expr.var "f"; expr.var "line"];
+
+        (* T = T + Q1: new_x = lambda^2 - t_x - q1_x *)
+        cmd.call [] fp2_sqr_name [expr.var "tmp1"; expr.var "lambda"];
+        cmd.call [] fp2_sub_name [expr.var "tmp1"; expr.var "tmp1"; expr.var "t_x"];
+        cmd.call [] fp2_sub_name [expr.var "tmp2"; expr.var "tmp1"; expr.var "q1_x"];
+        (* new_y = lambda*(t_x - new_x) - t_y *)
+        cmd.call [] fp2_sub_name [expr.var "tmp1"; expr.var "t_x"; expr.var "tmp2"];
+        cmd.call [] fp2_mul_name
+          [expr.var "tmp1"; expr.var "lambda"; expr.var "tmp1"];
+        cmd.call [] fp2_sub_name [expr.var "t_y"; expr.var "tmp1"; expr.var "t_y"];
+        cmd.call [] fp2_copy_name [expr.var "t_x"; expr.var "tmp2"];
+
+        (* === Step 2: nQ2.x = q_x * gamma1_p2.c0  (real part only)
+           nQ2.y = q_y  (because xi^((p^2-1)/2) = -1 cancels with the negation) *)
+        cmd.call [] fp2_mul_fp_name
+          [expr.var "q1_x"; expr.var "q_x"; expr.var "const_g1p2"];
+          (* note: const_g1p2 is Fp2 with c1 = 0; passing its real part as Fp scalar
+             via fp2_mul_fp uses only the first 4 limbs of const_g1p2 *)
+
+        (* Slope lambda = (q_y - t_y) / (nq2_x - t_x) *)
+        cmd.call [] fp2_sub_name [expr.var "tmp1"; expr.var "q_y"; expr.var "t_y"];
+        cmd.call [] fp2_sub_name [expr.var "tmp2"; expr.var "q1_x"; expr.var "t_x"];
+        cmd.call [] fp2_inv_name [expr.var "tmp2"; expr.var "tmp2"];
+        cmd.call [] fp2_mul_name
+          [expr.var "lambda"; expr.var "tmp1"; expr.var "tmp2"];
+
+        (* Line at P, multiply f *)
+        cmd.call [] make_line_name
+          [expr.var "line"; expr.var "lambda";
+           expr.var "t_x"; expr.var "t_y"; expr.var "p_x"; expr.var "p_y"];
+        cmd.call [] fp12_mul_name
+          [expr.var "f"; expr.var "f"; expr.var "line"]
+        (* No final T update needed — this was the last addition *)
+      ].
+
+    Local Definition miller_loop_optimal_full_body : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        fp12_set_one "f";
+        cmd.call [] fp2_copy_name [expr.var "t_x"; expr.var "q_x"];
+        cmd.call [] fp2_copy_name [expr.var "t_y"; expr.var "q_y"];
+        store_6u2_limbs;
+        cmd.set "i" (expr.literal 64);
+        cmd.while (expr.var "i") miller_loop_iteration;
+        (* Frobenius corrections (Vercauteren optimal-ate) *)
+        frob_corrections_body;
+        (* Copy result to output *)
+        cmd.call [] fp12_copy_name [expr.var "out"; expr.var "f"]
+      ].
+
+    Definition bn254_miller_loop_optimal : function_t :=
+      ("bn254_miller_loop_optimal",
+       (["out"; "p_x"; "p_y"; "q_x"; "q_y"], []:list String.string,
+        bedrock_func_body:(
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as f;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2))  as t_x;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2))  as t_y;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2))  as lambda;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2))  as tmp1;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2))  as tmp2;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as line;
+          stackalloc 8 as u6p2;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2))  as q1_x;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2))  as q1_y;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2))  as const_g1;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2))  as const_g_y;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2))  as const_g1p2;
+          coq:(miller_loop_optimal_full_body)
+        ))).
+
+    (* ============================================================== *)
+    (* Top-level optimal-ate pairing (uses bn254_miller_loop_optimal)   *)
+    (* ============================================================== *)
+
+    Local Definition pairing_dsd_optimal_body : Syntax.cmd.cmd :=
+      cmd_seq_list [
+        cmd.call [] "bn254_load_gamma1_p2" [expr.var "gamma1_p2"];
+        cmd.call [] "bn254_load_gamma2_p2" [expr.var "gamma2_p2"];
+        cmd.call [] "bn254_load_w_frob_p2_c1" [expr.var "w_frob_p2_c1"];
+        (* Miller loop WITH Frobenius corrections *)
+        cmd.call [] "bn254_miller_loop_optimal"
+          [expr.var "tmp"; expr.var "p_x"; expr.var "p_y";
+           expr.var "q_x"; expr.var "q_y"];
+        cmd.call [] "bn254_final_exp_dsd"
+          [expr.var "out"; expr.var "tmp";
+           expr.var "gamma1_p2"; expr.var "gamma2_p2";
+           expr.var "w_frob_p2_c1"]
+      ].
+
+    Definition bn254_pairing_dsd_optimal : function_t :=
+      ("bn254_pairing_dsd_optimal",
+       (["out"; "p_x"; "p_y"; "q_x"; "q_y"], []:list String.string,
+        bedrock_func_body:(
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp12)) as tmp;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2))  as gamma1_p2;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2))  as gamma2_p2;
+          stackalloc (AbstractField.felem_size_in_bytes (F:=Fp2))  as w_frob_p2_c1;
+          coq:(pairing_dsd_optimal_body)
+        ))).
+
+    (* ============================================================== *)
     (* Collected function lists                                        *)
     (* ============================================================== *)
 
@@ -939,11 +1154,15 @@ Section BN254_Pairing.
         bn254_load_gamma1;
         bn254_load_gamma2;
         bn254_load_w_frob_c1;
+        bn254_load_q1_y_const;            (* added 2026-04-09, used by Frob corrections *)
         bn254_Fp12_pow_u;
         bn254_final_exp_hard_dsd;
         bn254_final_exp_dsd;
         bn254_miller_loop;
-        bn254_pairing_dsd ].
+        bn254_Fp2_conjugate;              (* added 2026-04-11, helper for Frob corrections *)
+        bn254_miller_loop_optimal;        (* added 2026-04-11, FIXES the optimal-ate bug *)
+        bn254_pairing_dsd;
+        bn254_pairing_dsd_optimal ].      (* added 2026-04-11, top-level optimal-ate *)
 
     (* ============================================================== *)
     (* Top-level pairing correctness theorem                            *)
