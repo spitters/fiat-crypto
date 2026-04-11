@@ -699,6 +699,39 @@ Section BN254_PairingHelpers.
     Local Notation fp6_c2_off :=
       (@CubicFieldExtensions.fp6_c2_offset _ _ _ _ bn254_pf_params bn254_beta bn254_Fp_rep fp2_prefix).
 
+    (* ============================================================ *)
+    (* Reusable helper: given 2 Fp felems with loose bounds at        *)
+    (* consecutive Fp-felem addresses, the concatenation is an Fp2    *)
+    (* felem with loose bounds. This is the pure-bounds version of   *)
+    (* FElem_Fp_join_in_sep (which handles the memory join).          *)
+    (*                                                                *)
+    (* Extracted from the [mk_fp2_loose] Ltac pattern that the        *)
+    (* existing bn254_make_line_ok proof uses 4 times inline. Making  *)
+    (* it a standalone lemma lets future make_line variants (and     *)
+    (* other curves' make_line proofs, which share the same sparse   *)
+    (* Fp-pair layout) reuse it by a single [apply] rather than       *)
+    (* redoing the firstn/skipn + unfold bounds dance.                *)
+    (* ============================================================ *)
+
+    Lemma fp_pair_bounds_to_fp2_loose :
+      forall (a b : Fp_felem),
+        Fp_bounded Fp_loose a ->
+        Fp_bounded Fp_loose b ->
+        length a = @AbstractField.felem_size_in_words _ _ _ _ _ _ bn254_Fp_rep ->
+        Fp2_bounded Fp2_loose (a ++ b).
+    Proof.
+      intros a b Ha Hb Hlen.
+      unfold Fp2_bounded, AbstractField.bounded_by,
+             bn254_Fp2_rep', bn254_Fp2_params',
+             QuadraticFieldExtensionsSpecs.Fp2_field_representation.
+      cbv beta.
+      unfold QuadraticFieldExtensionsSpecs.fst_felem,
+             QuadraticFieldExtensionsSpecs.snd_felem.
+      rewrite firstn_app' by exact Hlen.
+      rewrite QuadraticFieldExtensions.skipn_app by exact Hlen.
+      exact (conj Ha Hb).
+    Qed.
+
     Lemma bn254_make_line_ok :
       forall functions
         (EnvContains : map.get functions "bn254_make_line" =
