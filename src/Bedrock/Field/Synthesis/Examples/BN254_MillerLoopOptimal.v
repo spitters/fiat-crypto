@@ -510,7 +510,7 @@ Section BN254_MillerLoopOptimal.
           (fun t m' l' =>
             t = tr /\ l' = l /\
             exists f_one : Fp12_felem,
-              Fp12_bounded Fp12_loose f_one /\
+              Fp12_bounded Fp12_tight f_one /\
               (FElem_Fp12 a_f f_one ⋆ R) m').
     Proof.
       (* Proof follows the pattern from BN254_MillerLoop.v lines 747-1182:
@@ -688,15 +688,328 @@ Section BN254_MillerLoopOptimal.
       wp_call_step HFp2copy.
 
       (* === Phase 3: store_6u2_limbs + set i = 64 === *)
-      (* === Phase 4: while loop (same invariant as old, 5 extras in Rr frame) === *)
-      (* === Phase 5: Frobenius corrections (27 calls) === *)
-      (* === Phase 6: fp12_copy out f === *)
-      (* === Phase 7: 13-level stack deallocation === *)
+      unfold1_cmd_goal; cbv beta match delta [cmd_body].
+      eapply u6p2_store_wp.
+      { repeat first [rewrite map.get_put_same | rewrite map.get_put_diff by congruence].
+        exact eq_refl. }
+      { ecancel_assumption. }
+      intros m_stores Hsep_stores.
+      repeat straightline.
 
-      (* Phases 3-7 use wp_call_step for each function call,
-         wp_loop for the while, and wp_dealloc_one for each dealloc level.
-         The architecture is validated via MCP — see commit history.
-         Filling in the remaining body. *)
+      (* === Phase 4: while loop === *)
+      eapply Loops.while_localsmap
+        with (v0 := 64%nat)
+             (lt := Nat.lt)
+             (invariant := miller_loop_inv a_f a_tx a_ty a_lam a_tmp1 a_tmp2 a_line a_u6p2
+                      pout p_px p_py p_qx p_qy p_x p_y q_x q_y old_out
+                      (* Rr' includes original Rr + 5 extra Fp2 stack FElems *)
+                      (FElem_Fp2 a_q1x q1x_val ⋆
+                       (FElem_Fp2 a_q1y q1y_val ⋆
+                        (FElem_Fp2 a_cg1 cg1_val ⋆
+                         (FElem_Fp2 a_cgy cgy_val ⋆
+                          (FElem_Fp2 a_cg1p2 cg1p2_val ⋆ Rr))))) tr).
+
+      (* well_founded *)
+      { exact lt_wf. }
+
+      (* Initial invariant *)
+      { unfold miller_loop_inv.
+        split; [reflexivity |].
+        do 7 eexists.
+        split. { lia. }
+        split. { exact Hb_fone. }
+        split. { exact Hbqx. }
+        split. { exact Hbqy. }
+        split. { ecancel_assumption. }
+        repeat split; repeat straightline. }
+
+      (* Loop body *)
+      (* Loop body *)
+      { intros vi ti mi li Hinv.
+        unfold miller_loop_inv in Hinv.
+        destruct Hinv as [Htr_i [f_vi [tx_vi [ty_vi [lam_vi [tmp1_vi
+          [tmp2_vi [line_vi [Hvi_bound [Hbf_vi [Hbtx_vi [Hbty_vi [Hsep_vi
+          [Hi_vi [Hf_vi [Htx_vi [Hty_vi [Hlam_vi [Htmp1_vi
+          [Htmp2_vi [Hline_vi [Hu6p2_vi [Hout_vi [Hpx_vi
+          [Hpy_vi [Hqx_vi Hqy_vi]]]]]]]]]]]]]]]]]]]]]]]]]].
+        subst ti.
+
+        (* Evaluate branch condition: expr.var "i" *)
+        exists (word.of_Z (Z.of_nat vi)).
+        split.
+        { cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
+               WeakestPrecondition.get].
+          rewrite Hi_vi.
+          exists (word.of_Z (Z.of_nat vi)).
+          split; exact eq_refl. }
+        split.
+        { (* TRUE branch: word.unsigned br <> 0, loop body *)
+          intro Hne.
+
+          unfold BN254_Pairing.miller_loop_iteration_corrected.
+          unfold BN254_Pairing.cmd_seq_list.
+
+          (* Process set i = i - 1 *)
+          miller_straightline. (* cmd.seq *)
+          miller_straightline. (* cmd.set "i" -- updates locals *)
+          unfold dlet.dlet; cbv beta.
+
+          (* Process set "word" = load(u6p2)
+             This involves a memory load from the single-word u6p2 on stack.
+             We need to:
+             1. Extract the u6p2 scalar from the sep
+             2. Prove the load succeeds via load_word_of_sep
+             3. Introduce the loaded value *)
+          miller_straightline. (* cmd.seq *)
+
+          (* cmd.set "word" (expr.load access_size.word (expr.var "u6p2")) *)
+          unfold1_cmd_goal; cbv beta match delta [cmd_body].
+          letexists. split.
+          { (* Evaluate load expression *)
+            eassert (Hsc_sep : (scalar a_u6p2 u6p2_word ⋆ _) mi).
+            { pose proof Hsep_vi as H'. ecancel_assumption. }
+            pose proof (u6p2_scalar_load a_u6p2 mi _ Hsc_sep) as Hload.
+            unfold DEXPR, WeakestPrecondition.dexpr.
+            cbv [WeakestPrecondition.expr WeakestPrecondition.expr_body
+                 WeakestPrecondition.get WeakestPrecondition.load dlet.dlet].
+            eexists. split. { resolve_map_get. }
+            eexists. split. { exact Hload. }
+            exact eq_refl. }
+          unfold dlet.dlet; cbv beta.
+
+          (* Process set "bit" = (word >> i) & 1 *)
+          miller_straightline. (* cmd.seq *)
+          miller_straightline. (* cmd.set "bit" *)
+          unfold dlet.dlet; cbv beta.
+
+          (* After set: locals have "i", "word", "bit" added.
+             Now process ~30 function calls + conditional + invariant. *)
+
+          (* === Doubling step === *)
+
+          (* Use the make_line spec hypothesis *)
+          set (HMakeLineSpec := HMakeLineOk).
+
+          (* Helper tactic for make_line calls *)
+          Local Ltac handle_make_line :=
+            eexists;
+            split;
+            [ cbv [dexprs list_map list_map_body
+                   WeakestPrecondition.expr WeakestPrecondition.expr_body
+                   WeakestPrecondition.get WeakestPrecondition.literal dlet.dlet];
+              repeat match goal with
+                | |- _ /\ _ => split
+                | |- exists _, _ => eexists
+                | |- map.get _ _ = Some _ => resolve_map_get
+                | |- @eq _ _ _ => exact eq_refl
+                | |- True => exact I
+              end
+            | straightline_call ].
+
+          Local Ltac solve_word_nat :=
+            repeat first [rewrite map.get_put_same | rewrite map.get_put_diff by congruence];
+            f_equal;
+            apply Properties.word.unsigned_inj;
+            rewrite word.unsigned_of_Z;
+            match goal with |- word.unsigned ?w = ?rhs =>
+              let u := eval cbv beta iota delta [word.unsigned Naive.unsigned] in
+                (word.unsigned w) in
+              change (word.unsigned w) with u
+            end;
+            cbv [word.wrap];
+            Z.to_euclidean_division_equations; nia.
+
+          Local Ltac solve_miller_mapget :=
+            match goal with
+            | |- map.get _ "i" = Some _ =>
+              repeat first [rewrite map.get_put_same | rewrite map.get_put_diff by congruence];
+              first
+              [ exact eq_refl
+              | assumption
+              | (f_equal; rewrite <- word.ring_morph_sub; f_equal; lia)
+              | (f_equal; rewrite word_nat_sub1 by lia; reflexivity)
+              | (f_equal;
+                 match goal with
+                 | |- ?lhs = word.of_Z (Z.of_nat (?n - 1)) =>
+                   replace lhs with (@word.sub 64 word (word.of_Z (Z.of_nat n)) (word.of_Z 1))
+                     by reflexivity;
+                   exact (word_nat_sub1 n ltac:(lia))
+                 end) ]
+            | |- map.get _ _ = Some _ =>
+              repeat first [rewrite map.get_put_same | rewrite map.get_put_diff by congruence];
+              first
+              [ exact eq_refl
+              | assumption
+              | match goal with
+                | H : map.get _ ?k = Some _ |- map.get _ ?k = Some _ => exact H
+                end ]
+            end.
+
+          Local Ltac solve_miller_leaf :=
+            first
+            [ eexists; normalize_pairing_instances; ecancel_assumption_with_copy
+            | normalize_pairing_instances; ecancel_assumption_with_copy
+            | solve_miller_bounds
+            | solve_miller_mapget
+            ].
+
+          Local Ltac solve_miller_precond :=
+            match goal with
+            | |- _ /\ _ => split; [| solve_miller_precond]; solve_miller_leaf
+            | _ => solve_miller_leaf
+            end.
+
+          Local Ltac solve_miller_locals :=
+            solve_miller_precond.
+
+          Local Ltac mcall spec :=
+            try miller_straightline;
+            unfold1_cmd_goal; cbv beta match delta [cmd_body];
+            letexists; split; [solve [eval_dexprs_abstract] |];
+            eapply Semantics.weaken_call;
+            [ eapply spec; solve_miller_precond
+            | cbv beta; intros ? ? ? [? [? ?]]; subst;
+              cbv [map.putmany_of_list_zip];
+              eexists; split; [exact eq_refl |]
+            ];
+            try match goal with
+            | Hrem : exists _, _ /\ _ /\ _ |- _ =>
+              destruct Hrem as [?vout [?Hfe [?Hb ?Hs]]]; try clear Hfe
+            | Hrem : exists _, _ /\ _ |- _ =>
+              destruct Hrem as [?vout [?Hb ?Hs]]
+            end.
+
+          (* === Doubling step === *)
+          mcall HFp2sqr.   (* D1: fp2_sqr(tmp1, t_x) *)
+          mcall HFp2add.   (* D2: fp2_add(lambda, tmp1, tmp1) *)
+          mcall HFp2add.   (* D3: fp2_add(lambda, lambda, tmp1) *)
+          mcall HFp2add.   (* D4: fp2_add(tmp1, t_y, t_y) *)
+          mcall HFp2inv.   (* D5: fp2_inv(tmp1, tmp1) *)
+          mcall HFp2mul.   (* D6: fp2_mul(lambda, lambda, tmp1) *)
+          mcall HMakeLineSpec. (* D7: make_line *)
+          mcall HFp12sqr.  (* D8: fp12_sqr(f, f) *)
+          mcall HFp12mul.  (* D9: fp12_mul(f, f, line) *)
+          mcall HFp2sqr.   (* D10: fp2_sqr(tmp1, lambda) *)
+          mcall HFp2sub.   (* D11: fp2_sub(tmp1, tmp1, t_x) *)
+          mcall HFp2sub.   (* D12: fp2_sub(tmp2, tmp1, t_x) *)
+          mcall HFp2sub.   (* D13: fp2_sub(tmp1, t_x, tmp2) *)
+          mcall HFp2mul.   (* D14: fp2_mul(tmp1, lambda, tmp1) *)
+          mcall HFp2sub.   (* D15: fp2_sub(t_y, tmp1, t_y) *)
+          mcall HFp2copy.  (* D16: fp2_copy(t_x, tmp2) *)
+
+          (* === Conditional: cond on "bit" === *)
+          miller_straightline. (* cmd.cond *)
+          split.
+
+          { (* Bit = 1 (word.unsigned v <> 0): addition step *)
+            intro Hbit_ne.
+            unfold BN254_Pairing.cmd_seq_list.
+
+            mcall HFp2sub.  (* A1 *)
+            mcall HFp2sub.  (* A2 *)
+            mcall HFp2inv.  (* A3 *)
+            mcall HFp2mul.  (* A4 *)
+            mcall HMakeLineSpec. (* A5 *)
+            mcall HFp12mul. (* A6 *)
+            mcall HFp2sqr.  (* A7 *)
+            mcall HFp2sub.  (* A8 *)
+            mcall HFp2sub.  (* A9 *)
+            mcall HFp2sub.  (* A10 *)
+            mcall HFp2mul.  (* A11 *)
+            mcall HFp2sub.  (* A12 *)
+            mcall HFp2copy. (* A13 *)
+
+            (* Re-establish invariant (addition branch) *)
+            assert (Hvi_pos : (0 < vi)%nat).
+            { destruct vi; [exfalso; apply Hne; reflexivity | lia]. }
+
+            exists (Nat.sub vi 1).
+            split; [ | lia].
+            unfold miller_loop_inv.
+            split. { exact eq_refl. }
+            do 7 eexists.
+            split; [| split; [| split; [| split; [| split]]]].
+            5: { normalize_pairing_instances. ecancel_assumption. }
+            { lia. }
+            { solve_miller_bounds. }
+            { solve_miller_bounds. }
+            { solve_miller_bounds. }
+            (* Handle "i" separately, rest via solve_miller_precond *)
+            split.
+            { repeat first [rewrite map.get_put_same | rewrite map.get_put_diff by congruence].
+              f_equal. replace v with (@word.sub 64 word (word.of_Z (Z.of_nat vi)) (word.of_Z 1))
+                by (unfold v; reflexivity).
+              exact (word_nat_sub1 vi Hvi_pos). }
+            solve_miller_precond. }
+
+          { (* Bit = 0: skip -- nothing changed, reuse doubling step's sep *)
+            intro Hbit_eq.
+            miller_straightline. (* cmd.skip *)
+
+            (* Re-establish invariant (skip branch) *)
+            assert (Hvi_pos : (0 < vi)%nat).
+            { destruct vi; [exfalso; apply Hne; reflexivity | lia]. }
+            exists (Nat.sub vi 1).
+            split; [ | lia].
+            unfold miller_loop_inv.
+            split. { exact eq_refl. }
+            do 7 eexists.
+            split; [| split; [| split; [| split; [| split]]]].
+            5: normalize_pairing_instances; ecancel_assumption.
+            - lia.
+            - solve_miller_bounds.
+            - solve_miller_bounds.
+            - solve_miller_bounds.
+            - split.
+              + repeat first [rewrite map.get_put_same | rewrite map.get_put_diff by congruence].
+                f_equal. replace v with (@word.sub 64 word (word.of_Z (Z.of_nat vi)) (word.of_Z 1))
+                  by (unfold v; reflexivity).
+                exact (word_nat_sub1 vi Hvi_pos).
+              + repeat (split; [solve_miller_leaf |]). solve_miller_leaf. } }
+        { (* FALSE branch: word.unsigned br = 0, postcondition *)
+          intro Heq0.
+
+          (* The post-loop goal is the WP for:
+             cmd.call fp12_copy [out; f] + 8 deallocs
+             No conjugation for BN254. *)
+
+          (* Provide arguments for the copy call *)
+          exists [pout; a_f].
+          split.
+          { cbv [dexprs list_map list_map_body
+                 WeakestPrecondition.expr WeakestPrecondition.expr_body
+                 WeakestPrecondition.get].
+            rewrite Hout_vi. rewrite Hf_vi.
+            eexists. split; [exact eq_refl |].
+            eexists. split; [exact eq_refl |].
+            exact eq_refl. }
+
+          (* fp12_copy(out, f) via Semantics.call *)
+          eapply Semantics.weaken_call.
+          1: { eapply HFp12copy.
+               split; ecancel_assumption. }
+          intros t_cp m_cp ? [Hrets_cp Hsep_cp].
+          subst.
+          destruct Hsep_cp as [Htr_cp Hsep_cp'].
+          symmetry in Htr_cp. subst t_cp.
+
+          (* Process return value *)
+          exists li.
+          split. { cbv [map.putmany_of_list_zip]. exact eq_refl. }
+
+
+      (* === Phase 5: Frobenius corrections + fp12_copy + dealloc === *)
+      (* The frob_corrections_body calls bn254_load_gamma1, bn254_load_q1_y_const,
+         bn254_load_gamma1_p2, bn254_Fp2_conjugate — these need additional callee
+         hypotheses not yet in the lemma statement. The 27 calls each follow the
+         wp_call_step pattern.
+
+         After Frobenius corrections: fp12_copy out f, then 13-level dealloc.
+
+         Architecture validated: the while loop compiles with the adapted body
+         from the old proof. The remaining work is adding 4 callee hypotheses
+         to the lemma statement and processing 27 + 1 calls + 13 deallocs. *)
+      admit.
     Admitted.
 
 End BN254_MillerLoopOptimal.
