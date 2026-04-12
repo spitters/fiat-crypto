@@ -1616,4 +1616,741 @@ Section BN254_PairingHelpers.
         split; [exact Hfe_fp12 | exact Hinputs]. }
     Qed.
 
+    Lemma bn254_make_line_corrected_ok :
+      forall functions
+        (EnvContains : map.get functions "bn254_make_line_corrected" =
+          Some (snd bn254_make_line_corrected))
+        (HFp2mul : spec_of_Fp2_mul functions)
+        (HFp2sub : spec_of_Fp2_sub functions)
+        (HFp2opp : spec_of_Fp2_opp functions)
+        (HFp2mulfp : spec_of_bn254_Fp2_mul_fp functions)
+        (HFpcopy : spec_of_Fp_felem_copy functions)
+        (HFfromword : spec_of_Fp_from_word functions),
+      forall pout plam pxt pyt pxp pyp
+        (old_out : @AbstractField.felem _ bn254_Fp12_params' _ _ _ _ bn254_Fp12_rep')
+        (lam xt yt : Fp2_felem) (xp yp : Fp_felem) Rr tr mem,
+        Fp2_bounded Fp2_tight lam /\
+        Fp2_bounded Fp2_tight xt /\
+        Fp2_bounded Fp2_tight yt /\
+        Fp_bounded Fp_loose xp /\
+        Fp_bounded Fp_loose yp /\
+        (FElem_Fp12 pout old_out ⋆
+         (FElem_Fp2 plam lam ⋆
+          (FElem_Fp2 pxt xt ⋆
+           (FElem_Fp2 pyt yt ⋆
+            (FElem_Fp pxp xp ⋆
+             (FElem_Fp pyp yp ⋆ Rr)))))) mem ->
+        WeakestPrecondition.call functions "bn254_make_line_corrected" tr mem
+          [pout; plam; pxt; pyt; pxp; pyp]
+          (fun tr' mem' rets =>
+            rets = [] /\ tr = tr' /\
+            exists out,
+              @AbstractField.bounded_by _ bn254_Fp12_params' _ _ _ _ bn254_Fp12_rep'
+                (@AbstractField.loose_bounds _ bn254_Fp12_params' _ _ _ _ bn254_Fp12_rep') out /\
+              (FElem_Fp12 pout out ⋆
+               (FElem_Fp2 plam lam ⋆
+                (FElem_Fp2 pxt xt ⋆
+                 (FElem_Fp2 pyt yt ⋆
+                  (FElem_Fp pxp xp ⋆
+                   (FElem_Fp pyp yp ⋆ Rr)))))) mem').
+    Proof.
+      intros functions EnvContains HFp2mul HFp2sub HFp2opp HFp2mulfp HFpcopy HFfromword
+        pout plam pxt pyt pxp pyp old_out lam xt yt xp yp Rr tr mem0
+        [Hblam [Hbxt [Hbyt [Hbxp [Hbyp Hsep]]]]].
+      eapply start_func; [exact EnvContains | clear EnvContains].
+      cbv [WeakestPrecondition.func].
+      unfold bn254_make_line_corrected. simpl snd. simpl fst.
+      cbv match beta.
+      eexists. split. { exact eq_refl. }
+      repeat straightline.
+
+      (* === Stackalloc tmp (Fp2-sized) === *)
+      split. { apply Z_mod_mult. }
+      intros a_tmp mStack mCombined HstackTmp Hm_split.
+
+      (* Convert anybytes to FElem_Fp2 *)
+      pose proof (@AbstractField.FElem_from_bytes _ bn254_Fp2_params' _ _ _ _ bn254_Fp2_rep'
+        wordok mapok a_tmp) as Hfb_tmp.
+      unfold AbstractField.Placeholder in Hfb_tmp.
+      pose proof (proj1 (Hfb_tmp mStack) HstackTmp) as [tmp_val Htmp_felem].
+      clear Hfb_tmp.
+
+      (* Decompose precondition sep *)
+      destruct Hsep as [m_out [m_r1 [[Heq0 Hd0] [Hfe_out Hr1]]]].
+      destruct Hr1 as [m_lam [m_r2 [[Heq1 Hd1] [Hfe_lam Hr2]]]].
+      destruct Hr2 as [m_xt [m_r3 [[Heq2 Hd2] [Hfe_xt Hr3]]]].
+      destruct Hr3 as [m_yt [m_r4 [[Heq3 Hd3] [Hfe_yt Hr4]]]].
+      destruct Hr4 as [m_xp [m_r5 [[Heq4 Hd4] [Hfe_xp Hr5]]]].
+      destruct Hr5 as [m_yp [m_rr [[Heq5 Hd5] [Hfe_yp Hrr]]]].
+      subst m_r1 m_r2 m_r3 m_r4 m_r5 mem0.
+
+      (* Split Fp12 output into Fp6 halves *)
+      pose proof (DodecicFieldExtensions.Fp12_raw_FElem_split bn254_beta bn254_xi_re bn254_xi_im
+        fp12_prefix fp6_prefix fp2_prefix pout old_out m_out Hfe_out)
+        as [m_fp6_0 [m_fp6_1 [Hsep_fp12 [Hfe_fp6_0 Hfe_fp6_1]]]].
+      destruct Hsep_fp12 as [Heq_fp12 Hd_fp12].
+      subst m_out.
+
+      (* Split each Fp6 into 3 Fp2 components *)
+      pose proof (CubicFieldExtensions.Fp6_raw_FElem_split bn254_beta bn254_xi_re bn254_xi_im
+        fp6_prefix fp2_prefix
+        pout _ m_fp6_0 Hfe_fp6_0)
+        as [m_o00 [m_o01_02 [Hsep_c0 [Ho00 Ho01_02]]]].
+      destruct Ho01_02 as [m_o01 [m_o02 [Hsep_o01_02 [Ho01 Ho02]]]].
+      destruct Hsep_c0 as [? Hd_c0]. destruct Hsep_o01_02 as [? Hd_o01_02]. subst.
+
+      pose proof (CubicFieldExtensions.Fp6_raw_FElem_split bn254_beta bn254_xi_re bn254_xi_im
+        fp6_prefix fp2_prefix
+        (word.add pout (word.of_Z fp6_felem_offset)) _ m_fp6_1 Hfe_fp6_1)
+        as [m_o10 [m_o11_12 [Hsep_c1 [Ho10 Ho11_12]]]].
+      destruct Ho11_12 as [m_o11 [m_o12 [Hsep_o11_12 [Ho11 Ho12]]]].
+      destruct Hsep_c1 as [? Hd_c1]. destruct Hsep_o11_12 as [? Hd_o11_12]. subst.
+
+      (* Derive pairwise disjointness *)
+      split_all_disjointness.
+      destruct Hm_split as [Heq_comb Hd_comb].
+      split_all_disjointness.
+      rewrite !map.putmany_assoc in Heq_comb.
+
+      set (FE2 := @AbstractField.FElem _
+        (Fp2_field_parameters bn254_beta fp2_prefix) _ _ _ _
+        (Fp2_field_representation bn254_beta fp2_prefix)).
+
+      (* Build combined sep on mCombined with all sub-FElems *)
+      assert (Hsep :
+        (FE2 pout (c0_felem (d0_felem old_out)) ⋆
+         (FE2 (word.add pout fp6_c1_off) (c1_felem (d0_felem old_out)) ⋆
+          (FE2 (word.add pout fp6_c2_off) (c2_felem (d0_felem old_out)) ⋆
+           (FE2 (word.add pout (word.of_Z fp6_felem_offset)) (c0_felem (d1_felem old_out)) ⋆
+            (FE2 (word.add (word.add pout (word.of_Z fp6_felem_offset)) fp6_c1_off)
+               (c1_felem (d1_felem old_out)) ⋆
+             (FE2 (word.add (word.add pout (word.of_Z fp6_felem_offset)) fp6_c2_off)
+                (c2_felem (d1_felem old_out)) ⋆
+              (FE2 plam lam ⋆
+               (FE2 pxt xt ⋆
+                (FE2 pyt yt ⋆
+                 (FElem_Fp pxp xp ⋆
+                  (FElem_Fp pyp yp ⋆
+                   (Rr ⋆
+                    FE2 a_tmp tmp_val))))))))))))
+        mCombined).
+      { subst mCombined FE2.
+        rewrite <- ?map.putmany_assoc.
+        exists m_o00, (map.putmany m_o01 (map.putmany m_o02
+          (map.putmany m_o10 (map.putmany m_o11 (map.putmany m_o12
+            (map.putmany m_lam (map.putmany m_xt (map.putmany m_yt
+              (map.putmany m_xp (map.putmany m_yp (map.putmany m_rr mStack))))))))))).
+        split; [split; [reflexivity | map_disjoint_auto] |]. split; [exact Ho00 |].
+        exists m_o01, (map.putmany m_o02
+          (map.putmany m_o10 (map.putmany m_o11 (map.putmany m_o12
+            (map.putmany m_lam (map.putmany m_xt (map.putmany m_yt
+              (map.putmany m_xp (map.putmany m_yp (map.putmany m_rr mStack)))))))))).
+        split; [split; [reflexivity | map_disjoint_auto] |]. split; [exact Ho01 |].
+        exists m_o02, (map.putmany m_o10 (map.putmany m_o11 (map.putmany m_o12
+          (map.putmany m_lam (map.putmany m_xt (map.putmany m_yt
+            (map.putmany m_xp (map.putmany m_yp (map.putmany m_rr mStack))))))))).
+        split; [split; [reflexivity | map_disjoint_auto] |]. split; [exact Ho02 |].
+        exists m_o10, (map.putmany m_o11 (map.putmany m_o12
+          (map.putmany m_lam (map.putmany m_xt (map.putmany m_yt
+            (map.putmany m_xp (map.putmany m_yp (map.putmany m_rr mStack)))))))).
+        split; [split; [reflexivity | map_disjoint_auto] |]. split; [exact Ho10 |].
+        exists m_o11, (map.putmany m_o12
+          (map.putmany m_lam (map.putmany m_xt (map.putmany m_yt
+            (map.putmany m_xp (map.putmany m_yp (map.putmany m_rr mStack))))))).
+        split; [split; [reflexivity | map_disjoint_auto] |]. split; [exact Ho11 |].
+        exists m_o12, (map.putmany m_lam (map.putmany m_xt (map.putmany m_yt
+          (map.putmany m_xp (map.putmany m_yp (map.putmany m_rr mStack)))))).
+        split; [split; [reflexivity | map_disjoint_auto] |]. split; [exact Ho12 |].
+        exists m_lam, (map.putmany m_xt (map.putmany m_yt
+          (map.putmany m_xp (map.putmany m_yp (map.putmany m_rr mStack))))).
+        split; [split; [reflexivity | map_disjoint_auto] |]. split; [exact Hfe_lam |].
+        exists m_xt, (map.putmany m_yt
+          (map.putmany m_xp (map.putmany m_yp (map.putmany m_rr mStack)))).
+        split; [split; [reflexivity | map_disjoint_auto] |]. split; [exact Hfe_xt |].
+        exists m_yt, (map.putmany m_xp (map.putmany m_yp (map.putmany m_rr mStack))).
+        split; [split; [reflexivity | map_disjoint_auto] |]. split; [exact Hfe_yt |].
+        exists m_xp, (map.putmany m_yp (map.putmany m_rr mStack)).
+        split; [split; [reflexivity | map_disjoint_auto] |]. split; [exact Hfe_xp |].
+        exists m_yp, (map.putmany m_rr mStack).
+        split; [split; [reflexivity | map_disjoint_auto] |]. split; [exact Hfe_yp |].
+        exists m_rr, mStack.
+        split; [split; [reflexivity | map_disjoint_auto] |].
+        split; [exact Hrr | exact Htmp_felem]. }
+
+      subst FE2.
+      change (Fp2_field_parameters bn254_beta fp2_prefix)
+        with bn254_Fp2_params' in Hsep.
+      change (Fp2_field_representation bn254_beta fp2_prefix)
+        with bn254_Fp2_rep' in Hsep.
+
+      pose proof (@Fp2_field_representation_ok _ _ _ _ bn254_pf_params
+        bn254_Fp_rep bn254_Fp_rep_ok bn254_beta fp2_prefix) as Fp2_rep_ok.
+
+      (* === 12 call steps for the CORRECTED make_line body === *)
+      unfold BN254_Pairing.cmd_seq_list.
+      unfold BN254_Pairing.expr_fp12_c0, BN254_Pairing.expr_fp12_c1,
+             BN254_Pairing.expr_fp6_c0, BN254_Pairing.expr_fp6_c1,
+             BN254_Pairing.expr_fp6_c2, BN254_Pairing.expr_fp_snd.
+
+      (* The corrected body writes to Fp12 slots in this order:
+         Calls 1-2: fp_copy + from_word at c0.c0 (Fp-level pair)
+         Calls 3-4: from_word × 2 at c0.c1 (Fp-level pair)
+         Calls 5-6: from_word × 2 at c0.c2 (Fp-level pair)
+         Calls 7-8: fp2_mul_fp tmp + fp2_opp c1.c0 (Fp2-level)
+         Calls 9-10: fp2_mul c1.c1 + fp2_sub c1.c1 (Fp2-level)
+         Calls 11-12: from_word × 2 at c1.c2 (Fp-level pair)
+
+         Setup: identical to old proof (same Fp12 decomposition).
+         Per-call: same pattern as old but reordered.
+         Join: d0 has 3 Fp-pairs, d1 has 2 Fp2 + 1 Fp-pair (swapped vs old). *)
+
+      (* --- Calls 1-2: fp_copy(c0.c0.fst, y_p) + from_word(c0.c0.snd, 0) --- *)
+      repeat straightline.
+      eassert (Hsep_split1 :
+        (FElem_Fp2 pout (c0_felem (d0_felem old_out)) ⋆ _) mCombined).
+      { pose proof Hsep as H'. ecancel_assumption. }
+      apply FElem_Fp2_split_in_sep in Hsep_split1.
+      eapply Semantics.weaken_call.
+      1: { eapply (HFpcopy _ _
+             (fst_felem (c0_felem (d0_felem old_out))) yp _ _ tr).
+           split; [| exact Hsep_split1].
+           pose proof Hsep_split1 as H'. ecancel_assumption. }
+      intros t1 m1' rets1 [Hrets1 [Htr1 Hsep1]].
+      subst rets1. symmetry in Htr1. subst t1.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* Call 2: from_word(c0.c0.snd, 0) *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply (HFfromword _ _
+             (snd_felem (c0_felem (d0_felem old_out))) _ tr).
+           match goal with
+           | |- (?P ⋆ ?Q) ?m =>
+             change ((FElem_Fp
+               (word.add pout (word.of_Z fp_felem_offset))
+               (snd_felem (c0_felem (d0_felem old_out))) ⋆ Q) m)
+           end.
+           pose proof Hsep1 as H'. ecancel_assumption. }
+      intros t2 m2' rets2 [Hrets2 [Htr2 [fw2 [Hfeval2 [Hbound2 Hsep2]]]]].
+      subst rets2. symmetry in Htr2. subst t2.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* --- Calls 3-4: from_word(c0.c1.fst, 0) + from_word(c0.c1.snd, 0) --- *)
+      repeat straightline.
+      eassert (Hsep2_split3 :
+        (FElem_Fp2 (word.add pout fp6_c1_off)
+           (c1_felem (d0_felem old_out)) ⋆ _) m2').
+      { pose proof Hsep2 as H'. ecancel_assumption. }
+      apply FElem_Fp2_split_in_sep in Hsep2_split3.
+      eapply Semantics.weaken_call.
+      1: { eapply (HFfromword _ _
+             (fst_felem (c1_felem (d0_felem old_out))) _ tr).
+           exact Hsep2_split3. }
+      intros t3 m3' rets3 [Hrets3 [Htr3 [fw3 [Hfeval3 [Hbound3 Hsep3]]]]].
+      subst rets3. symmetry in Htr3. subst t3.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* Call 4: from_word(c0.c1.snd, 0) *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply (HFfromword _ _
+             (snd_felem (c1_felem (d0_felem old_out))) _ tr).
+           match goal with
+           | |- (?P ⋆ ?Q) ?m =>
+             change ((FElem_Fp
+               (word.add (word.add pout fp6_c1_off) (word.of_Z fp_felem_offset))
+               (snd_felem (c1_felem (d0_felem old_out))) ⋆ Q) m)
+           end.
+           pose proof Hsep3 as H'. ecancel_assumption. }
+      intros t4 m4' rets4 [Hrets4 [Htr4 [fw4 [Hfeval4 [Hbound4 Hsep4]]]]].
+      subst rets4. symmetry in Htr4. subst t4.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* --- Calls 5-6: from_word(c0.c2.fst, 0) + from_word(c0.c2.snd, 0) --- *)
+      (* Same as old calls 5-6 *)
+      repeat straightline.
+      eassert (Hsep4_split5 :
+        (FElem_Fp2 (word.add pout fp6_c2_off)
+           (c2_felem (d0_felem old_out)) ⋆ _) m4').
+      { pose proof Hsep4 as H'. ecancel_assumption. }
+      apply FElem_Fp2_split_in_sep in Hsep4_split5.
+      eapply Semantics.weaken_call.
+      1: { eapply (HFfromword _ _
+             (fst_felem (c2_felem (d0_felem old_out))) _ tr).
+           exact Hsep4_split5. }
+      intros t5 m5' rets5 [Hrets5 [Htr5 [fw5 [Hfeval5 [Hbound5 Hsep5]]]]].
+      subst rets5. symmetry in Htr5. subst t5.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* Call 6: from_word(c0.c2.snd, 0) *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply (HFfromword _ _
+             (snd_felem (c2_felem (d0_felem old_out))) _ tr).
+           match goal with
+           | |- (?P ⋆ ?Q) ?m =>
+             change ((FElem_Fp
+               (word.add (word.add pout fp6_c2_off) (word.of_Z fp_felem_offset))
+               (snd_felem (c2_felem (d0_felem old_out))) ⋆ Q) m)
+           end.
+           pose proof Hsep5 as H'. ecancel_assumption. }
+      intros t6 m6' rets6 [Hrets6 [Htr6 [fw6 [Hfeval6 [Hbound6 Hsep6]]]]].
+      subst rets6. symmetry in Htr6. subst t6.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* --- Call 7: fp2_mul_fp(tmp, lam, x_p) --- *)
+      (* Same as old call 3 *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { pose proof HFp2mulfp as HF7.
+           unfold spec_of_bn254_Fp2_mul_fp in HF7.
+           eapply (HF7 a_tmp plam pxp
+             tmp_val lam xp _ tr).
+           split; [exact Hblam |].
+           split; [exact Hbxp |].
+           pose proof Hsep6 as H'. ecancel_assumption. }
+      intros t7 m7 rets7 [Hrets7 [Htr7 [out7 [Hfeval7 [Hbound7 Hsep7]]]]].
+      subst rets7. symmetry in Htr7. subst t7.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* --- Call 8: fp2_opp(c1.c0, tmp) --- *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { pose proof HFp2opp as HF8.
+           unfold spec_of_Fp2_opp, AbstractField.unop_spec in HF8.
+           subst args.
+           eapply (HF8
+             (word.add pout (word.of_Z fp6_felem_offset))
+             a_tmp
+             (c0_felem (d1_felem old_out)) out7 _ tr).
+           split; [cbv [un_xbounds AbstractField.un_opp]; exact Hbound7 |].
+           split; [eexists; pose proof Hsep7 as H'; ecancel_assumption |].
+           pose proof Hsep7 as H'. ecancel_assumption. }
+      intros t8 m8 rets8 [Hrets8 [Htr8 [out8 [Hfeval8 [Hbound8 Hsep8]]]]].
+      subst rets8. symmetry in Htr8. subst t8.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* --- Call 9: fp2_mul(c1.c1, lam, x_t) --- *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { pose proof HFp2mul as HF9.
+           unfold spec_of_Fp2_mul, AbstractField.binop_spec in HF9.
+           eapply (HF9
+             (word.add (word.add pout (word.of_Z fp6_felem_offset)) fp6_c1_off)
+             plam pxt
+             (c1_felem (d1_felem old_out)) lam xt _ tr).
+           split; [apply (@AbstractField.relax_bounds _ bn254_Fp2_params' _ _ _ _
+             bn254_Fp2_rep' Fp2_rep_ok); exact Hblam |].
+           split; [apply (@AbstractField.relax_bounds _ bn254_Fp2_params' _ _ _ _
+             bn254_Fp2_rep' Fp2_rep_ok); exact Hbxt |].
+           split; [eexists; pose proof Hsep8 as H'; ecancel_assumption |].
+           split; [eexists; pose proof Hsep8 as H'; ecancel_assumption |].
+           pose proof Hsep8 as H'. ecancel_assumption. }
+      intros t9 m9 rets9 [Hrets9 [Htr9 [out9 [Hfeval9 [Hbound9 Hsep9]]]]].
+      subst rets9. symmetry in Htr9. subst t9.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* --- Call 10: fp2_sub(c1.c1, c1.c1, y_t) --- *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { pose proof HFp2sub as HF10.
+           unfold spec_of_Fp2_sub, AbstractField.binop_spec in HF10.
+           eapply (HF10
+             (word.add (word.add pout (word.of_Z fp6_felem_offset)) fp6_c1_off)
+             (word.add (word.add pout (word.of_Z fp6_felem_offset)) fp6_c1_off)
+             pyt
+             out9 out9 yt _ tr).
+           split; [cbv [bin_xbounds AbstractField.bin_sub]; exact Hbound9 |].
+           split; [cbv [bin_ybounds AbstractField.bin_sub]; exact Hbyt |].
+           split; [eexists; pose proof Hsep9 as H'; ecancel_assumption |].
+           split; [eexists; pose proof Hsep9 as H'; ecancel_assumption |].
+           pose proof Hsep9 as H'. ecancel_assumption. }
+      intros t10 m10 rets10 [Hrets10 [Htr10 [out10 [Hfeval10 [Hbound10 Hsep10]]]]].
+      subst rets10. symmetry in Htr10. subst t10.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* --- Calls 11-12: from_word(c1.c2.fst, 0) + from_word(c1.c2.snd, 0) --- *)
+      (* Same as old calls 11-12 *)
+      repeat straightline.
+      eassert (Hsep10_split11 :
+        (FElem_Fp2 (word.add (word.add pout (word.of_Z fp6_felem_offset)) fp6_c2_off)
+           (c2_felem (d1_felem old_out)) ⋆ _) m10).
+      { pose proof Hsep10 as H'. ecancel_assumption. }
+      apply FElem_Fp2_split_in_sep in Hsep10_split11.
+      eapply Semantics.weaken_call.
+      1: { eapply (HFfromword _ _
+             (fst_felem (c2_felem (d1_felem old_out))) _ tr).
+           match goal with
+           | |- (?P ⋆ ?Q) ?m =>
+             change ((FElem_Fp
+               (word.add (word.add pout (word.of_Z fp6_felem_offset)) fp6_c2_off)
+               (fst_felem (c2_felem (d1_felem old_out))) ⋆ Q) m)
+           end.
+           exact Hsep10_split11. }
+      intros t11 m11' rets11 [Hrets11 [Htr11 [fw11 [Hfeval11 [Hbound11 Hsep11]]]]].
+      subst rets11. symmetry in Htr11. subst t11.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* Call 12: from_word(c1.c2.snd, 0) *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply (HFfromword _ _
+             (snd_felem (c2_felem (d1_felem old_out))) _ tr).
+           match goal with
+           | |- (?P ⋆ ?Q) ?m =>
+             change ((FElem_Fp
+               (word.add (word.add (word.add pout (word.of_Z fp6_felem_offset)) fp6_c2_off)
+                  (word.of_Z fp_felem_offset))
+               (snd_felem (c2_felem (d1_felem old_out))) ⋆ Q) m)
+           end.
+           pose proof Hsep11 as H'. ecancel_assumption. }
+      intros t12 m12' rets12 [Hrets12 [Htr12 [fw12 [Hfeval12 [Hbound12 Hsep12]]]]].
+      subst rets12. symmetry in Htr12. subst t12.
+      cbv [map.putmany_of_list_zip]. eexists. split. { exact eq_refl. }
+
+      (* === Stack deallocation + final postcondition === *)
+      repeat straightline.
+
+      (* Stack dealloc: extract tmp FElem, convert to anybytes *)
+      eassert (Htmp_sep : (FElem_Fp2 a_tmp out7 ⋆ _) m12').
+      { pose proof Hsep12 as H'. ecancel_assumption. }
+      destruct Htmp_sep as [m_stk [m_rest [[Heq_stk Hd_stk] [Hftmp Hrest]]]].
+      exists m_rest, m_stk.
+      split. { exact (AbstractField.FElem_to_bytes a_tmp out7 m_stk Hftmp). }
+      split. { split. { rewrite map.putmany_comm; [exact Heq_stk | exact (proj1 (map.disjoint_comm _ _) Hd_stk)]. } { exact (proj1 (map.disjoint_comm _ _) Hd_stk). } }
+
+      cbv [list_map list_map_body].
+      split. { exact eq_refl. }
+      split. { exact eq_refl. }
+
+      (* === Join phase: 12 Fp-level entries back into Fp12 ===
+
+         After the 12 calls + dealloc, Hrest has on m_rest:
+           6 FElem_Fp values (yp_copy, fw2, fw3, fw4, fw5, fw6 at d0)
+           2 FElem_Fp2 values (out8 @ c1.c0, out10 @ c1.c1)
+           2 FElem_Fp values (fw11, fw12 at d1.c2)
+           + surviving inputs (lam, xt, yt, xp, yp)
+           + Rr
+
+         Join strategy:
+         a) Pair Fp halves into 4 Fp2: d0.c0, d0.c1, d0.c2, d1.c2
+         b) Join 3 Fp2 into Fp6: d0, d1
+         c) Join 2 Fp6 into Fp12 *)
+
+      pose proof fun p v m (H : FElem_Fp p v m) =>
+        @QuadraticFieldExtensions.AbstractFElem_length _ _ _ _
+          bn254_pf_params bn254_Fp_rep p v m H
+        as FpLen.
+
+      (* Extract Fp-level lengths *)
+      assert (Hlen_yp_copy : length yp = Fp_fsw).
+      { assert (Htmp : (FElem_Fp pyp yp ⋆ _) m_rest) by
+          (pose proof Hrest as H'; ecancel_assumption).
+        destruct Htmp as [msub [_ [_ [Hfe _]]]]. exact (FpLen _ _ _ Hfe). }
+      assert (Hlen_fw2 : length fw2 = Fp_fsw).
+      { assert (Htmp : (FElem_Fp _ fw2 ⋆ _) m_rest) by
+          (pose proof Hrest as H'; ecancel_assumption).
+        destruct Htmp as [msub [_ [_ [Hfe _]]]]. exact (FpLen _ _ _ Hfe). }
+      assert (Hlen_fw3 : length fw3 = Fp_fsw).
+      { assert (Htmp : (FElem_Fp _ fw3 ⋆ _) m_rest) by
+          (pose proof Hrest as H'; ecancel_assumption).
+        destruct Htmp as [msub [_ [_ [Hfe _]]]]. exact (FpLen _ _ _ Hfe). }
+      assert (Hlen_fw4 : length fw4 = Fp_fsw).
+      { assert (Htmp : (FElem_Fp _ fw4 ⋆ _) m_rest) by
+          (pose proof Hrest as H'; ecancel_assumption).
+        destruct Htmp as [msub [_ [_ [Hfe _]]]]. exact (FpLen _ _ _ Hfe). }
+      assert (Hlen_fw5 : length fw5 = Fp_fsw).
+      { assert (Htmp : (FElem_Fp _ fw5 ⋆ _) m_rest) by
+          (pose proof Hrest as H'; ecancel_assumption).
+        destruct Htmp as [msub [_ [_ [Hfe _]]]]. exact (FpLen _ _ _ Hfe). }
+      assert (Hlen_fw6 : length fw6 = Fp_fsw).
+      { assert (Htmp : (FElem_Fp _ fw6 ⋆ _) m_rest) by
+          (pose proof Hrest as H'; ecancel_assumption).
+        destruct Htmp as [msub [_ [_ [Hfe _]]]]. exact (FpLen _ _ _ Hfe). }
+      assert (Hlen_fw11 : length fw11 = Fp_fsw).
+      { assert (Htmp : (FElem_Fp _ fw11 ⋆ _) m_rest) by
+          (pose proof Hrest as H'; ecancel_assumption).
+        destruct Htmp as [msub [_ [_ [Hfe _]]]]. exact (FpLen _ _ _ Hfe). }
+      assert (Hlen_fw12 : length fw12 = Fp_fsw).
+      { assert (Htmp : (FElem_Fp _ fw12 ⋆ _) m_rest) by
+          (pose proof Hrest as H'; ecancel_assumption).
+        destruct Htmp as [msub [_ [_ [Hfe _]]]]. exact (FpLen _ _ _ Hfe). }
+      clear FpLen.
+
+      (* Chain-join: combine Fp pairs into Fp2 *)
+      (* Join d0.c0: yp (fst via fp_copy) + fw2 (snd via from_word) *)
+      eassert (Hsep_a : (FElem_Fp _ yp ⋆ (FElem_Fp _ fw2 ⋆ _)) m_rest).
+      { pose proof Hrest as H'. ecancel_assumption. }
+      apply FElem_Fp_join_in_sep in Hsep_a; [| exact Hlen_yp_copy | exact Hlen_fw2].
+
+      (* Join d0.c1: fw3 + fw4 *)
+      eassert (Hsep_b : (FElem_Fp _ fw3 ⋆ (FElem_Fp _ fw4 ⋆ _)) m_rest).
+      { pose proof Hsep_a as H'. ecancel_assumption. }
+      change (word.add (word.add pout fp6_c1_off) (word.of_Z (Memory.bytes_per_word 64 * Z.of_nat Fp_fsw)))
+        with (word.add (word.add pout fp6_c1_off) (word.of_Z fp_felem_offset)) in Hsep_b.
+      apply FElem_Fp_join_in_sep in Hsep_b; [| exact Hlen_fw3 | exact Hlen_fw4].
+
+      (* Join d0.c2: fw5 + fw6 *)
+      eassert (Hsep_c : (FElem_Fp _ fw5 ⋆ (FElem_Fp _ fw6 ⋆ _)) m_rest).
+      { pose proof Hsep_b as H'. ecancel_assumption. }
+      change (word.add pout (word.of_Z (2 * (Memory.bytes_per_word 64 * Z.of_nat Fp_fsw))))
+        with (word.add pout fp6_c2_off) in Hsep_c.
+      change (word.add (word.add pout fp6_c2_off) (word.of_Z (Memory.bytes_per_word 64 * Z.of_nat Fp_fsw)))
+        with (word.add (word.add pout fp6_c2_off) (word.of_Z fp_felem_offset)) in Hsep_c.
+      apply FElem_Fp_join_in_sep in Hsep_c; [| exact Hlen_fw5 | exact Hlen_fw6].
+
+      (* Join d1.c2: fw11 + fw12 *)
+      eassert (Hsep_d : (FElem_Fp _ fw11 ⋆ (FElem_Fp _ fw12 ⋆ _)) m_rest).
+      { pose proof Hsep_c as H'. ecancel_assumption. }
+      eassert (Hsep_d' : (FElem_Fp _ fw11 ⋆ (FElem_Fp (word.add _ (word.of_Z fp_felem_offset)) fw12 ⋆ _)) m_rest).
+      { exact Hsep_d. }
+      apply FElem_Fp_join_in_sep in Hsep_d'; [| exact Hlen_fw11 | exact Hlen_fw12].
+
+      (* Rearrange into d0, d1, inputs order *)
+      eassert (Hsep_rearr :
+        (FElem_Fp2 _ (yp ++ fw2) ⋆
+         (FElem_Fp2 _ (fw3 ++ fw4) ⋆
+          (FElem_Fp2 _ (fw5 ++ fw6) ⋆
+           (FElem_Fp2 _ out8 ⋆
+            (FElem_Fp2 _ out10 ⋆
+             (FElem_Fp2 _ (fw11 ++ fw12) ⋆
+              (FElem_Fp2 _ lam ⋆
+               (FElem_Fp2 _ xt ⋆
+                (FElem_Fp2 _ yt ⋆
+                 (FElem_Fp _ xp ⋆
+                  (FElem_Fp _ yp ⋆ Rr))))))))))) m_rest).
+      { pose proof Hsep_d' as H'. ecancel_assumption. }
+
+      destruct Hsep_rearr as [m_oc0 [m_r1 [[Heq_r1 Hd_r1] [Hoc0 Hr1]]]].
+      destruct Hr1 as [m_oc1 [m_r2 [[Heq_r2 Hd_r2] [Hoc1 Hr2]]]].
+      destruct Hr2 as [m_oc2 [m_r3 [[Heq_r3 Hd_r3] [Hoc2 Hr3]]]].
+      destruct Hr3 as [m_d1c0m [m_r4 [[Heq_r4 Hd_r4] [Hd1c0m Hr4]]]].
+      destruct Hr4 as [m_d1c1m [m_r5 [[Heq_r5 Hd_r5] [Hd1c1m Hr5]]]].
+      destruct Hr5 as [m_d1c2m [m_inputs [[Heq_r6 Hd_r6] [Hd1c2m Hinputs]]]].
+      subst.
+
+      (* Build disjointness facts *)
+      pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_r1) as [Hd_01 Hd_0r2].
+      pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_0r2) as [Hd_02 Hd_0r3].
+      pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_r2) as [Hd_12 Hd_1r3].
+      pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_r3) as [Hd_23 Hd_2r4].
+      pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_1r3) as [Hd_13 Hd_1r4].
+      pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_r4) as [Hd_34 Hd_3r5].
+      pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_r5) as [Hd_45 Hd_4inp].
+      pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_3r5) as [Hd_35 Hd_3inp].
+      pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_2r4) as [Hd_24 Hd_2r5].
+      pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_2r5) as [Hd_25 Hd_2inp].
+      pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_1r4) as [Hd_14 Hd_1r5].
+      pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_1r5) as [Hd_15 Hd_1inp].
+      pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_0r3) as [Hd_03 Hd_0r4].
+      pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_0r4) as [Hd_04 Hd_0r5].
+      pose proof (proj1 (map.disjoint_putmany_r _ _ _) Hd_0r5) as [Hd_05 Hd_0inp].
+
+      (* Build Fp6 for d0: (yp++fw2, fw3++fw4, fw5++fw6) *)
+      assert (Hsep_d0_fp6 : (FElem_Fp2 pout (yp ++ fw2) ⋆
+        (FElem_Fp2 (word.add pout fp6_c1_off) (fw3 ++ fw4) ⋆
+         FElem_Fp2 (word.add pout fp6_c2_off) (fw5 ++ fw6)))
+        (map.putmany m_oc0 (map.putmany m_oc1 m_oc2))).
+      { exists m_oc0, (map.putmany m_oc1 m_oc2).
+        split; [split; [reflexivity | apply map.disjoint_putmany_r; split; [exact Hd_01 | exact Hd_02]] |].
+        split; [exact Hoc0 |].
+        exists m_oc1, m_oc2.
+        split; [split; [reflexivity | exact Hd_12] |].
+        split; [exact Hoc1 | exact Hoc2]. }
+      assert (Hlen_d0c0_fp2 : length (yp ++ fw2) = Fp2_felem_size).
+      { rewrite length_app, Hlen_yp_copy, Hlen_fw2. reflexivity. }
+      assert (Hlen_d0c1_fp2 : length (fw3 ++ fw4) = Fp2_felem_size).
+      { rewrite length_app, Hlen_fw3, Hlen_fw4. reflexivity. }
+      assert (Hlen_d0c2_fp2 : length (fw5 ++ fw6) = Fp2_felem_size).
+      { rewrite length_app, Hlen_fw5, Hlen_fw6. reflexivity. }
+      pose proof (@CubicFieldExtensions.Fp6_raw_FElem_join _ _ _ _
+        wordok mapok bn254_pf_params bn254_beta bn254_xi_re bn254_xi_im bn254_Fp_rep fp6_prefix fp2_prefix
+        pout (yp ++ fw2) (fw3 ++ fw4) (fw5 ++ fw6) _ Hlen_d0c0_fp2 Hlen_d0c1_fp2 Hlen_d0c2_fp2 Hsep_d0_fp6)
+        as Hfe_d0.
+
+      (* Build Fp6 for d1: (out8, out10, fw11++fw12) *)
+      assert (Hlen_fw11_12 : length (fw11 ++ fw12) = Fp2_felem_size).
+      { rewrite length_app, Hlen_fw11, Hlen_fw12. reflexivity. }
+      assert (Hlen_out8_fp2 : length out8 = Fp2_felem_size).
+      { unfold AbstractField.FElem, Bignum.Bignum in Hd1c0m.
+        destruct Hd1c0m as [me [ma [_ [[_ Hlen] _]]]]. exact Hlen. }
+      assert (Hlen_out10_fp2 : length out10 = Fp2_felem_size).
+      { unfold AbstractField.FElem, Bignum.Bignum in Hd1c1m.
+        destruct Hd1c1m as [me [ma [_ [[_ Hlen] _]]]]. exact Hlen. }
+      eassert (Hsep_d1_fp6 : (FElem_Fp2 _ out8 ⋆
+        (FElem_Fp2 (word.add _ fp6_c1_off) out10 ⋆
+         FElem_Fp2 (word.add _ fp6_c2_off) (fw11 ++ fw12)))
+        (map.putmany m_d1c0m (map.putmany m_d1c1m m_d1c2m))).
+      { exists m_d1c0m, (map.putmany m_d1c1m m_d1c2m).
+        split; [split; [reflexivity | apply map.disjoint_putmany_r; split; [exact Hd_34 | exact Hd_35]] |].
+        split; [exact Hd1c0m |].
+        exists m_d1c1m, m_d1c2m.
+        split; [split; [reflexivity | exact Hd_45] |].
+        split; [exact Hd1c1m | exact Hd1c2m]. }
+      pose proof (@CubicFieldExtensions.Fp6_raw_FElem_join _ _ _ _
+        wordok mapok bn254_pf_params bn254_beta bn254_xi_re bn254_xi_im bn254_Fp_rep fp6_prefix fp2_prefix
+        _ out8 out10 (fw11 ++ fw12) _ Hlen_out8_fp2 Hlen_out10_fp2 Hlen_fw11_12 Hsep_d1_fp6)
+        as Hfe_d1.
+
+      (* Build Fp12 *)
+      assert (Hlen_d0_fp6 : length ((yp ++ fw2) ++ (fw3 ++ fw4) ++ (fw5 ++ fw6)) = Fp6_fsw).
+      { rewrite !length_app, Hlen_yp_copy, Hlen_fw2, Hlen_fw3, Hlen_fw4, Hlen_fw5, Hlen_fw6.
+        reflexivity. }
+      assert (Hlen_d1_fp6 : length (out8 ++ out10 ++ (fw11 ++ fw12)) = Fp6_fsw).
+      { rewrite !length_app, Hlen_out8_fp2, Hlen_out10_fp2, Hlen_fw11, Hlen_fw12.
+        reflexivity. }
+      set (m_fp12 := map.putmany (map.putmany m_oc0 (map.putmany m_oc1 m_oc2))
+                                  (map.putmany m_d1c0m (map.putmany m_d1c1m m_d1c2m))).
+      assert (Hsep_fp12 : (FElem_Fp6 pout ((yp ++ fw2) ++ (fw3 ++ fw4) ++ (fw5 ++ fw6)) ⋆
+        FElem_Fp6 (word.add pout (word.of_Z fp6_felem_offset))
+          (out8 ++ out10 ++ (fw11 ++ fw12))) m_fp12).
+      { subst m_fp12. exists (map.putmany m_oc0 (map.putmany m_oc1 m_oc2)),
+          (map.putmany m_d1c0m (map.putmany m_d1c1m m_d1c2m)).
+        split; [split; [reflexivity |] |].
+        { apply map.disjoint_putmany_l. split.
+          { apply map.disjoint_putmany_r. split; [exact Hd_03 | apply map.disjoint_putmany_r; split; [exact Hd_04 | exact Hd_05]]. }
+          { apply map.disjoint_putmany_l. split.
+            { apply map.disjoint_putmany_r. split; [exact Hd_13 | apply map.disjoint_putmany_r; split; [exact Hd_14 | exact Hd_15]]. }
+            { apply map.disjoint_putmany_r. split; [exact Hd_23 | apply map.disjoint_putmany_r; split; [exact Hd_24 | exact Hd_25]]. } } }
+        split; [exact Hfe_d0 | exact Hfe_d1]. }
+      pose proof (@DodecicFieldExtensions.Fp12_raw_FElem_join _ _ _ _
+        wordok mapok bn254_pf_params bn254_Fp_rep bn254_beta bn254_xi_re bn254_xi_im fp12_prefix fp6_prefix fp2_prefix
+        pout ((yp ++ fw2) ++ (fw3 ++ fw4) ++ (fw5 ++ fw6))
+        (out8 ++ out10 ++ (fw11 ++ fw12)) m_fp12
+        Hlen_d0_fp6 Hlen_d1_fp6 Hsep_fp12)
+        as Hfe_fp12.
+
+      (* Provide the existential witness *)
+      set (the_out := ((yp ++ fw2) ++ (fw3 ++ fw4) ++ (fw5 ++ fw6)) ++
+                        (out8 ++ out10 ++ (fw11 ++ fw12))).
+      exists the_out.
+      split.
+      { (* bounded_by loose_bounds the_out *)
+        subst the_out.
+        pose proof (@AbstractField.relax_bounds _ _ _ _ _ _
+          bn254_Fp_rep bn254_Fp_rep_ok) as RB.
+        (* Build Fp2-level loose bounds for joined pairs using fp_pair_bounds_to_fp2_loose *)
+        assert (Hb_d0c0 : Fp2_bounded Fp2_loose (yp ++ fw2))
+          by (apply fp_pair_bounds_to_fp2_loose; [exact Hbyp | exact (RB _ Hbound2) | exact Hlen_yp_copy]).
+        assert (Hb_d0c1 : Fp2_bounded Fp2_loose (fw3 ++ fw4))
+          by (apply fp_pair_bounds_to_fp2_loose; [exact (RB _ Hbound3) | exact (RB _ Hbound4) | exact Hlen_fw3]).
+        assert (Hb_d0c2 : Fp2_bounded Fp2_loose (fw5 ++ fw6))
+          by (apply fp_pair_bounds_to_fp2_loose; [exact (RB _ Hbound5) | exact (RB _ Hbound6) | exact Hlen_fw5]).
+        assert (Hb_d1c2 : Fp2_bounded Fp2_loose (fw11 ++ fw12))
+          by (apply fp_pair_bounds_to_fp2_loose; [exact (RB _ Hbound11) | exact (RB _ Hbound12) | exact Hlen_fw11]).
+        (* Fp2-level loose bounds for direct Fp2 outputs *)
+        pose proof Hbound8 as Hb8.
+        pose proof Hbound10 as Hb10.
+        (* Relax tight→loose for Fp2-level outputs *)
+        assert (Hb_out8_l : Fp2_bounded Fp2_loose out8).
+        { unfold Fp2_bounded, AbstractField.bounded_by,
+                 bn254_Fp2_rep', bn254_Fp2_params',
+                 QuadraticFieldExtensionsSpecs.Fp2_field_representation in Hb8 |- *.
+          cbv beta in Hb8 |- *. destruct Hb8 as [Hb8a Hb8b].
+          exact (conj (RB _ Hb8a) (RB _ Hb8b)). }
+        assert (Hb_out10_l : Fp2_bounded Fp2_loose out10).
+        { unfold Fp2_bounded, AbstractField.bounded_by,
+                 bn254_Fp2_rep', bn254_Fp2_params',
+                 QuadraticFieldExtensionsSpecs.Fp2_field_representation in Hb10 |- *.
+          cbv beta in Hb10 |- *. destruct Hb10 as [Hb10a Hb10b].
+          exact (conj (RB _ Hb10a) (RB _ Hb10b)). }
+
+        Local Typeclasses Transparent bn254_Fp12_params'.
+        Local Typeclasses Transparent bn254_Fp12_rep'.
+        Local Typeclasses Transparent bn254_Fp6_params'.
+        Local Typeclasses Transparent bn254_Fp6_rep'.
+        Local Typeclasses Transparent bn254_Fp2_params'.
+        Local Typeclasses Transparent bn254_Fp2_rep'.
+        cbv [AbstractField.bounded_by AbstractField.loose_bounds
+             bn254_Fp12_rep' bn254_Fp12_params'
+             bn254_Fp6_rep' bn254_Fp6_params'
+             bn254_Fp2_rep' bn254_Fp2_params'
+             bn254_beta bn254_xi_re bn254_xi_im
+             DodecicFieldExtensionsSpecs.Fp12_field_representation
+             DodecicFieldExtensionsSpecs.Fp12_field_parameters
+             DodecicFieldExtensionsSpecs.d0_felem
+             DodecicFieldExtensionsSpecs.d1_felem
+             CubicFieldExtensionsSpecs.Fp6_field_representation
+             CubicFieldExtensionsSpecs.Fp6_field_parameters
+             CubicFieldExtensionsSpecs.c0_felem
+             CubicFieldExtensionsSpecs.c1_felem
+             CubicFieldExtensionsSpecs.c2_felem
+             QuadraticFieldExtensionsSpecs.Fp2_field_representation
+             QuadraticFieldExtensionsSpecs.Fp2_field_parameters
+             QuadraticFieldExtensionsSpecs.fst_felem
+             QuadraticFieldExtensionsSpecs.snd_felem].
+        cbv beta.
+
+        (* d0 bound *)
+        assert (Hlen_d0_num : length ((yp ++ fw2) ++ (fw3 ++ fw4) ++ fw5 ++ fw6) = (3 * (2 * Fp_fsw))%nat).
+        { rewrite !length_app, Hlen_yp_copy, Hlen_fw2, Hlen_fw3, Hlen_fw4, Hlen_fw5, Hlen_fw6.
+          reflexivity. }
+        rewrite (firstn_app' _ _ _ Hlen_d0_num).
+        rewrite (QuadraticFieldExtensions.skipn_app _ _ _ Hlen_d0_num).
+        assert (Hlen_d0c0_num : length (yp ++ fw2) = (2 * Fp_fsw)%nat).
+        { rewrite length_app, Hlen_yp_copy, Hlen_fw2. reflexivity. }
+        assert (Hlen_d0c01 : length ((yp ++ fw2) ++ (fw3 ++ fw4)) = (2 * (2 * Fp_fsw))%nat).
+        { rewrite length_app, Hlen_d0c0_num.
+          rewrite length_app, Hlen_fw3, Hlen_fw4. reflexivity. }
+        split.
+        { (* d0 Fp6 bounds *)
+          cbv [DodecicFieldExtensionsSpecs.Fp6_repr_inst bn254_beta bn254_xi_re bn254_xi_im
+               CubicFieldExtensionsSpecs.Fp6_field_representation
+               CubicFieldExtensionsSpecs.Fp6_field_parameters
+               CubicFieldExtensionsSpecs.c0_felem
+               CubicFieldExtensionsSpecs.c1_felem
+               CubicFieldExtensionsSpecs.c2_felem
+               AbstractField.bounded_by AbstractField.loose_bounds].
+          cbv beta.
+          rewrite (firstn_app' _ _ _ Hlen_d0c0_num).
+          rewrite (QuadraticFieldExtensions.skipn_app _ _ _ Hlen_d0c0_num).
+          match goal with |- context [firstn ?n ((fw3 ++ fw4) ++ _)] =>
+            assert (Hlen_d0c1_c1 : length (fw3 ++ fw4) = n) by
+              (rewrite length_app, Hlen_fw3, Hlen_fw4; reflexivity)
+          end.
+          rewrite (firstn_app' _ _ _ Hlen_d0c1_c1).
+          rewrite (app_assoc (yp ++ fw2) (fw3 ++ fw4)).
+          rewrite (QuadraticFieldExtensions.skipn_app _ _ _ Hlen_d0c01).
+          exact (conj Hb_d0c0 (conj Hb_d0c1 Hb_d0c2)). }
+        { (* d1 Fp6 bounds *)
+          cbv [DodecicFieldExtensionsSpecs.Fp6_repr_inst bn254_beta bn254_xi_re bn254_xi_im
+               CubicFieldExtensionsSpecs.Fp6_field_representation
+               CubicFieldExtensionsSpecs.Fp6_field_parameters
+               CubicFieldExtensionsSpecs.c0_felem
+               CubicFieldExtensionsSpecs.c1_felem
+               CubicFieldExtensionsSpecs.c2_felem
+               AbstractField.bounded_by AbstractField.loose_bounds].
+          cbv beta.
+          assert (Hlen_out8_inner : length out8 = (2 * Fp_fsw)%nat).
+          { exact Hlen_out8_fp2. }
+          assert (Hlen_out10_inner : length out10 = (2 * Fp_fsw)%nat).
+          { exact Hlen_out10_fp2. }
+          rewrite (firstn_app' _ _ _ Hlen_out8_inner).
+          rewrite (QuadraticFieldExtensions.skipn_app _ _ _ Hlen_out8_inner).
+          match goal with |- context [firstn ?n (out10 ++ _)] =>
+            assert (Hlen_out10_c1 : length out10 = n) by exact Hlen_out10_inner
+          end.
+          rewrite (firstn_app' _ _ _ Hlen_out10_c1).
+          assert (Hlen_d1_c0c1 : length (out8 ++ out10) = (2 * (2 * Fp_fsw))%nat).
+          { rewrite length_app, Hlen_out8_inner, Hlen_out10_inner. reflexivity. }
+          rewrite (app_assoc out8 out10).
+          rewrite (QuadraticFieldExtensions.skipn_app _ _ _ Hlen_d1_c0c1).
+          exact (conj Hb_out8_l (conj Hb_out10_l Hb_d1c2)). } }
+      { (* (FElem_Fp12 pout the_out * inputs) m_rest *)
+        subst m_fp12. subst the_out.
+        exists (map.putmany (map.putmany m_oc0 (map.putmany m_oc1 m_oc2))
+                            (map.putmany m_d1c0m (map.putmany m_d1c1m m_d1c2m))),
+               m_inputs.
+        split; [split |].
+        { rewrite ?map.putmany_assoc. reflexivity. }
+        { apply map.disjoint_putmany_l. split.
+          { apply map.disjoint_putmany_l. split.
+            { exact Hd_0inp. }
+            { apply map.disjoint_putmany_l. split; [exact Hd_1inp | exact Hd_2inp]. } }
+          { apply map.disjoint_putmany_l. split.
+            { exact Hd_3inp. }
+            { apply map.disjoint_putmany_l. split; [exact Hd_4inp | exact Hd_r6]. } } }
+        split; [exact Hfe_fp12 | exact Hinputs]. }
+    Qed.
+
 End BN254_PairingHelpers.
