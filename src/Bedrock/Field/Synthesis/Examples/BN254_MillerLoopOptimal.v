@@ -670,23 +670,33 @@ Section BN254_MillerLoopOptimal.
                                      (FElem_Fp2 p_qy q_y ⋆ Rr))))))))))))))))))
                    mComb_cg1p2 *)
 
-      (* === Unfold the body and process initialization + loop + corrections === *)
+      (* === Unfold the body === *)
       unfold BN254_Pairing.miller_loop_optimal_full_body, BN254_Pairing.cmd_seq_list.
-      unfold BN254_Pairing.fp12_set_one, BN254_Pairing.cmd_seq_list.
-      unfold BN254_Pairing.expr_fp12_c0, BN254_Pairing.expr_fp12_c1,
-             BN254_Pairing.expr_fp6_c0, BN254_Pairing.expr_fp6_c1,
-             BN254_Pairing.expr_fp6_c2, BN254_Pairing.expr_fp_snd.
 
-      (* The remaining proof has the same structure as bn254_miller_loop_ok:
-         1. Process 12 from_word calls for fp12_set_one
-         2. Process 2 fp2_copy calls
-         3. Process store_u6p2 + set i
-         4. While loop (same invariant, Rr includes 5 extras)
-         5. Frobenius corrections (NEW: ~27 calls)
-         6. fp12_copy out f
-         7. 13 stack deallocs
+      (* === Phase 1: fp12_set_one via helper lemma === *)
+      straightline. (* split cmd.seq to isolate fp12_set_one *)
+      eapply WeakestPreconditionProperties.Proper_cmd; cycle 1.
+      { eapply fp12_set_one_wp.
+        - exact HFfromword.
+        - subst l11. repeat (first [apply map.get_put_same | rewrite map.get_put_diff by discriminate]). reflexivity.
+        - pose proof Hsep_all as H'. ecancel_assumption. }
+      intros t_so m_so l_so [Ht_so [Hl_so [f_one [Hb_fone Hsep_so]]]].
+      subst t_so l_so.
 
-         This is ~1000+ lines of proof. In progress. *)
+      (* === Phase 2: fp2_copy t_x q_x + fp2_copy t_y q_y === *)
+      wp_call_step HFp2copy.
+      wp_call_step HFp2copy.
+
+      (* === Phase 3: store_6u2_limbs + set i = 64 === *)
+      (* === Phase 4: while loop (same invariant as old, 5 extras in Rr frame) === *)
+      (* === Phase 5: Frobenius corrections (27 calls) === *)
+      (* === Phase 6: fp12_copy out f === *)
+      (* === Phase 7: 13-level stack deallocation === *)
+
+      (* Phases 3-7 use wp_call_step for each function call,
+         wp_loop for the while, and wp_dealloc_one for each dealloc level.
+         The architecture is validated via MCP — see commit history.
+         Filling in the remaining body. *)
     Admitted.
 
 End BN254_MillerLoopOptimal.
