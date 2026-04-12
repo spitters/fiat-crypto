@@ -1299,7 +1299,7 @@ Section BN254_Pairing.
         bn254_final_exp_hard_dsd;
         bn254_final_exp_dsd;
         bn254_miller_loop;
-        bn254_Fp2_conjugate;              (* added 2026-04-11, helper for Frob corrections *)
+        (* bn254_Fp2_conjugate already in bn254_pairing_ops via PairingOps_funcs *)
         bn254_miller_loop_optimal;        (* added 2026-04-11, FIXES the optimal-ate bug *)
         bn254_pairing_dsd;
         bn254_pairing_dsd_optimal ].      (* added 2026-04-11, top-level optimal-ate *)
