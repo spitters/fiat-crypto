@@ -30,6 +30,10 @@
 Require Import Rupicola.Lib.Api.
 Require Import bedrock2.Semantics.
 Require Import bedrock2.WeakestPrecondition.
+Require Import bedrock2.Map.SeparationLogic.
+Require Import coqutil.Tactics.ltac_list_ops.
+Require Import coqutil.Tactics.rdelta.
+Require Import coqutil.Tactics.syntactic_unify.
 Require Import Crypto.Bedrock.Specs.AbstractField.
 
 (** ** ecancel_assumption_with_copy
@@ -44,6 +48,55 @@ Ltac ecancel_assumption_with_copy :=
   | Hsep : (_ * _)%sep _ |- (_ * _)%sep _ =>
     let H' := fresh "Hcopy" in
     pose proof Hsep as H'; ecancel_assumption
+  end.
+
+(** ** ecancel_fast / ecancel_assumption_fast
+
+    O(n) sep-logic frame inference via [Lift1Prop.impl1] instead of the
+    default [ecancel_assumption] which does O(n!) permutation search. *)
+
+Ltac cancel_impl_step :=
+  let RHS := lazymatch goal with
+             | |- Lift1Prop.impl1 (seps _) (seps ?RHS) => RHS end in
+  let jy := index_and_element_of RHS in
+  let j := lazymatch jy with (?i, _) => i end in
+  let y := lazymatch jy with (_, ?y) => y end in
+  assert_fails (idtac; let y := rdelta_var y in is_evar y);
+  let LHS := lazymatch goal with
+             | |- Lift1Prop.impl1 (seps ?LHS) _ => LHS end in
+  let i := find_syntactic_unify_deltavar LHS y in
+  cancel_seps_at_indices_by_implication i j;
+  [exact (impl1_refl _)|].
+
+Ltac ecancel_fast :=
+  cancel;
+  lazymatch goal with
+  | |- Lift1Prop.impl1 _ _ =>
+    repeat cancel_impl_step;
+    repeat ecancel_step_by_implication;
+    cbv [seps]; exact impl1_refl
+  | |- Lift1Prop.iff1 _ _ =>
+    ecancel_steps_at O;
+    ecancel_done
+  end.
+
+Ltac ecancel_assumption_fast :=
+  multimatch goal with
+  | |- ?PG ?m1 =>
+    multimatch goal with
+    | H: _ ?m2 |- _ =>
+      syntactic_unify_deltavar m1 m2;
+      let H' := fresh "Hcopy" in
+      pose proof H as H';
+      cbv beta iota zeta in H';
+      lazymatch type of H' with
+      | (_ * _)%sep _ =>
+        refine (Morphisms.subrelation_refl
+                  Lift1Prop.impl1 _ _ _ _ H');
+        clear H';
+        ecancel_fast
+      end
+    end
   end.
 
 (** ** wp_binop_precond
@@ -896,3 +949,11 @@ Ltac wp_dealloc_one Hsplit fp_inst fr_inst :=
   exists m_rest, m_stk;
   split; [ exact Hab | ];
   split; [ split; [ exact Heq | exact Hd ] | ].
+
+(** ** Global override: use O(n) sep solver by default.
+
+    All files that [Require Import ... WPTactics] get the fast solver.
+    If a specific file breaks, add locally:
+      [Local Ltac ecancel_assumption ::= SeparationLogic.ecancel_assumption.]
+    to revert to the default O(n!) solver for that file. *)
+Ltac ecancel_assumption ::= ecancel_assumption_fast.
