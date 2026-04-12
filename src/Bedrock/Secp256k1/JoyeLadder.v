@@ -17,6 +17,8 @@ Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.Properties.
 Require Import coqutil.Map.OfListWord.
 From coqutil.Tactics Require Import Tactics letexists eabstract rdelta reference_to_string ident_of_string.
+Require Import coqutil.Tactics.ltac_list_ops.
+Require Import coqutil.Tactics.syntactic_unify.
 Require Import coqutil.Word.Bitwidth64.
 Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Word.Interface.
@@ -59,6 +61,52 @@ Section WithParameters.
   Context {zero_a : id a = F.zero}
           {seven_b : id b = F.of_Z _ 7}.
   Context {scalarbitsz : Z} {scalarbitsz_small : word.wrap scalarbitsz = scalarbitsz}.
+
+  Local Ltac cancel_impl_step :=
+    let RHS := lazymatch goal with
+               | |- Lift1Prop.impl1 (seps _) (seps ?RHS) => RHS end in
+    let jy := index_and_element_of RHS in
+    let j := lazymatch jy with (?i, _) => i end in
+    let y := lazymatch jy with (_, ?y) => y end in
+    assert_fails (idtac; let y := rdelta_var y in is_evar y);
+    let LHS := lazymatch goal with
+               | |- Lift1Prop.impl1 (seps ?LHS) _ => LHS end in
+    let i := find_syntactic_unify_deltavar LHS y in
+    cancel_seps_at_indices_by_implication i j;
+    [exact (impl1_refl _)|].
+
+  Local Ltac ecancel_fast :=
+    cancel;
+    lazymatch goal with
+    | |- Lift1Prop.impl1 _ _ =>
+      repeat cancel_impl_step;
+      repeat ecancel_step_by_implication;
+      cbv [seps]; exact impl1_refl
+    | |- Lift1Prop.iff1 _ _ =>
+      ecancel_steps_at O;
+      ecancel_done
+    end.
+
+  Local Ltac ecancel_assumption_fast :=
+    multimatch goal with
+    | |- ?PG ?m1 =>
+      multimatch goal with
+      | H: _ ?m2 |- _ =>
+        syntactic_unify_deltavar m1 m2;
+        let H' := fresh "Hcopy" in
+        pose proof H as H';
+        cbv beta iota zeta in H';
+        lazymatch type of H' with
+        | (_ * _)%sep _ =>
+          refine (Morphisms.subrelation_refl
+                    Lift1Prop.impl1 _ _ _ _ H');
+          clear H';
+          ecancel_fast
+        end
+      end
+    end.
+
+  Local Ltac ecancel_assumption ::= ecancel_assumption_fast.
 
   Definition secp256k1_laddermul :=
     func! (oX, oY, k, X, Y) {
