@@ -481,6 +481,15 @@ Section BN254_MillerLoopOptimal.
       word.of_Z (Z.of_nat (n - 1)).
     Proof. intros. rewrite <- word.ring_morph_sub. f_equal. zify. lia. Qed.
 
+    Local Lemma sep_from_split_ext (P Q : mem -> Prop) (mC mPrev mStack : mem) :
+      map.split mC mPrev mStack -> P mPrev -> Q mStack -> (Q ⋆ P) mC.
+    Proof.
+      intros [Heq Hd] HP HQ. subst mC.
+      exists mStack, mPrev.
+      split. { split. { apply map.putmany_comm. exact Hd. } exact (proj1 (map.disjoint_comm _ _) Hd). }
+      exact (conj HQ HP).
+    Qed.
+
     Lemma bn254_miller_loop_optimal_ok :
       forall functions
         (EnvContains : map.get functions "bn254_miller_loop_optimal" =
@@ -505,9 +514,148 @@ Section BN254_MillerLoopOptimal.
         (HMakeLineOk : spec_of_bn254_make_line_corrected functions),
       spec_of_bn254_miller_loop_optimal functions.
     Proof.
-      (* Full proof is structurally identical to bn254_miller_loop_ok
-         but needs 5 extra stackalloc layers + Frobenius correction calls.
-         In progress — see BN254_PairingHelpers.v for the pattern. *)
+      intros functions EnvContains HFp2mul HFp2add HFp2sub HFp2sqr HFp2inv HFp2opp HFp2copy HFp12mul HFp12sqr HFp12copy HFpmul HFpcopy HFfromword HMakeLine HMulFp HMakeLineOk.
+      unfold spec_of_bn254_miller_loop_optimal.
+      intros pout p_px p_py p_qx p_qy old_out p_x p_y q_x q_y Rr tr mem0
+        [Hbqx [Hbqy [Hbpx [Hbpy Hsep]]]].
+      eapply start_func; [exact EnvContains | clear EnvContains].
+      cbv [WeakestPrecondition.func].
+      unfold bn254_miller_loop_optimal. simpl snd. simpl fst.
+      cbv match beta.
+      eexists. split. { exact eq_refl. }
+      repeat straightline.
+
+      (* === Process 13 stackallocs === *)
+      split. { apply Z_mod_mult. }
+      intros a_f mStack_f mComb_f HanyF HsplitF.
+      repeat straightline.
+      split. { apply Z_mod_mult. }
+      intros a_tx mStack_tx mComb_tx HanyTx HsplitTx.
+      repeat straightline.
+      split. { apply Z_mod_mult. }
+      intros a_ty mStack_ty mComb_ty HanyTy HsplitTy.
+      repeat straightline.
+      split. { apply Z_mod_mult. }
+      intros a_lam mStack_lam mComb_lam HanyLam HsplitLam.
+      repeat straightline.
+      split. { apply Z_mod_mult. }
+      intros a_tmp1 mStack_tmp1 mComb_tmp1 HanyTmp1 HsplitTmp1.
+      repeat straightline.
+      split. { apply Z_mod_mult. }
+      intros a_tmp2 mStack_tmp2 mComb_tmp2 HanyTmp2 HsplitTmp2.
+      repeat straightline.
+      split. { apply Z_mod_mult. }
+      intros a_line mStack_line mComb_line HanyLine HsplitLine.
+      straightline.
+      split. { cbv. reflexivity. }
+      intros a_u6p2 mStack_u6p2 mComb_u6p2 HanyU6p2 HsplitU6p2.
+      straightline.
+      split. { apply Z_mod_mult. }
+      intros a_q1x mStack_q1x mComb_q1x HanyQ1x HsplitQ1x.
+      straightline.
+      split. { apply Z_mod_mult. }
+      intros a_q1y mStack_q1y mComb_q1y HanyQ1y HsplitQ1y.
+      straightline.
+      split. { apply Z_mod_mult. }
+      intros a_cg1 mStack_cg1 mComb_cg1 HanyCg1 HsplitCg1.
+      straightline.
+      split. { apply Z_mod_mult. }
+      intros a_cgy mStack_cgy mComb_cgy HanyCgy HsplitCgy.
+      straightline.
+      split. { apply Z_mod_mult. }
+      intros a_cg1p2 mStack_cg1p2 mComb_cg1p2 HanyCg1p2 HsplitCg1p2.
+
+      (* === Convert anybytes to FElems === *)
+      pose proof (@AbstractField.FElem_from_bytes _ bn254_Fp12_params' _ _ _ _ bn254_Fp12_rep' wordok mapok a_f) as Hfb_f.
+      unfold AbstractField.Placeholder in Hfb_f.
+      pose proof (proj1 (Hfb_f mStack_f) HanyF) as [f_val Hfe_f]. clear Hfb_f.
+      pose proof (@AbstractField.FElem_from_bytes _ bn254_Fp2_params' _ _ _ _ bn254_Fp2_rep' wordok mapok a_tx) as Hfb_tx.
+      unfold AbstractField.Placeholder in Hfb_tx.
+      pose proof (proj1 (Hfb_tx mStack_tx) HanyTx) as [tx_val Hfe_tx]. clear Hfb_tx.
+      pose proof (@AbstractField.FElem_from_bytes _ bn254_Fp2_params' _ _ _ _ bn254_Fp2_rep' wordok mapok a_ty) as Hfb_ty.
+      unfold AbstractField.Placeholder in Hfb_ty.
+      pose proof (proj1 (Hfb_ty mStack_ty) HanyTy) as [ty_val Hfe_ty]. clear Hfb_ty.
+      pose proof (@AbstractField.FElem_from_bytes _ bn254_Fp2_params' _ _ _ _ bn254_Fp2_rep' wordok mapok a_lam) as Hfb_lam.
+      unfold AbstractField.Placeholder in Hfb_lam.
+      pose proof (proj1 (Hfb_lam mStack_lam) HanyLam) as [lam_val Hfe_lam]. clear Hfb_lam.
+      pose proof (@AbstractField.FElem_from_bytes _ bn254_Fp2_params' _ _ _ _ bn254_Fp2_rep' wordok mapok a_tmp1) as Hfb_tmp1.
+      unfold AbstractField.Placeholder in Hfb_tmp1.
+      pose proof (proj1 (Hfb_tmp1 mStack_tmp1) HanyTmp1) as [tmp1_val Hfe_tmp1]. clear Hfb_tmp1.
+      pose proof (@AbstractField.FElem_from_bytes _ bn254_Fp2_params' _ _ _ _ bn254_Fp2_rep' wordok mapok a_tmp2) as Hfb_tmp2.
+      unfold AbstractField.Placeholder in Hfb_tmp2.
+      pose proof (proj1 (Hfb_tmp2 mStack_tmp2) HanyTmp2) as [tmp2_val Hfe_tmp2]. clear Hfb_tmp2.
+      pose proof (@AbstractField.FElem_from_bytes _ bn254_Fp12_params' _ _ _ _ bn254_Fp12_rep' wordok mapok a_line) as Hfb_line.
+      unfold AbstractField.Placeholder in Hfb_line.
+      pose proof (proj1 (Hfb_line mStack_line) HanyLine) as [line_val Hfe_line]. clear Hfb_line.
+      pose proof (@AbstractField.FElem_from_bytes _ bn254_Fp2_params' _ _ _ _ bn254_Fp2_rep' wordok mapok a_q1x) as Hfb_q1x.
+      unfold AbstractField.Placeholder in Hfb_q1x.
+      pose proof (proj1 (Hfb_q1x mStack_q1x) HanyQ1x) as [q1x_val Hfe_q1x]. clear Hfb_q1x.
+      pose proof (@AbstractField.FElem_from_bytes _ bn254_Fp2_params' _ _ _ _ bn254_Fp2_rep' wordok mapok a_q1y) as Hfb_q1y.
+      unfold AbstractField.Placeholder in Hfb_q1y.
+      pose proof (proj1 (Hfb_q1y mStack_q1y) HanyQ1y) as [q1y_val Hfe_q1y]. clear Hfb_q1y.
+      pose proof (@AbstractField.FElem_from_bytes _ bn254_Fp2_params' _ _ _ _ bn254_Fp2_rep' wordok mapok a_cg1) as Hfb_cg1.
+      unfold AbstractField.Placeholder in Hfb_cg1.
+      pose proof (proj1 (Hfb_cg1 mStack_cg1) HanyCg1) as [cg1_val Hfe_cg1]. clear Hfb_cg1.
+      pose proof (@AbstractField.FElem_from_bytes _ bn254_Fp2_params' _ _ _ _ bn254_Fp2_rep' wordok mapok a_cgy) as Hfb_cgy.
+      unfold AbstractField.Placeholder in Hfb_cgy.
+      pose proof (proj1 (Hfb_cgy mStack_cgy) HanyCgy) as [cgy_val Hfe_cgy]. clear Hfb_cgy.
+      pose proof (@AbstractField.FElem_from_bytes _ bn254_Fp2_params' _ _ _ _ bn254_Fp2_rep' wordok mapok a_cg1p2) as Hfb_cg1p2.
+      unfold AbstractField.Placeholder in Hfb_cg1p2.
+      pose proof (proj1 (Hfb_cg1p2 mStack_cg1p2) HanyCg1p2) as [cg1p2_val Hfe_cg1p2]. clear Hfb_cg1p2.
+
+      (* === Build master sep on mComb_cg1p2 === *)
+      pose proof (sep_from_split_ext _ _ _ _ _ HsplitF Hsep Hfe_f) as Hext_f.
+      pose proof (sep_from_split_ext _ _ _ _ _ HsplitTx Hext_f Hfe_tx) as Hext_tx.
+      pose proof (sep_from_split_ext _ _ _ _ _ HsplitTy Hext_tx Hfe_ty) as Hext_ty.
+      pose proof (sep_from_split_ext _ _ _ _ _ HsplitLam Hext_ty Hfe_lam) as Hext_lam.
+      pose proof (sep_from_split_ext _ _ _ _ _ HsplitTmp1 Hext_lam Hfe_tmp1) as Hext_tmp1.
+      pose proof (sep_from_split_ext _ _ _ _ _ HsplitTmp2 Hext_tmp1 Hfe_tmp2) as Hext_tmp2.
+      pose proof (sep_from_split_ext _ _ _ _ _ HsplitLine Hext_tmp2 Hfe_line) as Hext_line.
+      pose proof (sep_from_split_ext _ _ _ _ _ HsplitU6p2 Hext_line HanyU6p2) as Hext_u6p2.
+      pose proof (sep_from_split_ext _ _ _ _ _ HsplitQ1x Hext_u6p2 Hfe_q1x) as Hext_q1x.
+      pose proof (sep_from_split_ext _ _ _ _ _ HsplitQ1y Hext_q1x Hfe_q1y) as Hext_q1y.
+      pose proof (sep_from_split_ext _ _ _ _ _ HsplitCg1 Hext_q1y Hfe_cg1) as Hext_cg1.
+      pose proof (sep_from_split_ext _ _ _ _ _ HsplitCgy Hext_cg1 Hfe_cgy) as Hext_cgy.
+      pose proof (sep_from_split_ext _ _ _ _ _ HsplitCg1p2 Hext_cgy Hfe_cg1p2) as Hsep_all.
+      clear Hext_f Hext_tx Hext_ty Hext_lam Hext_tmp1 Hext_tmp2 Hext_line Hext_u6p2 Hext_q1x Hext_q1y Hext_cg1 Hext_cgy.
+
+      (* Hsep_all : (FElem_Fp2 a_cg1p2 cg1p2_val ⋆
+                     (FElem_Fp2 a_cgy cgy_val ⋆
+                      (FElem_Fp2 a_cg1 cg1_val ⋆
+                       (FElem_Fp2 a_q1y q1y_val ⋆
+                        (FElem_Fp2 a_q1x q1x_val ⋆
+                         (anybytes a_u6p2 8 ⋆
+                          (FElem_Fp12 a_line line_val ⋆
+                           (FElem_Fp2 a_tmp2 tmp2_val ⋆
+                            (FElem_Fp2 a_tmp1 tmp1_val ⋆
+                             (FElem_Fp2 a_lam lam_val ⋆
+                              (FElem_Fp2 a_ty ty_val ⋆
+                               (FElem_Fp2 a_tx tx_val ⋆
+                                (FElem_Fp12 a_f f_val ⋆
+                                 (FElem_Fp12 pout old_out ⋆
+                                  (FElem_Fp p_px p_x ⋆
+                                   (FElem_Fp p_py p_y ⋆
+                                    (FElem_Fp2 p_qx q_x ⋆
+                                     (FElem_Fp2 p_qy q_y ⋆ Rr))))))))))))))))))
+                   mComb_cg1p2 *)
+
+      (* === Unfold the body and process initialization + loop + corrections === *)
+      unfold BN254_Pairing.miller_loop_optimal_full_body, BN254_Pairing.cmd_seq_list.
+      unfold BN254_Pairing.fp12_set_one, BN254_Pairing.cmd_seq_list.
+      unfold BN254_Pairing.expr_fp12_c0, BN254_Pairing.expr_fp12_c1,
+             BN254_Pairing.expr_fp6_c0, BN254_Pairing.expr_fp6_c1,
+             BN254_Pairing.expr_fp6_c2, BN254_Pairing.expr_fp_snd.
+
+      (* The remaining proof has the same structure as bn254_miller_loop_ok:
+         1. Process 12 from_word calls for fp12_set_one
+         2. Process 2 fp2_copy calls
+         3. Process store_u6p2 + set i
+         4. While loop (same invariant, Rr includes 5 extras)
+         5. Frobenius corrections (NEW: ~27 calls)
+         6. fp12_copy out f
+         7. 13 stack deallocs
+
+         This is ~1000+ lines of proof. In progress. *)
     Admitted.
 
 End BN254_MillerLoopOptimal.
