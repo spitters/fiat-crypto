@@ -798,6 +798,40 @@ Ltac wp_steps specs :=
   | ?h => wp_step h  (* single spec, not in list *)
   end.
 
+(** ** wp_call_step: FIXED version of wp_step.
+
+    The original wp_step uses unfold1_cmd_goal + eval_dexprs_fast for
+    dexpr evaluation, which fails when the cmd.call is already partially
+    reduced by start_func (the goal shape doesn't match the unfold1
+    pattern). This version uses [repeat straightline] instead, which
+    handles dexpr evaluation correctly in all cases.
+
+    Usage: identical to wp_step.
+      wp_call_step HFmul.
+      wp_call_step HFcopy.
+*)
+
+Ltac wp_call_step spec_hyp :=
+  repeat straightline;
+  eapply Semantics.weaken_call;
+  [ eapply spec_hyp; wp_auto_precond
+  | cbv beta;
+    let t := fresh "t" in let m := fresh "m" in
+    let rets := fresh "rets" in let Hpost := fresh "Hpost" in
+    intros t m rets Hpost;
+    repeat match goal with H : _ /\ _ |- _ => destruct H end;
+    try subst;
+    cbv [map.putmany_of_list_zip];
+    try (eexists; split; [ exact eq_refl | ]);
+    repeat straightline ].
+
+Ltac wp_call_steps specs :=
+  lazymatch specs with
+  | ?h :: ?rest => wp_call_step h; wp_call_steps rest
+  | nil => idtac
+  | ?h => wp_call_step h
+  end.
+
 (** ** wp_stackalloc_one: handle one stackalloc + anybytes→FElem conversion.
 
     Processes:
