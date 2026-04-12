@@ -705,7 +705,7 @@ Section BN254_Pairing.
           [expr.var "tmp1"; expr.var "tmp1"];
         cmd.call [] fp2_mul_name
           [expr.var "lambda"; expr.var "lambda"; expr.var "tmp1"];
-        cmd.call [] "bn254_make_line_corrected"
+        cmd.call [] make_line_name
           [expr.var "line"; expr.var "lambda";
            expr.var "t_x"; expr.var "t_y";
            expr.var "p_x"; expr.var "p_y"];
@@ -737,7 +737,7 @@ Section BN254_Pairing.
               [expr.var "tmp2"; expr.var "tmp2"];
             cmd.call [] fp2_mul_name
               [expr.var "lambda"; expr.var "tmp1"; expr.var "tmp2"];
-            cmd.call [] "bn254_make_line_corrected"
+            cmd.call [] make_line_name
               [expr.var "line"; expr.var "lambda";
                expr.var "t_x"; expr.var "t_y";
                expr.var "p_x"; expr.var "p_y"];
@@ -1173,7 +1173,7 @@ Section BN254_Pairing.
           [expr.var "lambda"; expr.var "tmp1"; expr.var "tmp2"];
 
         (* Line at P, multiply f *)
-        cmd.call [] "bn254_make_line_corrected"
+        cmd.call [] make_line_name
           [expr.var "line"; expr.var "lambda";
            expr.var "t_x"; expr.var "t_y"; expr.var "p_x"; expr.var "p_y"];
         cmd.call [] fp12_mul_name
@@ -1205,7 +1205,7 @@ Section BN254_Pairing.
           [expr.var "lambda"; expr.var "tmp1"; expr.var "tmp2"];
 
         (* Line at P, multiply f *)
-        cmd.call [] "bn254_make_line_corrected"
+        cmd.call [] make_line_name
           [expr.var "line"; expr.var "lambda";
            expr.var "t_x"; expr.var "t_y"; expr.var "p_x"; expr.var "p_y"];
         cmd.call [] fp12_mul_name
