@@ -500,27 +500,12 @@ Section BN254_MillerLoopOptimal.
     (* ============================================================ *)
 
     Lemma fp12_set_one_wp :
-      forall call
-        (HFfromword : forall p old R tr m,
-          (FElem_Fp p old ⋆ R) m ->
-          Semantics.call functions (PrimeField.from_word) tr m
-            [p; word.of_Z 0]
-            (fun tr' m' rets => rets = [] /\ tr = tr' /\
-              exists out,
-                Fp_bounded Fp_loose out /\
-                (FElem_Fp p out ⋆ R) m'))
-        (HFfromword1 : forall p old R tr m,
-          (FElem_Fp p old ⋆ R) m ->
-          Semantics.call functions (PrimeField.from_word) tr m
-            [p; word.of_Z 1]
-            (fun tr' m' rets => rets = [] /\ tr = tr' /\
-              exists out,
-                Fp_bounded Fp_loose out /\
-                (FElem_Fp p out ⋆ R) m'))
+      forall (e : map.rep (map := Semantics.env))
+        (HFfromword : spec_of_Fp_from_word e)
         (a_f : word) (old_f : Fp12_felem) (R : mem -> Prop) tr m l,
         map.get l "f" = Some a_f ->
         (FElem_Fp12 a_f old_f ⋆ R) m ->
-        WeakestPrecondition.cmd call
+        WeakestPrecondition.cmd e
           (BN254_Pairing.fp12_set_one "f") tr m l
           (fun t m' l' =>
             t = tr /\ l' = l /\
