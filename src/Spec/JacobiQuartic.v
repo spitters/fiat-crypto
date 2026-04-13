@@ -90,25 +90,39 @@ Module JQ.
               (He : e = a_ed * d_ed)
               (Ha : a_jq = a_ed).
 
-      (** Jacobi quartic → Edwards:
-          x = 2·s·c / t   where c = √(a_ed·(a_ed - d_ed)) or similar
-          y = (1 - s²) / (1 + s²) *)
+      (** Jacobi quartic → Edwards (Hamburg, Decaf §2.2):
+
+          The ristretto-flavored isogeny maps JQ (s,t) to Edwards as:
+            (X:Y:Z:T) = (2·s·c : 1-s² : 1+s² : 2·s·c)
+          in extended projective coordinates, where c depends on
+          curve parameters.  In affine:
+            x = 2·s·c / (1+s²)
+            y = (1-s²) / (1+s²)        [when a_ed = -1]
+
+          The precise constant c and the isogeny correctness proof
+          are in [Elligator2.v], which uses the concrete Curve25519
+          parameters.  Here we define the y-map abstractly. *)
+
       Definition to_edwards_y (s : F) : F :=
-        (1 - s * s) / (1 + s * s).
+        (1 + a_ed * (s * s)) / (1 - a_ed * (s * s)).
 
-      (** The map is well-defined when t ≠ 0 and 1 + s² ≠ 0. *)
-      Lemma to_edwards_on_curve s t (Ht : t <> 0) (Hs : 1 + s * s <> 0)
-            (Hoc : on_curve s t) :
-        (* The Edwards point (x, y) computed from (s, t) lies on
-           a·x² + y² = 1 + d·x²·y² *)
-        True. (* Placeholder for the actual curve equation proof *)
-      Proof. exact I. Qed.
+      (** Edwards → Jacobi quartic (inverse y-map).
 
-      (** Edwards → Jacobi quartic (inverse direction).
-          s² = (1 - y) / (a_ed - d_ed·y)
-          t = ... *)
+          Given y = (1+a·s²)/(1-a·s²), solving for s² gives
+          s² = (1-y) / (a·(1+y)).  We verify the round-trip. *)
+
       Definition from_edwards_s_sq (y : F) : F :=
-        (1 - y) / (a_ed - d_ed * y).
+        (y - 1) / (a_ed * (1 + y)).
+
+      Lemma from_edwards_y_roundtrip y
+            (Ha_ne : a_ed <> 0)
+            (Hy : 1 + y <> 0)
+            (Hden : 1 - a_ed * from_edwards_s_sq y <> 0) :
+        let s_sq := from_edwards_s_sq y in
+        (1 + a_ed * s_sq) / (1 - a_ed * s_sq) = y.
+      Proof.
+        unfold from_edwards_s_sq. fsatz.
+      Qed.
 
     End IsogenyToEdwards.
 
