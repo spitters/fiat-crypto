@@ -73,11 +73,43 @@ Section FevalBridge.
     rewrite Z.mod_small; [reflexivity | lia].
   Qed.
 
-  (** The core bridging lemma for each operation would look like:
-        fp_to_Z (F.add x y) = zfp_add (Z.pos M_pos) (fp_to_Z x) (fp_to_Z y)
-      These are straightforward from [F.to_Z_add] etc. but I leave them
-      for Phase 4 since they're needed only when closing the actual
-      equivalence proof. *)
+  (** Per-operation bridging lemmas: each shows that F-level operations
+      commute with to_Z, i.e., to_Z preserves the ring structure.
+      These bridge between fiat-crypto's [F M_pos] and [Z/pZ]. *)
+
+  Lemma fp_to_Z_add (x y : Fp) :
+    fp_to_Z (F.add x y) = ((fp_to_Z x) + (fp_to_Z y)) mod (Z.pos M_pos).
+  Proof. unfold fp_to_Z. apply F.to_Z_add. Qed.
+
+  Lemma fp_to_Z_sub (x y : Fp) :
+    fp_to_Z (F.sub x y) = ((fp_to_Z x) - (fp_to_Z y)) mod (Z.pos M_pos).
+  Proof. unfold fp_to_Z. apply F.to_Z_sub. Qed.
+
+  Lemma fp_to_Z_mul (x y : Fp) :
+    fp_to_Z (F.mul x y) = ((fp_to_Z x) * (fp_to_Z y)) mod (Z.pos M_pos).
+  Proof. unfold fp_to_Z. apply F.to_Z_mul. Qed.
+
+  Lemma fp_to_Z_opp (x : Fp) :
+    fp_to_Z (F.opp x) = (- (fp_to_Z x)) mod (Z.pos M_pos).
+  Proof. unfold fp_to_Z. apply F.to_Z_opp. Qed.
+
+  Lemma fp_to_Z_zero : fp_to_Z (@F.zero M_pos) = 0.
+  Proof. unfold fp_to_Z. rewrite F.to_Z_0. reflexivity. Qed.
+
+  Lemma fp_to_Z_one : fp_to_Z (@F.one M_pos) = 1 mod (Z.pos M_pos).
+  Proof. unfold fp_to_Z. rewrite F.to_Z_1. reflexivity. Qed.
+
+  (** Fp2-level bridging: component-wise *)
+  Lemma fp2_to_Z_add (x y : Fp * Fp) :
+    fp2_to_Z (F.add (fst x) (fst y), F.add (snd x) (snd y)) =
+    (fp_to_Z (F.add (fst x) (fst y)), fp_to_Z (F.add (snd x) (snd y))).
+  Proof. unfold fp2_to_Z. reflexivity. Qed.
+
+  Lemma fp2_to_Z_fst (x : Fp * Fp) : fst (fp2_to_Z x) = fp_to_Z (fst x).
+  Proof. reflexivity. Qed.
+
+  Lemma fp2_to_Z_snd (x : Fp * Fp) : snd (fp2_to_Z x) = fp_to_Z (snd x).
+  Proof. reflexivity. Qed.
 
 End FevalBridge.
 
@@ -86,6 +118,13 @@ End FevalBridge.
     the equivalence as:
       affine_miller (feval_ops M_pos) = affine_miller (zmod_ops M_pos)
     where the LHS uses F-level operations and the RHS uses Z-level.
-    The bridge lemma proves both sides compute the same value. *)
+    The bridge lemma proves both sides compute the same value.
 
-(* Future work: define feval_ops and prove the bridge. *)
+    The per-operation lemmas above (fp_to_Z_add, fp_to_Z_mul, etc.)
+    are the key ingredients: they show to_Z is a ring homomorphism.
+    To build the full bridge:
+    1. Define feval_ops : FieldOps using F-level operations
+    2. Prove each FieldOps operation commutes with to_Z
+    3. Apply the generic affine_miller_ext_equiv lemma (from Affine.v)
+       to get: affine_miller feval_ops P Q = affine_miller zmod_ops P Q
+    4. Connect feval_ops to the bedrock2 feval via WP postconditions *)
