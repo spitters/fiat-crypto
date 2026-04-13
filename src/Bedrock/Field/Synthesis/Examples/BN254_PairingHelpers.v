@@ -745,11 +745,75 @@ Section BN254_PairingHelpers.
       unfold bn254_Fp2_conjugate. simpl snd. simpl fst. cbv match beta.
       eexists. split. { exact eq_refl. }
       unfold BN254_Pairing.cmd_seq_list, BN254_Pairing.expr_fp_snd.
-      (* Body: fp_copy(out, x); fp_opp(out.snd, x.snd) *)
-      (* Two Fp-level calls on the Fp2 sub-components *)
-      admit. (* Requires Fp2 split + 2 Fp-level calls + Fp2 join.
-                Same pattern as make_line from_word pairs. *)
-    Admitted.
+
+      (* Split both Fp2 FElems into Fp halves *)
+      eassert (Hout_sep : (FElem_Fp2 pout old_out ⋆ _) mem0) by
+        (pose proof Hsep as H'; ecancel_assumption).
+      apply FElem_Fp2_split_in_sep in Hout_sep.
+      eassert (Hx_sep : (FElem_Fp2 px x ⋆ _) _) by ecancel_assumption.
+      apply FElem_Fp2_split_in_sep in Hx_sep.
+
+      (* Decompose Fp2 bounds into Fp bounds *)
+      unfold Fp2_bounded, AbstractField.bounded_by,
+             bn254_Fp2_rep', bn254_Fp2_params',
+             QuadraticFieldExtensionsSpecs.Fp2_field_representation in Hbx.
+      cbv beta in Hbx. destruct Hbx as [Hbx_fst Hbx_snd].
+
+      (* Call 1: fp_copy(out.fst, x.fst) *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFpcopy.
+           split; ecancel_assumption. }
+      cbv beta. intros ? ? ? [? [? ?]]. try subst.
+      cbv [map.putmany_of_list_zip].
+      eexists. split. { exact eq_refl. }
+
+      (* Call 2: fp_opp(out.snd, x.snd) *)
+      repeat straightline.
+      eapply Semantics.weaken_call.
+      1: { eapply HFpopp.
+           unfold spec_of_Fp_opp, AbstractField.unop_spec.
+           split; [cbv [un_xbounds AbstractField.un_opp]; exact Hbx_snd |].
+           split; [eexists; ecancel_assumption |].
+           ecancel_assumption. }
+      cbv beta.
+      intros ? ? ? [? [? [out_snd [? [Hb_out_snd Hsep_opp]]]]]. try subst.
+
+      (* Join Fp halves back into Fp2 *)
+      cbv [map.putmany_of_list_zip list_map list_map_body].
+      split; [exact eq_refl |].
+      split; [exact eq_refl |].
+
+      (* Build the output Fp2 from copy result + opp result *)
+      (* The output fst = x.fst (from copy), snd = opp(x.snd) *)
+      pose proof (@AbstractField.relax_bounds _ _ _ _ _ _ bn254_Fp_rep bn254_Fp_rep_ok) as RB.
+      eassert (Hlen_fst : length (fst_felem x) = @AbstractField.felem_size_in_words _ _ _ _ _ _ bn254_Fp_rep).
+      { eassert (_ : (FElem_Fp _ (fst_felem x) ⋆ _) _) by ecancel_assumption.
+        match goal with H : (_ ⋆ _) _ |- _ =>
+          destruct H as [? [? [_ [Hfe _]]]];
+          exact (@QuadraticFieldExtensions.AbstractFElem_length _ _ _ _
+            bn254_pf_params bn254_Fp_rep _ _ _ Hfe) end. }
+      eassert (Hlen_snd : length out_snd = @AbstractField.felem_size_in_words _ _ _ _ _ _ bn254_Fp_rep).
+      { eassert (_ : (FElem_Fp _ out_snd ⋆ _) _) by (pose proof Hsep_opp as H'; ecancel_assumption).
+        match goal with H : (_ ⋆ _) _ |- _ =>
+          destruct H as [? [? [_ [Hfe _]]]];
+          exact (@QuadraticFieldExtensions.AbstractFElem_length _ _ _ _
+            bn254_pf_params bn254_Fp_rep _ _ _ Hfe) end. }
+
+      (* Join the two Fp halves into Fp2 via FElem_Fp_join_in_sep *)
+      eassert (Hjoin : (FElem_Fp _ (fst_felem x) ⋆ (FElem_Fp _ out_snd ⋆ _)) _)
+        by (pose proof Hsep_opp as H'; ecancel_assumption).
+      apply FElem_Fp_join_in_sep in Hjoin; [| exact Hlen_fst | exact Hlen_snd].
+
+      exists (fst_felem x ++ out_snd).
+      split.
+      { (* Fp2_bounded Fp2_tight *)
+        apply fp_pair_bounds_to_fp2_loose.
+        - exact Hbx_fst.
+        - exact Hb_out_snd.
+        - exact Hlen_fst. }
+      ecancel_assumption.
+    Qed.
 
     (* ============================================================ *)
     (* C2: bn254_make_line                                          *)
