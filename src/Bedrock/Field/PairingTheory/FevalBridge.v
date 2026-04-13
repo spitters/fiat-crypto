@@ -111,20 +111,82 @@ Section FevalBridge.
   Lemma fp2_to_Z_snd (x : Fp * Fp) : snd (fp2_to_Z x) = fp_to_Z (snd x).
   Proof. reflexivity. Qed.
 
+  (** FieldOps instance using F-level operations directly.
+      This lets us state the pairing as:
+        affine_miller feval_ops P Q
+      where all arithmetic is done via fiat-crypto's verified F operations. *)
+
+  (* Fp2 = Fp * Fp with beta = -1 (for BN254, p = 3 mod 4) *)
+  Variable beta : Fp.
+
+  (* Fp2 operations via Karatsuba / schoolbook *)
+  Definition feval_fp2_add (x y : Fp * Fp) : Fp * Fp :=
+    (F.add (fst x) (fst y), F.add (snd x) (snd y)).
+
+  Definition feval_fp2_sub (x y : Fp * Fp) : Fp * Fp :=
+    (F.sub (fst x) (fst y), F.sub (snd x) (snd y)).
+
+  Definition feval_fp2_neg (x : Fp * Fp) : Fp * Fp :=
+    (F.opp (fst x), F.opp (snd x)).
+
+  Definition feval_fp2_mul (x y : Fp * Fp) : Fp * Fp :=
+    let a := F.mul (fst x) (fst y) in
+    let b := F.mul (snd x) (snd y) in
+    (F.add a (F.mul beta b), F.add (F.mul (fst x) (snd y)) (F.mul (snd x) (fst y))).
+
+  Definition feval_fp2_sqr (x : Fp * Fp) : Fp * Fp :=
+    feval_fp2_mul x x.
+
+  Definition feval_fp2_inv (x : Fp * Fp) : Fp * Fp :=
+    (* (a - beta*b*b') / (a^2 - beta*b^2) *)
+    let norm := F.sub (F.mul (fst x) (fst x))
+                      (F.mul beta (F.mul (snd x) (snd x))) in
+    let inv_norm := F.inv norm in
+    (F.mul (fst x) inv_norm, F.opp (F.mul (snd x) inv_norm)).
+
+  Definition feval_fp2_mul_fp (x : Fp * Fp) (s : Fp) : Fp * Fp :=
+    (F.mul (fst x) s, F.mul (snd x) s).
+
+  (* Placeholder Fp12 type — using nested pairs *)
+  Definition Fp6_F := ((Fp * Fp) * (Fp * Fp) * (Fp * Fp))%type.
+  Definition Fp12_F := (Fp6_F * Fp6_F)%type.
+
+  (* Fp12 operations would require the full tower but we can define
+     the FieldOps with abstract placeholders for now *)
+  Variable fp12_one_val : Fp12_F.
+  Variable fp12_mul_impl : Fp12_F -> Fp12_F -> Fp12_F.
+  Variable fp12_sqr_impl : Fp12_F -> Fp12_F.
+  Variable make_line_impl : (Fp * Fp) -> (Fp * Fp) -> (Fp * Fp) -> Fp -> Fp -> Fp12_F.
+
+  Definition feval_ops : Affine.FieldOps Fp (Fp * Fp) Fp12_F := {|
+    Affine.fp_zero := @F.zero M_pos;
+    Affine.fp_one := @F.one M_pos;
+    Affine.fp2_zero := (@F.zero M_pos, @F.zero M_pos);
+    Affine.fp2_one := (@F.one M_pos, @F.zero M_pos);
+    Affine.fp2_add := feval_fp2_add;
+    Affine.fp2_sub := feval_fp2_sub;
+    Affine.fp2_neg := feval_fp2_neg;
+    Affine.fp2_mul := feval_fp2_mul;
+    Affine.fp2_sqr := feval_fp2_sqr;
+    Affine.fp2_inv := feval_fp2_inv;
+    Affine.fp2_mul_fp := feval_fp2_mul_fp;
+    Affine.fp12_one := fp12_one_val;
+    Affine.fp12_mul := fp12_mul_impl;
+    Affine.fp12_sqr := fp12_sqr_impl;
+    Affine.make_line := make_line_impl;
+  |}.
+
 End FevalBridge.
 
-(** Bridge FieldOps instance: instantiate Affine.FieldOps with the
-    fiat-crypto field types (F M_pos) directly. This lets us state
-    the equivalence as:
-      affine_miller (feval_ops M_pos) = affine_miller (zmod_ops M_pos)
-    where the LHS uses F-level operations and the RHS uses Z-level.
-    The bridge lemma proves both sides compute the same value.
+(** To instantiate for BN254:
+    - M_pos := bn254_M_pos
+    - beta := F.of_Z M_pos (-1)
+    - fp12_one_val, fp12_mul_impl, fp12_sqr_impl, make_line_impl
+      from the concrete BN254 tower definitions
 
-    The per-operation lemmas above (fp_to_Z_add, fp_to_Z_mul, etc.)
-    are the key ingredients: they show to_Z is a ring homomorphism.
-    To build the full bridge:
-    1. Define feval_ops : FieldOps using F-level operations
-    2. Prove each FieldOps operation commutes with to_Z
-    3. Apply the generic affine_miller_ext_equiv lemma (from Affine.v)
-       to get: affine_miller feval_ops P Q = affine_miller zmod_ops P Q
-    4. Connect feval_ops to the bedrock2 feval via WP postconditions *)
+    Then prove: for all valid P, Q,
+      fp12_to_Z (affine_miller feval_ops P Q) =
+      affine_miller zmod_ops (fp_to_Z P) (fp2_to_Z Q)
+
+    This follows from the per-operation bridging lemmas (fp_to_Z_add etc.)
+    applied structurally to each step of affine_miller. *)
