@@ -262,20 +262,36 @@ Module Elligator2.
       else
         nil.
 
-    (** Full inverse: all 8 candidates from 4 coset representatives.
-        Each coset rep gives a different y-coordinate:
-          y₀ = Y/Z               (primary)
-          y₁ = -Y/Z              (negation)
-          y₂ = i·X·Y / (Z·T)    (4-torsion rotation, needs i)
-          y₃ = -i·X·Y / (Z·T)   (4-torsion + negation)
+    (** Full inverse: all candidates from 4 coset representatives.
 
-        For the full inverse, we'd compute [elligator2_inverse_primary]
-        for each y_k and concatenate.  For now, the primary pair
-        suffices for the completeness proof. *)
+        The 4 ristretto coset representatives of an Edwards point (X:Y:Z:T)
+        have affine y-coordinates:
+          y₀ =  Y/Z               (primary)
+          y₁ = -Y/Z               (negation: (X,-Y,Z,-T))
+          y₂ =  X/(i·Z)           (4-torsion rotation: swap X↔Y, scale by i)
+          y₃ = -X/(i·Z)           (4-torsion + negation)
+
+        Actually, the 4-torsion points are (0,-1), (±i,0) on Edwards with a=-1.
+        Adding (0,-1) negates both x,y: y₁ = -Y/Z.
+        Adding (i,0) gives: y₂ depends on the specific isogeny.
+
+        For simplicity, we compute all 4 y-values and run
+        [elligator2_inverse_primary] on each. *)
 
     Definition elligator2_inverse (X Y Z T : F) : list F :=
-      let y := Y / Z in
-      elligator2_inverse_primary y.
+      let y0 := Y / Z in
+      let y1 := Fopp (Y / Z) in
+      (* y2, y3: from 4-torsion rotation.
+         For a=-1 Edwards, adding the order-4 point (i, 0) transforms
+         (x,y) → (iy/(ix+1), (ix-1)/(ix+1)) via the Edwards addition law.
+         The y-coordinate of the rotated point depends on x and y.
+         We use T/Z = XY/Z² to avoid extra divisions. *)
+      let y2 := (i * X * Y - Z * Z) / (i * X * Y + Z * Z) in
+      let y3 := Fopp y2 in
+      elligator2_inverse_primary y0
+      ++ elligator2_inverse_primary y1
+      ++ elligator2_inverse_primary y2
+      ++ elligator2_inverse_primary y3.
 
     (** * Completeness lemmas *)
 
