@@ -30,6 +30,7 @@ Require Import Crypto.Util.ZUtil.Tactics.RewriteModSmall.
 Import ListNotations.
 Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.rdelta.
+Require Import coqutil.Tactics.syntactic_unify.
 
 Import AbstractInterpretation.Compilers.
 Import API.Compilers.
