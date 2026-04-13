@@ -28,6 +28,7 @@ Local Instance locals_ok : map.ok locals := (FE310CSemantics.locals_ok (word:=wo
 
 Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.rdelta.
+Require Import coqutil.Tactics.syntactic_unify.
 
 Local Ltac cancel_impl_step :=
   let RHS := lazymatch goal with

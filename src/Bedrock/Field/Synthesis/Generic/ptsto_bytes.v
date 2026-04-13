@@ -14,6 +14,7 @@ Require Import coqutil.Map.OfListWord.
 Require Import Ring_tac.
 Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.rdelta.
+Require Import coqutil.Tactics.syntactic_unify.
 Section WithWord.
   Local Coercion Z.of_nat : nat >-> Z.
   Local Infix "$+" := map.putmany (at level 70).

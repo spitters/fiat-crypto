@@ -32,6 +32,7 @@ Require Import Crypto.Util.Option.
 Import ListNotations. Local Open Scope Z_scope.
 Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.rdelta.
+Require Import coqutil.Tactics.syntactic_unify.
 
 Import API.Compilers.
 Import Wf.Compilers.expr.

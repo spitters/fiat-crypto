@@ -38,6 +38,7 @@ Require Import bedrock2.Array.
 From coqutil.Tactics Require Import letexists.
 Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.rdelta.
+Require Import coqutil.Tactics.syntactic_unify.
 Import Syntax BinInt String List.ListNotations.
 Local Open Scope string_scope. Local Open Scope Z_scope.
 

@@ -17,6 +17,7 @@ Require Import coqutil.Map.Properties.
 Require Import coqutil.Map.OfListWord.
 From coqutil.Tactics Require Import Tactics letexists eabstract rdelta reference_to_string ident_of_string.
 Require Import coqutil.Tactics.ltac_list_ops.
+Require Import coqutil.Tactics.syntactic_unify.
 Require Import coqutil.Word.Bitwidth.
 Require Import coqutil.Word.Interface.
 Require Import coqutil.Word.Properties.

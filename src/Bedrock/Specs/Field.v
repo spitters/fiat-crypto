@@ -11,6 +11,7 @@ Require Import Rupicola.Lib.Api.
 Require Rupicola.Lib.Arrays.
 Require Import coqutil.Tactics.ltac_list_ops.
 Require Import coqutil.Tactics.rdelta.
+Require Import coqutil.Tactics.syntactic_unify.
 
 Local Open Scope Z_scope.
 Import bedrock2.Memory.
