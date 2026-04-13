@@ -12,9 +12,6 @@ Open Scope Z_scope.
 
 Require Import coqutil.Map.OfListWord.
 Require Import Ring_tac.
-Require Import coqutil.Tactics.ltac_list_ops.
-Require Import coqutil.Tactics.rdelta.
-Require Import coqutil.Tactics.syntactic_unify.
 Section WithWord.
   Local Coercion Z.of_nat : nat >-> Z.
   Local Infix "$+" := map.putmany (at level 70).
@@ -79,52 +76,6 @@ Section Scalars.
     array ptsto (word.of_Z 1) addr (tuple.to_list value).
 
   Local Notation "xs $@ a" := (map.of_list_word_at a xs) (at level 10, format "xs $@ a").
-
-  Local Ltac cancel_impl_step :=
-    let RHS := lazymatch goal with
-               | |- Lift1Prop.impl1 (seps _) (seps ?RHS) => RHS end in
-    let jy := index_and_element_of RHS in
-    let j := lazymatch jy with (?i, _) => i end in
-    let y := lazymatch jy with (_, ?y) => y end in
-    assert_fails (idtac; let y := rdelta_var y in is_evar y);
-    let LHS := lazymatch goal with
-               | |- Lift1Prop.impl1 (seps ?LHS) _ => LHS end in
-    let i := find_syntactic_unify_deltavar LHS y in
-    cancel_seps_at_indices_by_implication i j;
-    [exact (impl1_refl _)|].
-
-  Local Ltac ecancel_fast :=
-    cancel;
-    lazymatch goal with
-    | |- Lift1Prop.impl1 _ _ =>
-      repeat cancel_impl_step;
-      repeat ecancel_step_by_implication;
-      cbv [seps]; exact impl1_refl
-    | |- Lift1Prop.iff1 _ _ =>
-      ecancel_steps_at O;
-      ecancel_done
-    end.
-
-  Local Ltac ecancel_assumption_fast :=
-    multimatch goal with
-    | |- ?PG ?m1 =>
-      multimatch goal with
-      | H: _ ?m2 |- _ =>
-        syntactic_unify_deltavar m1 m2;
-        let H' := fresh "Hcopy" in
-        pose proof H as H';
-        cbv beta iota zeta in H';
-        lazymatch type of H' with
-        | (_ * _)%sep _ =>
-          refine (Morphisms.subrelation_refl
-                    Lift1Prop.impl1 _ _ _ _ H');
-          clear H';
-          ecancel_fast
-        end
-      end
-    end.
-  Local Ltac ecancel_assumption ::= ecancel_assumption_fast.
-
   Lemma ptsto_bytes_iff_eq_of_list_word_at (n : nat) (addr : word) (value : tuple byte n)
     (H : (Z.of_nat n <= 2 ^ width)%Z) :
     iff1 (ptsto_bytes n addr value) (eq(tuple.to_list value$@addr)).
