@@ -542,10 +542,40 @@ Section BN254_MillerLoopOptimal.
           Some (snd bn254_make_line_corrected))
         (HFp2mulfpEnv : map.get functions "bn254_Fp2_mul_fp" =
           Some (snd bn254_Fp2_mul_fp))
-        (HMakeLineOk : spec_of_bn254_make_line_corrected functions),
+        (HMakeLineOk : spec_of_bn254_make_line_corrected functions)
+        (* Frobenius correction callee hypotheses *)
+        (HLoadG1 : forall pout (old_out : Fp2_felem) R tr m,
+          (FElem_Fp2 pout old_out ⋆ R) m ->
+          Semantics.call functions "bn254_load_gamma1" tr m [pout]
+            (fun tr' m' rets => rets = [] /\ tr = tr' /\
+              exists out, Fp2_bounded Fp2_tight out /\ (FElem_Fp2 pout out ⋆ R) m'))
+        (HLoadQ1Y : forall pout (old_out : Fp2_felem) R tr m,
+          (FElem_Fp2 pout old_out ⋆ R) m ->
+          Semantics.call functions "bn254_load_q1_y_const" tr m [pout]
+            (fun tr' m' rets => rets = [] /\ tr = tr' /\
+              exists out, Fp2_bounded Fp2_tight out /\ (FElem_Fp2 pout out ⋆ R) m'))
+        (HLoadG1P2 : forall pout (old_out : Fp2_felem) R tr m,
+          (FElem_Fp2 pout old_out ⋆ R) m ->
+          Semantics.call functions "bn254_load_gamma1_p2" tr m [pout]
+            (fun tr' m' rets => rets = [] /\ tr = tr' /\
+              exists out, Fp2_bounded Fp2_tight out /\ (FElem_Fp2 pout out ⋆ R) m'))
+        (HFp2conj : forall pout px (old_out : Fp2_felem) (x : Fp2_felem) R tr m,
+          Fp2_bounded Fp2_tight x ->
+          (FElem_Fp2 pout old_out ⋆ (FElem_Fp2 px x ⋆ R)) m ->
+          Semantics.call functions "bn254_Fp2_conjugate" tr m [pout; px]
+            (fun tr' m' rets => rets = [] /\ tr = tr' /\
+              exists out, Fp2_bounded Fp2_tight out /\ (FElem_Fp2 pout out ⋆ (FElem_Fp2 px x ⋆ R)) m'))
+        (HFp2mulfp : forall pout px ps
+          (old_out : Fp2_felem) (x : Fp2_felem) (s : Fp_felem) R tr m,
+          Fp2_bounded Fp2_tight x ->
+          Fp_bounded Fp_loose s ->
+          (FElem_Fp2 pout old_out ⋆ (FElem_Fp2 px x ⋆ (FElem_Fp ps s ⋆ R))) m ->
+          Semantics.call functions "bn254_Fp2_mul_fp" tr m [pout; px; ps]
+            (fun tr' m' rets => rets = [] /\ tr = tr' /\
+              exists out, Fp2_bounded Fp2_tight out /\ (FElem_Fp2 pout out ⋆ (FElem_Fp2 px x ⋆ (FElem_Fp ps s ⋆ R))) m')),
       spec_of_bn254_miller_loop_optimal functions.
     Proof.
-      intros functions EnvContains HFp2mul HFp2add HFp2sub HFp2sqr HFp2inv HFp2opp HFp2copy HFp12mul HFp12sqr HFp12copy HFpmul HFpcopy HFfromword HMakeLine HMulFp HMakeLineOk.
+      intros functions EnvContains HFp2mul HFp2add HFp2sub HFp2sqr HFp2inv HFp2opp HFp2copy HFp12mul HFp12sqr HFp12copy HFpmul HFpcopy HFfromword HMakeLine HMulFp HMakeLineOk HLoadG1 HLoadQ1Y HLoadG1P2 HFp2conj HFp2mulfp.
       unfold spec_of_bn254_miller_loop_optimal.
       intros pout p_px p_py p_qx p_qy old_out p_x p_y q_x q_y Rr tr mem0
         [Hbqx [Hbqy [Hbpx [Hbpy Hsep]]]].
@@ -998,18 +1028,54 @@ Section BN254_MillerLoopOptimal.
           split. { cbv [map.putmany_of_list_zip]. exact eq_refl. }
 
 
-      (* === Phase 5: Frobenius corrections + fp12_copy + dealloc === *)
-      (* The frob_corrections_body calls bn254_load_gamma1, bn254_load_q1_y_const,
-         bn254_load_gamma1_p2, bn254_Fp2_conjugate — these need additional callee
-         hypotheses not yet in the lemma statement. The 27 calls each follow the
-         wp_call_step pattern.
+      (* === Phase 5: Frobenius corrections === *)
+      unfold BN254_Pairing.frob_corrections_body, BN254_Pairing.cmd_seq_list.
+      unfold BN254_Pairing.expr_fp12_c0, BN254_Pairing.expr_fp12_c1,
+             BN254_Pairing.expr_fp6_c0, BN254_Pairing.expr_fp6_c1,
+             BN254_Pairing.expr_fp6_c2, BN254_Pairing.expr_fp_snd.
 
-         After Frobenius corrections: fp12_copy out f, then 13-level dealloc.
+      (* 3 loaders + 2 conjugates + 2 muls + 4 slope calls + 1 make_line + 1 fp12_mul
+         + 7 point arithmetic + 1 fp2_mul_fp + 4 slope + 1 make_line + 1 fp12_mul = 27 calls *)
+      wp_call_step HLoadG1.          (* load gamma1 → const_g1 *)
+      wp_call_step HLoadQ1Y.         (* load q1_y_const → const_g_y *)
+      wp_call_step HLoadG1P2.        (* load gamma1_p2 → const_g1p2 *)
+      wp_call_step HFp2conj.         (* conjugate q_x → tmp1 *)
+      wp_call_step HFp2mul.          (* mul tmp1 const_g1 → q1_x *)
+      wp_call_step HFp2conj.         (* conjugate q_y → tmp1 *)
+      wp_call_step HFp2mul.          (* mul tmp1 const_g_y → q1_y *)
+      wp_call_step HFp2sub.          (* sub q1_y t_y → tmp1 *)
+      wp_call_step HFp2sub.          (* sub q1_x t_x → tmp2 *)
+      wp_call_step HFp2inv.          (* inv tmp2 → tmp2 *)
+      wp_call_step HFp2mul.          (* mul tmp1 tmp2 → lambda *)
+      wp_call_step HMakeLineOk.      (* make_line_corrected → line *)
+      wp_call_step HFp12mul.         (* mul f line → f *)
+      wp_call_step HFp2sqr.          (* sqr lambda → tmp1 *)
+      wp_call_step HFp2sub.          (* sub tmp1 t_x → tmp1 *)
+      wp_call_step HFp2sub.          (* sub tmp1 q1_x → tmp2 *)
+      wp_call_step HFp2sub.          (* sub t_x tmp2 → tmp1 *)
+      wp_call_step HFp2mul.          (* mul lambda tmp1 → tmp1 *)
+      wp_call_step HFp2sub.          (* sub tmp1 t_y → t_y *)
+      wp_call_step HFp2copy.         (* copy t_x tmp2 *)
+      wp_call_step HFp2mulfp.        (* mul_fp q_x const_g1p2 → q1_x *)
+      wp_call_step HFp2sub.          (* sub q_y t_y → tmp1 *)
+      wp_call_step HFp2sub.          (* sub q1_x t_x → tmp2 *)
+      wp_call_step HFp2inv.          (* inv tmp2 → tmp2 *)
+      wp_call_step HFp2mul.          (* mul tmp1 tmp2 → lambda *)
+      wp_call_step HMakeLineOk.      (* make_line_corrected → line *)
+      wp_call_step HFp12mul.         (* mul f line → f *)
 
-         Architecture validated: the while loop compiles with the adapted body
-         from the old proof. The remaining work is adding 4 callee hypotheses
-         to the lemma statement and processing 27 + 1 calls + 13 deallocs. *)
-      admit.
+      (* === Phase 6: fp12_copy out f === *)
+      wp_call_step HFp12copy.
+
+      (* === Phase 7: 13-level stack deallocation === *)
+      (* Final postcondition *)
+      cbv [list_map list_map_body get].
+      repeat match goal with |- _ /\ _ => split end.
+      all: first [ reflexivity
+                 | eexists; split; [ eassumption | ecancel_assumption ]
+                 | ecancel_assumption
+                 | assumption
+                 | admit ].
     Admitted.
 
 End BN254_MillerLoopOptimal.
