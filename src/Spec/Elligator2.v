@@ -22,6 +22,8 @@ Module Elligator2.
   Section WithField.
     Context {F Feq Fzero Fone Fopp Fadd Fsub Fmul Finv Fdiv}
             {field:@Algebra.Hierarchy.field F Feq Fzero Fone Fopp Fadd Fsub Fmul Finv Fdiv}
+            {char_ge_3 : @Ring.char_ge F Feq Fzero Fone Fopp Fadd Fsub Fmul
+                           (BinNat.N.succ_pos BinNat.N.two)}
             {Feq_dec:Decidable.DecidableRel Feq}.
 
     Local Infix "=" := Feq : type_scope.
@@ -53,7 +55,10 @@ Module Elligator2.
             {sqrt_ratio_sq : forall u v,
                 let '(b, s) := sqrt_ratio u v in
                 if b then s * s * v = u
-                else s * s * v = i * u}.
+                else s * s * v = i * u}
+            (** Completeness: returns true when input is genuinely a square. *)
+            {sqrt_ratio_complete : forall u v s,
+                s * s * v = u -> @eq bool (fst (sqrt_ratio u v)) true}.
 
     (** * Forward Map: MAP(t) → (X : Y : Z : T)
 
@@ -206,8 +211,12 @@ Module Elligator2.
 
         Returns None if no valid preimage exists. *)
 
-    (** Additional axiom: sign function (returns true if "negative"). *)
-    Context {is_negative : F -> bool}.
+    (** Sign function: returns true if the field element is "negative"
+        (e.g., odd when serialized as a byte string). *)
+    Context {is_negative : F -> bool}
+            {is_negative_opp : forall x, x <> 0 ->
+                @eq bool (is_negative (Fopp x)) (negb (is_negative x))}
+            {is_negative_zero : @eq bool (is_negative 0) false}.
 
     Definition e_inv_positive (s : F) : option F :=
       let s2 := s * s in
@@ -268,23 +277,63 @@ Module Elligator2.
       let y := Y / Z in
       elligator2_inverse_primary y.
 
-    (** * Completeness theorem
+    (** * Completeness lemmas *)
 
-        For any t, t (or -t) appears among the preimages of
-        elligator2_forward(t).
+    (** Lemma 1: y-coordinate roundtrip.
+        If y = (1-s²)/(1+s²), then (1-y)/(1+y) = s².
+        This is immediate from field arithmetic (no curve equation needed). *)
+    Lemma y_s_roundtrip s
+          (Hs : 1 + s * s <> 0) :
+      (1 - (1 - s * s) / (1 + s * s)) / (1 + (1 - s * s) / (1 + s * s)) = s * s.
+    Proof. fsatz. Qed.
 
-        The proof strategy (from the Plan agent):
-        1. Unfold forward map, extract y = w2/w3 = (1-s²)/(1+s²)
-        2. Show (1-y)/(1+y) = s² (roundtrip via JacobiQuartic)
-        3. Show sqrt_ratio(s², 1) returns s
-        4. Show e_inv_positive(s) returns |t| (invert the Elligator algebra)
-        5. Conclude t ∈ elligator2_inverse(forward(t)) *)
+    (** Lemma 2: sqrt_ratio recovery.
+        sqrt_ratio(s², 1) returns (true, _) because s² is a perfect square. *)
+    Lemma sqrt_ratio_of_square s :
+      @eq bool (fst (sqrt_ratio (s * s) 1)) true.
+    Proof.
+      apply (sqrt_ratio_complete (s * s) 1 s).
+      (* Goal: s * s * 1 = s * s — field identity *)
+      fsatz.
+    Qed.
 
-    Theorem elligator2_inverse_complete :
-      forall t,
-        let '(X, Y, Z, T_ext) := elligator2_forward t in
-        True. (* Strengthened statement after inverse impl is validated *)
-    Proof. intros. destruct (elligator2_forward t) as [[[??]?]?]. exact I. Qed.
+    (** Lemma 2b: the value returned by sqrt_ratio(s², 1) satisfies v² = s². *)
+    Lemma sqrt_ratio_of_square_val s :
+      let '(_, v) := sqrt_ratio (s * s) 1 in
+      v * v = s * s.
+    Proof.
+      pose proof (sqrt_ratio_sq (s * s) 1) as H.
+      pose proof (sqrt_ratio_of_square s) as Htrue.
+      destruct (sqrt_ratio (s * s) 1) as [b v]. simpl in *.
+      rewrite Htrue in H. fsatz.
+    Qed.
+
+    (** * Completeness theorem (restricted to s_final ≠ 0)
+
+        For any t where the forward map produces a non-identity point,
+        t or -t appears among the preimages.
+
+        The full proof requires Lemma 3 (e_inv_recovers_t) which is
+        the core algebraic inversion — estimated 3-5 days of work.
+        We state the theorem with the correct type and defer the proof. *)
+
+    Theorem elligator2_inverse_complete t
+            (Hs : let ei := compute_intermediates t in
+                  el_s_final ei <> 0)
+            (Hw3 : let ei := compute_intermediates t in
+                   1 + el_s_final ei * el_s_final ei <> 0) :
+      let '(X, Y, Z, T_ext) := elligator2_forward t in
+      exists t', In t' (elligator2_inverse X Y Z T_ext) /\
+                 (t' = t \/ t' = Fopp t).
+    Proof.
+      (* Proof outline:
+         1. Unfold forward, extract y = w2*w1 / (w1*w3) = w2/w3 = (1-s²)/(1+s²)
+         2. Apply y_s_roundtrip: (1-y)/(1+y) = s²
+         3. Apply sqrt_ratio_of_square: sqrt_ratio(s², 1) returns true
+         4. Apply e_inv_recovers_t (TODO): e_inv_positive(s) = Some |t|
+         5. List membership *)
+    Admitted.
+
 
   End WithField.
 End Elligator2.
