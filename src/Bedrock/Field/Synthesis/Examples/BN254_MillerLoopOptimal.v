@@ -1068,14 +1068,63 @@ Section BN254_MillerLoopOptimal.
       wp_call_step HFp12copy.
 
       (* === Phase 7: 13-level stack deallocation === *)
+      (* Each level: extract FElem from sep, convert to anybytes, provide map.split *)
+      Local Ltac dealloc_fp2 :=
+        match goal with
+        | |- exists _ _, Memory.anybytes ?a _ _ /\ _ =>
+          eassert (_ : (_ ⋆ FElem_Fp2 a _) _) by ecancel_assumption;
+          match goal with H : (_ ⋆ FElem_Fp2 a _) _ |- _ =>
+            destruct H as [? [? [[? ?] [? ?]]]];
+            eexists _, _;
+            split; [eapply AbstractField.FElem_to_bytes; eassumption|];
+            split; [split; [eassumption | eassumption]|]
+          end
+        end.
+      Local Ltac dealloc_fp12 :=
+        match goal with
+        | |- exists _ _, Memory.anybytes ?a _ _ /\ _ =>
+          eassert (_ : (_ ⋆ FElem_Fp12 a _) _) by ecancel_assumption;
+          match goal with H : (_ ⋆ FElem_Fp12 a _) _ |- _ =>
+            destruct H as [? [? [[? ?] [? ?]]]];
+            eexists _, _;
+            split; [eapply AbstractField.FElem_to_bytes; eassumption|];
+            split; [split; [eassumption | eassumption]|]
+          end
+        end.
+      Local Ltac dealloc_u6p2 :=
+        match goal with
+        | |- exists _ _, Memory.anybytes ?a 8 _ /\ _ =>
+          eassert (_ : (_ ⋆ scalar a _) _) by ecancel_assumption;
+          match goal with H : (_ ⋆ scalar a _) _ |- _ =>
+            destruct H as [? [? [[? ?] [? ?]]]];
+            eexists _, _;
+            split; [eapply scalar_to_anybytes8; eassumption|];
+            split; [split; [eassumption | eassumption]|]
+          end
+        end.
+
+      (* 13 dealloc levels in reverse allocation order:
+         const_g1p2, const_g_y, const_g1, q1_y, q1_x (5 new Fp2)
+         u6p2 (8 bytes), line (Fp12), tmp2, tmp1, lambda, t_y, t_x (Fp2)
+         f (Fp12) *)
+      do 5 dealloc_fp2.     (* const_g1p2, const_g_y, const_g1, q1_y, q1_x *)
+      dealloc_u6p2.          (* u6p2 *)
+      dealloc_fp12.          (* line *)
+      do 5 dealloc_fp2.     (* tmp2, tmp1, lambda, t_y, t_x *)
+      dealloc_fp12.          (* f *)
+
       (* Final postcondition *)
       cbv [list_map list_map_body get].
-      repeat match goal with |- _ /\ _ => split end.
-      all: first [ reflexivity
-                 | eexists; split; [ eassumption | ecancel_assumption ]
-                 | ecancel_assumption
-                 | assumption
-                 | admit ].
-    Admitted.
+      split. { exact eq_refl. }
+      split. { exact eq_refl. }
+      eexists. split.
+      { (* Fp12_bounded Fp12_loose *)
+        pose proof (@DodecicFieldExtensionsSpecs.Fp12_field_representation_ok
+          _ _ _ _ bn254_pf_params bn254_Fp_rep bn254_Fp_rep_ok bn254_beta
+          bn254_xi_re bn254_xi_im fp12_prefix fp6_prefix fp2_prefix) as Hfp12_ok.
+        eapply (@AbstractField.relax_bounds _ _ _ _ _ _ _ Hfp12_ok).
+        eassumption. }
+      ecancel_assumption.
+    Qed.
 
 End BN254_MillerLoopOptimal.
