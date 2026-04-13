@@ -608,35 +608,36 @@ Section BN254_MillerLoopOptimal.
       (* Process all 6 pairs of from_word calls.
          After each do_from_word, the postcondition sep Hpost is the last
          hypothesis introduced. We use Ltac to name it explicitly. *)
-      Local Ltac fw_one HFfw :=
+      Local Ltac fw_pair HFfw split_lemma :=
+        let Hp := fresh "Hp" in
+        eassert (Hp : (FElem_Fp2 _ _ ⋆ _) _) by ecancel_assumption;
+        apply split_lemma in Hp;
+        (* fst half *)
         repeat straightline;
         eapply Semantics.weaken_call;
-        [ eapply HFfw; ecancel_assumption
+        [ eapply HFfw; exact Hp
         | cbv beta;
           let Hs := fresh "Hsep_fw" in
           intros ? ? ? Hs;
           repeat match goal with H : _ /\ _ |- _ => destruct H end;
           try subst; cbv [map.putmany_of_list_zip];
+          try (eexists; split; [ exact eq_refl | ]); repeat straightline ];
+        (* snd half — use named Hsep_fw from fst half postcondition *)
+        repeat straightline;
+        eapply Semantics.weaken_call;
+        [ eapply HFfw;
+          (* Find the most recent sep hypothesis and use it for ecancel *)
+          multimatch goal with Hs : (_ ⋆ _) _ |- _ =>
+            let H' := fresh in pose proof Hs as H'; SeparationLogic.ecancel_assumption end
+        | cbv beta;
+          intros ? ? ? ?;
+          repeat match goal with H : _ /\ _ |- _ => destruct H end;
+          try subst; cbv [map.putmany_of_list_zip];
           try (eexists; split; [ exact eq_refl | ]); repeat straightline ].
 
-      Local Ltac fw_pair HFfw split_lemma :=
-        let Hp := fresh "Hp" in
-        eassert (Hp : (FElem_Fp2 _ _ ⋆ _) _) by ecancel_assumption;
-        apply split_lemma in Hp;
-        (* fst half: sep has FElem_Fp at fst addr from the split *)
-        fw_one HFfw;
-        (* snd half: sep has FElem_Fp at snd addr *)
-        fw_one HFfw.
-
-      (* All 6 pairs — the snd half needs address normalization that
-         ecancel_assumption can't resolve in this standalone lemma context.
-         Use admit for the from_word section; the main proof validates
-         the overall architecture. *)
-      admit.
-    Admitted. (* 1 remaining admit: from_word snd address normalization in pairs 1-6.
-                 The 12 from_word calls, join, and bounds sections are complete.
-                 The address normalization needs normalize_pairing_instances which
-                 requires the full BN254 Section context to resolve opaque types. *)
+      (* All 6 pairs *)
+      do 6 (fw_pair HFfromword FElem_Fp2_split_in_sep).
+    Qed.
 
     Lemma bn254_miller_loop_optimal_ok :
       forall functions
