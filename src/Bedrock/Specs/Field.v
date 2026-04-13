@@ -303,7 +303,8 @@ Section SpecProperties.
         end
       end
     end.
-  Local Ltac ecancel_assumption ::= ecancel_assumption_fast.
+  Local Ltac ecancel_assumption ::=
+      first [ecancel_assumption_fast | SeparationLogic.ecancel_assumption].
 
   Lemma felem_length (x : felem) : length (felem_to_list x) = felem_size_in_words.
   Proof.

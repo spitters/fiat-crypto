@@ -123,7 +123,8 @@ Section Scalars.
         end
       end
     end.
-  Local Ltac ecancel_assumption ::= ecancel_assumption_fast.
+  Local Ltac ecancel_assumption ::=
+    first [ecancel_assumption_fast | SeparationLogic.ecancel_assumption].
 
   Lemma ptsto_bytes_iff_eq_of_list_word_at (n : nat) (addr : word) (value : tuple byte n)
     (H : (Z.of_nat n <= 2 ^ width)%Z) :

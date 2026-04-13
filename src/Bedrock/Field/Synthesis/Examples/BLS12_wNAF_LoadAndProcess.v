@@ -182,7 +182,8 @@ Section LoadAndProcess.
         end
       end
     end.
-  Local Ltac ecancel_assumption ::= ecancel_assumption_fast.
+  Local Ltac ecancel_assumption ::=
+      first [ecancel_assumption_fast | SeparationLogic.ecancel_assumption].
 
   (* ================================================================== *)
   (** ** Word-level computation of tab_off = idx * 3 * felem_size        *)

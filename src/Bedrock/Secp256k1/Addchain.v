@@ -133,7 +133,8 @@ Local Ltac ecancel_assumption_fast :=
       end
     end
   end.
-Local Ltac ecancel_assumption ::= ecancel_assumption_fast.
+Local Ltac ecancel_assumption ::=
+    first [ecancel_assumption_fast | SeparationLogic.ecancel_assumption].
 
 (* TODO: This could probably be automated *)
 
