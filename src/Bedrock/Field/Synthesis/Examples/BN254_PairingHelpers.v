@@ -676,6 +676,82 @@ Section BN254_PairingHelpers.
     Qed.
 
     (* ============================================================ *)
+    (* C2a: Frobenius correction loaders + Fp2_conjugate             *)
+    (* (needed by bn254_miller_loop_optimal callee hypotheses)       *)
+    (* ============================================================ *)
+
+    Lemma bn254_load_gamma1_ok :
+      forall functions
+        (EnvContains : map.get functions "bn254_load_gamma1" =
+          Some (snd bn254_load_gamma1)),
+      forall pout (old_out : Fp2_felem) Rr tr mem,
+        (FElem_Fp2 pout old_out ⋆ Rr) mem ->
+        WeakestPrecondition.call functions "bn254_load_gamma1" tr mem [pout]
+          (fun tr' mem' rets =>
+            rets = [] /\ tr = tr' /\
+            exists out,
+              Fp2_bounded Fp2_tight out /\
+              (FElem_Fp2 pout out ⋆ Rr) mem').
+    Proof.
+      intros functions EnvContains pout old_out Rr tr mem0 Hsep.
+      eapply start_func; [exact EnvContains | clear EnvContains].
+      cbv [WeakestPrecondition.func].
+      unfold bn254_load_gamma1. simpl snd. simpl fst. cbv match beta.
+      eexists. split. { exact eq_refl. }
+      solve_store_fp2_constant.
+    Qed.
+
+    Lemma bn254_load_q1_y_const_ok :
+      forall functions
+        (EnvContains : map.get functions "bn254_load_q1_y_const" =
+          Some (snd bn254_load_q1_y_const)),
+      forall pout (old_out : Fp2_felem) Rr tr mem,
+        (FElem_Fp2 pout old_out ⋆ Rr) mem ->
+        WeakestPrecondition.call functions "bn254_load_q1_y_const" tr mem [pout]
+          (fun tr' mem' rets =>
+            rets = [] /\ tr = tr' /\
+            exists out,
+              Fp2_bounded Fp2_tight out /\
+              (FElem_Fp2 pout out ⋆ Rr) mem').
+    Proof.
+      intros functions EnvContains pout old_out Rr tr mem0 Hsep.
+      eapply start_func; [exact EnvContains | clear EnvContains].
+      cbv [WeakestPrecondition.func].
+      unfold bn254_load_q1_y_const. simpl snd. simpl fst. cbv match beta.
+      eexists. split. { exact eq_refl. }
+      solve_store_fp2_constant.
+    Qed.
+
+    Lemma bn254_Fp2_conjugate_ok :
+      forall functions
+        (EnvContains : map.get functions "bn254_Fp2_conjugate" =
+          Some (snd bn254_Fp2_conjugate))
+        (HFpcopy : spec_of_Fp_felem_copy functions)
+        (HFpopp : spec_of_Fp_opp functions),
+      forall pout px (old_out : Fp2_felem) (x : Fp2_felem) Rr tr mem,
+        Fp2_bounded Fp2_tight x ->
+        (FElem_Fp2 pout old_out ⋆ (FElem_Fp2 px x ⋆ Rr)) mem ->
+        WeakestPrecondition.call functions "bn254_Fp2_conjugate" tr mem [pout; px]
+          (fun tr' mem' rets =>
+            rets = [] /\ tr = tr' /\
+            exists out,
+              Fp2_bounded Fp2_tight out /\
+              (FElem_Fp2 pout out ⋆ (FElem_Fp2 px x ⋆ Rr)) mem').
+    Proof.
+      intros functions EnvContains HFpcopy HFpopp
+        pout px old_out x Rr tr mem0 Hbx Hsep.
+      eapply start_func; [exact EnvContains | clear EnvContains].
+      cbv [WeakestPrecondition.func].
+      unfold bn254_Fp2_conjugate. simpl snd. simpl fst. cbv match beta.
+      eexists. split. { exact eq_refl. }
+      unfold BN254_Pairing.cmd_seq_list, BN254_Pairing.expr_fp_snd.
+      (* Body: fp_copy(out, x); fp_opp(out.snd, x.snd) *)
+      (* Two Fp-level calls on the Fp2 sub-components *)
+      admit. (* Requires Fp2 split + 2 Fp-level calls + Fp2 join.
+                Same pattern as make_line from_word pairs. *)
+    Admitted.
+
+    (* ============================================================ *)
     (* C2: bn254_make_line                                          *)
     (* ============================================================ *)
 
