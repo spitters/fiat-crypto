@@ -279,6 +279,49 @@ Module Elligator2.
 
     (** * Completeness lemmas *)
 
+    (** Lemma 3: e_inv_positive recovers |t| from the forward map's s.
+
+        In the was_square case: s²*D = Ns where
+          Ns = (i*t²+1)(1-d²), D = -(1+d*i*t²)(i*t²+d).
+
+        We show: the intermediate value inv_sq_y = i*(s⁴ - a²) in
+        e_inv_positive is a nonzero perfect square (times 1), so
+        sqrt_ratio(1, inv_sq_y) returns true.
+
+        Then the computed x equals ±t.
+
+        Strategy: Express everything in terms of t, d, i, s and the
+        constraint s²*D = Ns. Clear denominators and use fsatz. *)
+
+    (** Lemma 3 analysis: e_inv_positive recovery.
+
+        Symbolic computation shows that i*(s⁴ - a²) where
+        a = (1+s²)(d+1)/(d-1) does NOT simplify to a perfect square
+        for arbitrary s from the forward map's was_square case.
+
+        This means the PRIMARY coset path does not always yield a valid
+        inverse. The completeness of the Elligator2 inverse requires
+        the FULL 4-coset computation (all 4 ristretto representatives).
+
+        Specifically:
+          i*(s⁴-a²) = (d+1)² · P · Q / (D² · (d-1)²)
+        where P, Q are irreducible polynomials in t, d, i that do NOT
+        multiply to a perfect square. The correct preimage comes from
+        one of the other 3 coset representatives, which produces a
+        DIFFERENT s value for which i*(s⁴-a²) IS a square.
+
+        This is consistent with the go-ristretto implementation, which
+        computes all 8 candidates and returns a bitmask of valid ones.
+
+        To prove completeness, we need to:
+        1. Extend elligator2_inverse to compute all 4 coset y-values
+        2. Show that for at least one coset representative, e_inv_positive
+           succeeds and returns |t|
+
+        This requires the 4-torsion coset rotation formulas and is
+        substantially more complex than the primary-path approach.
+        Estimated: 3-4 weeks for the full proof. *)
+
     (** Lemma 1: y-coordinate roundtrip.
         If y = (1-s²)/(1+s²), then (1-y)/(1+y) = s².
         This is immediate from field arithmetic (no curve equation needed). *)
