@@ -18,7 +18,7 @@
     Phase S4 of the Signal verification plan.
 *)
 
-Require Import Crypto.Algebra.Hierarchy.
+Require Import Crypto.Algebra.Hierarchy Crypto.Algebra.Field.
 Require Import Crypto.Util.Decidable.
 
 Module JQ.
@@ -49,22 +49,14 @@ Module JQ.
 
     (** Identity: (0, 1) is always on the curve. *)
     Lemma on_curve_identity : on_curve 0 1.
-    Proof.
-      unfold on_curve.
-      (* t² = 1, e·0 + 2a·0 + 1 = 1 *)
-      admit.
-    Admitted.
+    Proof. unfold on_curve. fsatz. Qed.
 
     Program Definition identity : point := (0, 1).
     Next Obligation. exact on_curve_identity. Qed.
 
     (** Negation: (s, t) ↦ (-s, t) *)
     Lemma on_curve_opp s t : on_curve s t -> on_curve (Fopp s) t.
-    Proof.
-      unfold on_curve. intros H.
-      (* (-s)^2 = s^2, (-s)^4 = s^4 *)
-      admit.
-    Admitted.
+    Proof. unfold on_curve. intros H. fsatz. Qed.
 
     (** * 4-isogeny: Jacobi quartic ↔ twisted Edwards
 

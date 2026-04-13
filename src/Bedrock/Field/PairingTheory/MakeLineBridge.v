@@ -45,6 +45,17 @@ Section MakeLineBridge.
       Proof strategy: show both sides are F.to_Z of the same F value
       using [F.eq_to_Z_iff] + [F.of_Z_to_Z] + [F.to_Z_of_Z].
       The F-level equality is trivial by computation. *)
+  (** Helper: F.to_Z commutes with sub via add+opp. *)
+  Local Lemma to_Z_sub (a b : Fp) :
+    F.to_Z (F.sub a b) = (F.to_Z a - F.to_Z b) mod p.
+  Proof.
+    unfold F.sub. rewrite F.to_Z_add, F.to_Z_opp.
+    rewrite Zplus_mod, Zmod_mod, <- Zplus_mod. reflexivity.
+  Qed.
+
+  (** Lean proof: expand each side to Z mod p using to_Z lemmas directly,
+      avoiding the massive unfold+rewrite chain through F.of_Z that caused
+      6GB term explosion. Each component is proved independently. *)
   Lemma make_line_c1c1 (lam Tx Ty : Fp * Fp) :
     let lam_z := fp2_to_Z M_pos lam in
     let Tx_z := fp2_to_Z M_pos Tx in
@@ -54,27 +65,15 @@ Section MakeLineBridge.
        F.sub (F.add (F.mul (fst lam) (snd Tx)) (F.mul (snd lam) (fst Tx))) (snd Ty)) =
     zfp2_sub p (zfp2_mul p lam_z Tx_z) Ty_z.
   Proof.
-    unfold fp2_to_Z, zfp2_sub, zfp2_mul, fp_to_Z, zfp_sub, zfp_add, zfp_mul.
-    simpl fst. simpl snd.
+    unfold fp2_to_Z, fp_to_Z; simpl fst; simpl snd.
+    unfold zfp2_sub, zfp2_mul; simpl fst; simpl snd.
     f_equal.
-    - (* Both sides equal (a*b - c*d - e) mod p, just expressed differently.
-         Use transitivity through F.to_Z(F.of_Z(RHS)). *)
-      set (A := F.to_Z (fst lam) * F.to_Z (fst Tx)).
-      set (B := F.to_Z (snd lam) * F.to_Z (snd Tx)).
-      set (E := F.to_Z (fst Ty)).
-      transitivity (F.to_Z (F.of_Z M_pos ((A mod Z.pos M_pos - B mod Z.pos M_pos) mod Z.pos M_pos - E))).
-      + apply F.eq_to_Z_iff.
-        rewrite !F.of_Z_mod, <- !F.of_Z_mul, <- !F.of_Z_sub, !F.of_Z_to_Z.
-        reflexivity.
-      + apply F.to_Z_of_Z.
-    - set (A := F.to_Z (fst lam) * F.to_Z (snd Tx)).
-      set (B := F.to_Z (snd lam) * F.to_Z (fst Tx)).
-      set (E := F.to_Z (snd Ty)).
-      transitivity (F.to_Z (F.of_Z M_pos ((A mod Z.pos M_pos + B mod Z.pos M_pos) mod Z.pos M_pos - E))).
-      + apply F.eq_to_Z_iff.
-        rewrite !F.of_Z_mod, <- !F.of_Z_mul, <- !F.of_Z_add, <- !F.of_Z_sub, !F.of_Z_to_Z.
-        reflexivity.
-      + apply F.to_Z_of_Z.
+    - (* fst: rewrite LHS to mod-p form, unfold RHS, reflexivity *)
+      rewrite !to_Z_sub, !F.to_Z_mul.
+      unfold zfp_sub, zfp_mul. reflexivity.
+    - (* snd: same strategy *)
+      rewrite to_Z_sub, F.to_Z_add, !F.to_Z_mul.
+      unfold zfp_sub, zfp_add, zfp_mul. reflexivity.
   Qed.
 
 End MakeLineBridge.
