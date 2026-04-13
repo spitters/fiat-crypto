@@ -87,7 +87,8 @@ Section LoadStoreList.
         end
       end
     end.
-  Local Ltac ecancel_assumption ::= ecancel_assumption_fast.
+  Local Ltac ecancel_assumption ::=
+    first [ecancel_assumption_fast | SeparationLogic.ecancel_assumption].
 
   (* states that access sizes are within machine integer width *)
   Fixpoint base_access_sizes_good {t}
