@@ -1,13 +1,19 @@
 (** * Full BN254 Jasmin extraction.
  *
- *    **STATUS (2026-04-14): DEPRECATED — text-based extraction.**
- *    This driver emits [.jazz] source via [pp_module] (the unverified
- *    pretty-printer) and requires manual post-processing to feed
- *    jasminc.  The verified replacement is
- *    [ExtractBN254FullJasminAST.v], which uses
- *    [JasminBridgeReal.to_jasmin_cmd] to translate directly to
- *    Jasmin's [cmd] AST and feeds the verified [compile_prog_to_asm]
- *    via the OCaml driver.  See [feedback_tojasmin_ast_path.md].
+ *    **STATUS (2026-04-14): TEXT PRETTY-PRINTER OUTPUT IS DEPRECATED.**
+ *    The [bn254_full_jasmin] AST list this driver builds is still
+ *    consumed by the verified AST pipeline, but the [pp_module] /
+ *    [.jazz]-text output it emits is unverified and superseded.
+ *    Verified path (parallel to BLS12 ast2ast_main.ml):
+ *      - [bn254_full_jasmin] (this file)             — function-list AST
+ *      - [bridge_simple_v2.ml]                       — extracted JasminBridgeReal
+ *      - [bn254_ast2ast_main.ml] + [build_bn254_ast2ast.sh]
+ *                                                    — 30-line OCaml glue
+ *    A direct AST driver inside fiat-crypto cannot be written: combining
+ *    [JasminBridgeReal] with any [bn254_prime] importer triggers a
+ *    universe inconsistency on [Morphisms.Proper] (see
+ *    [project_unipoly_rebuild.md]).  Hence the two-extraction +
+ *    Obj.magic-cast pattern.  See [feedback_tojasmin_ast_path.md].
  *
  *    Combines:
  *      - base Fp ops    (bn254_add/sub/mul/square/select_znz/felem_copy)
