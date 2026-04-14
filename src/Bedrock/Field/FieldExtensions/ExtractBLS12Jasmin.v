@@ -1,6 +1,12 @@
 (** * OCaml extraction of the BLS12-381 pairing function list together
  *    with [to_jasmin_sized] and the flatten pass.
  *
+ *    **STATUS (2026-04-14): DEPRECATED — text-based extraction.**
+ *    The verified replacement is [ExtractBLS12JasminAST.v], which
+ *    uses [JasminBridgeReal.to_jasmin_cmd] (AST → AST) instead of
+ *    the unverified [pp_module] pretty-printer.  See
+ *    [feedback_tojasmin_ast_path.md].
+ *
  *    This file deliberately AVOIDS [Eval vm_compute in c_module ...] —
  *    that idiom in BLS12_Extract.v / BLS24_509_Extract.v hits a stack
  *    overflow because of the O(n²) string concatenation in the
@@ -108,7 +114,7 @@ Global Set Warnings Append "-extraction-opaque-accessed".
 
     We also extract [pp_module] so the driver only has to do a final
     pretty-print + [string] -> [Bytes]. *)
-Extraction "src/Bedrock/Field/FieldExtensions/bls12_jasmin_extracted"
+Extraction "bls12_jasmin_extracted"
   bls12_all_jasmin bls12_optimized_jasmin
   bls12_field_size
   pp_func pp_module.

@@ -1,5 +1,11 @@
 (** * BN254 Jasmin extraction — base Fp only (4 u64 limbs).
- *    Tests whether 4-limb mul/square fits in jasminc's 16 registers. *)
+ *    Tests whether 4-limb mul/square fits in jasminc's 16 registers.
+ *
+ *    **STATUS (2026-04-14): DEPRECATED — text-based extraction.**
+ *    Uses [pp_module] / [to_jasmin_sized] (the unverified text path).
+ *    The verified BN254 extraction lives in [ExtractBN254FullJasminAST.v]
+ *    and routes via [JasminBridgeReal.to_jasmin_cmd] (AST → AST).
+ *    See [feedback_tojasmin_ast_path.md]. *)
 
 From Stdlib Require Export Extraction.
 From Stdlib Require Export ExtrOcamlBasic.
@@ -36,5 +42,5 @@ Definition bn254_all_jasmin : list jasmin_func :=
 Extraction Language OCaml.
 Global Set Warnings Append "-extraction-opaque-accessed".
 
-Extraction "src/Bedrock/Field/FieldExtensions/bn254_jasmin_extracted"
+Extraction "bn254_jasmin_extracted"
   bn254_all_jasmin bn254_field_size pp_func pp_module.

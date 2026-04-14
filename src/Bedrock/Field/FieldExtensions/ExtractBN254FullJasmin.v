@@ -1,5 +1,14 @@
 (** * Full BN254 Jasmin extraction.
  *
+ *    **STATUS (2026-04-14): DEPRECATED — text-based extraction.**
+ *    This driver emits [.jazz] source via [pp_module] (the unverified
+ *    pretty-printer) and requires manual post-processing to feed
+ *    jasminc.  The verified replacement is
+ *    [ExtractBN254FullJasminAST.v], which uses
+ *    [JasminBridgeReal.to_jasmin_cmd] to translate directly to
+ *    Jasmin's [cmd] AST and feeds the verified [compile_prog_to_asm]
+ *    via the OCaml driver.  See [feedback_tojasmin_ast_path.md].
+ *
  *    Combines:
  *      - base Fp ops    (bn254_add/sub/mul/square/select_znz/felem_copy)
  *      - base Fp2 ops   (Fp2_add/sub/mul/square/inv/felem_copy/zero/one)
@@ -80,7 +89,7 @@ Definition bn254_full_jasmin : list jasmin_func :=
 Extraction Language OCaml.
 Global Set Warnings Append "-extraction-opaque-accessed".
 
-Extraction "src/Bedrock/Field/FieldExtensions/bn254_full_jasmin_extracted"
+Extraction "bn254_full_jasmin_extracted"
   bn254_full_jasmin
   bn254_full_field_size
   pp_func pp_module.
