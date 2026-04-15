@@ -120,21 +120,34 @@ Section FProjBridge.
   Qed.
 
   (** [proj_affine_rel] at the Z-level factors through [fp2z_to_F].
-      The Z-level equation [zfp2_mul Tx (zfp2_sqr TZ) = TX] lifts to
-      an F-level equation by applying [fp2z_to_F] to both sides and
-      using [zfp2_mul_to_F].  Concretely:
-        [fp2z_to_F (zfp2_mul Tx (zfp2_sqr TZ)) = fp2z_to_F TX]
-      decomposes via the homomorphism into an F-level multiplication
-      equation.  This is the key step to connect [FProjAlgebra]'s
-      preservation theorems to the [zproj_*] admits in MillerEquiv.
+      Applying [fp2z_to_F] to both sides of
+      [zfp2_mul Tx (zfp2_sqr TZ) = TX] and using the homomorphism
+      lemmas [zfp2_mul_to_F] / [zfp2_sqr_to_F] gives the F-level
+      equation, which is what [FProjAlgebra] needs. *)
 
-      The general lift theorem is ~50 LoC of case analysis on the
-      component structure; kept as a sketch here.  The plumbing:
-      given [zfp2_mul Tx (zfp2_sqr TZ) = TX] and canonicity, apply
-      [f_equal fp2z_to_F] to get [fp2z_to_F (zfp2_mul ...) =
-      fp2z_to_F TX].  Unfold the LHS with [zfp2_mul_to_F] and
-      [zfp2_sqr_to_F].  The RHS is [(F.of_Z q TX.0, F.of_Z q TX.1)].
-      Pair-equality componentwise.  Result: the F-level invariant
-      needed by [FProjAlgebra]. *)
+  Lemma proj_invariant_to_F (Tx TZ TX : Fp2_Z) :
+    zfp2_mul (Z.pos q) Tx (zfp2_sqr (Z.pos q) TZ) = TX ->
+    let '(tx_r, tx_i) := fp2z_to_F Tx in
+    let '(tz_r, tz_i) := fp2z_to_F TZ in
+    let '(TX_r, TX_i) := fp2z_to_F TX in
+    let tz2_r := (tz_r * tz_r - tz_i * tz_i)%F in
+    let tz2_i := (tz_r * tz_i + tz_i * tz_r)%F in
+    (tx_r * tz2_r - tx_i * tz2_i = TX_r)%F
+    /\ (tx_r * tz2_i + tx_i * tz2_r = TX_i)%F.
+  Proof.
+    intro H.
+    (* Apply fp2z_to_F to both sides of H. *)
+    assert (HF : fp2z_to_F (zfp2_mul (Z.pos q) Tx (zfp2_sqr (Z.pos q) TZ))
+                 = fp2z_to_F TX) by (rewrite H; reflexivity).
+    rewrite zfp2_mul_to_F in HF.
+    rewrite zfp2_sqr_to_F in HF.
+    (* HF is now a pair equation. *)
+    destruct (fp2z_to_F Tx) as [a b] eqn:Htx.
+    destruct (fp2z_to_F TZ) as [c d] eqn:Htz.
+    destruct (fp2z_to_F TX) as [e g] eqn:HtX.
+    cbn in HF.
+    injection HF as HFr HFi.
+    split; assumption.
+  Qed.
 
 End FProjBridge.
