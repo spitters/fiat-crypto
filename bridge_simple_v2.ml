@@ -596,32 +596,34 @@ module Z =
                  | _ -> false)
  end
 
-type int (* AXIOM TO BE REALIZED *)
+(* PATCH (2026-04-15): Uint63 axioms realized via jasmin.uint63-native,
+   which implements [type t = int].  See BRIDGE_SIMPLE_V2_README.md for
+   the equivalent Extract Constant directives that would produce these
+   inline at re-extraction time.  The Uint63 [.mli] seals [t], so we go
+   through Obj.magic for the bit ops that aren't in the exposed API. *)
+type int = Uint63.t
 
 (** val lsl0 : int -> int -> int **)
 
-let lsl0 =
-  failwith "AXIOM TO BE REALIZED (Corelib.Numbers.Cyclic.Int63.PrimInt63.lsl)"
+let lsl0 : int -> int -> int = Obj.magic (Stdlib.(lsl) : Stdlib.Int.t -> Stdlib.Int.t -> Stdlib.Int.t)
 
 (** val lor0 : int -> int -> int **)
 
-let lor0 =
-  failwith "AXIOM TO BE REALIZED (Corelib.Numbers.Cyclic.Int63.PrimInt63.lor)"
+let lor0 : int -> int -> int = Obj.magic (Stdlib.(lor) : Stdlib.Int.t -> Stdlib.Int.t -> Stdlib.Int.t)
 
 (** val sub0 : int -> int -> int **)
 
-let sub0 =
-  failwith "AXIOM TO BE REALIZED (Corelib.Numbers.Cyclic.Int63.PrimInt63.sub)"
+let sub0 : int -> int -> int = Obj.magic (Stdlib.(-) : Stdlib.Int.t -> Stdlib.Int.t -> Stdlib.Int.t)
 
 (** val eqb0 : int -> int -> bool **)
 
-let eqb0 =
-  failwith "AXIOM TO BE REALIZED (Corelib.Numbers.Cyclic.Int63.PrimInt63.eqb)"
+let eqb0 : int -> int -> bool = Uint63.equal
 
 (** val compares : int -> int -> comparison **)
 
-let compares =
-  failwith "AXIOM TO BE REALIZED (Corelib.Numbers.Cyclic.Int63.PrimInt63.compares)"
+let compares (a : int) (b : int) : comparison =
+  let c = Uint63.compares a b in
+  if c = 0 then Eq else if c < 0 then Lt else Gt
 
 (** val iffP : bool -> reflect -> reflect **)
 
@@ -4276,13 +4278,14 @@ let string_to_ident s =
 
 (** val int_to_ident : int -> Ident.ident **)
 
-let int_to_ident =
-  failwith "AXIOM TO BE REALIZED (Crypto.Bedrock.Field.FieldExtensions.JasminBridgeReal.int_to_ident)"
+(* PATCH (2026-04-15): identity cast. The Coq axioms exist only because
+   Cident.t is sealed in Jasmin's Rocq library; at runtime on the OCaml
+   side the two types share the same representation. *)
+let int_to_ident : int -> Ident.ident = Obj.magic
 
 (** val int_to_funname : int -> funname **)
 
-let int_to_funname =
-  failwith "AXIOM TO BE REALIZED (Crypto.Bedrock.Field.FieldExtensions.JasminBridgeReal.int_to_funname)"
+let int_to_funname : int -> funname = Obj.magic
 
 (** val mk_var_from_string : char list -> var_i **)
 

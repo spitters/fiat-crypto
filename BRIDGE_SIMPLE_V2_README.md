@@ -21,21 +21,28 @@ structurally-identical `jasmin_cmd` type (the ASTs are defined once in
 
 Build scripts: `src/Bedrock/Field/FieldExtensions/build_*_ast2ast.sh`.
 
-## Known runtime limitation
+## Runtime status (2026-04-15)
 
-The file has **8 unrealized Coq axioms** that raise `Failure "AXIOM TO
-BE REALIZED ..."` at runtime:
+**Runtime WORKS** — the file has been patched to realize the 8 Coq
+axioms via OCaml primitives (`jasmin.uint63-native` for `Uint63.t`,
+`Obj.magic` identity casts for the sealed `Cident.t`-style ones).  See
+the `PATCH (2026-04-15)` comment blocks in the file.  Sample output:
 
-- 5 Uint63 primitives (`lsl`, `lor`, `sub`, `eqb`, `compares`)
-- `JasminBridgeReal.int_to_ident`
-- `JasminBridgeReal.int_to_funname`
-- The abstract `type int` itself
+```
+$ ./bn254_ast2ast_main
+[bn254-ast2ast] 56 functions
+  bn254_mul                      -> 813 Jasmin instrs
+  bn254_miller_loop              -> 19 Jasmin instrs
+  bn254_pairing_dsd              -> 5 Jasmin instrs
+  ...
+$ ./bls377_ast2ast_main
+[bls377-ast2ast] 6 functions
+  bls377_mul                     -> 1913 Jasmin instrs
+  ...
+```
 
-Compile-time wiring (type-checking the `Obj.magic` casts + linking
-against `jasmin.uint63-native`) is verified end-to-end.  Runtime
-execution — which would print per-function Jasmin instruction counts —
-is pending a re-extraction with `Extract Constant` / `Extract Inductive`
-directives for the eight axioms.
+The patch is a stop-gap over the original Coq extraction: the cleaner
+fix is to re-extract `bridge_simple_v2.ml` with the directives below.
 
 ## How it was produced
 
