@@ -83,6 +83,47 @@ Proof.
   apply zfp2_mul_one_r; [lia | split; simpl; lia].
 Qed.
 
+(** --- Canonicity is preserved by all [zfp*] operations.
+    Crucial for the simulation argument: if the Miller loop starts
+    in canonical form, every intermediate value stays canonical, so
+    the structural-equality [proj_affine_rel] is well-defined. *)
+
+Lemma zfp_mul_canonical p : forall x y, 0 < p -> 0 <= zfp_mul p x y < p.
+Proof. intros. unfold zfp_mul. apply Z.mod_pos_bound; lia. Qed.
+
+Lemma zfp_add_canonical p : forall x y, 0 < p -> 0 <= zfp_add p x y < p.
+Proof. intros. unfold zfp_add. apply Z.mod_pos_bound; lia. Qed.
+
+Lemma zfp_sub_canonical p : forall x y, 0 < p -> 0 <= zfp_sub p x y < p.
+Proof. intros. unfold zfp_sub. apply Z.mod_pos_bound; lia. Qed.
+
+Lemma zfp2_mul_canonical p : forall x y, 0 < p ->
+  fp2_canonical p (zfp2_mul p x y).
+Proof.
+  intros x y Hp. unfold zfp2_mul, fp2_canonical. cbn [fst snd].
+  split.
+  - apply zfp_sub_canonical; exact Hp.
+  - apply zfp_add_canonical; exact Hp.
+Qed.
+
+Lemma zfp2_sqr_canonical p : forall x, 0 < p ->
+  fp2_canonical p (zfp2_sqr p x).
+Proof. intros. apply zfp2_mul_canonical; assumption. Qed.
+
+Lemma zfp2_add_canonical p : forall x y, 0 < p ->
+  fp2_canonical p (zfp2_add p x y).
+Proof.
+  intros x y Hp. unfold zfp2_add, fp2_canonical. cbn [fst snd].
+  split; apply zfp_add_canonical; exact Hp.
+Qed.
+
+Lemma zfp2_sub_canonical p : forall x y, 0 < p ->
+  fp2_canonical p (zfp2_sub p x y).
+Proof.
+  intros x y Hp. unfold zfp2_sub, fp2_canonical. cbn [fst snd].
+  split; apply zfp_sub_canonical; exact Hp.
+Qed.
+
 (** The main deliverable: pointwise, canonicity-aware form of
     [zproj_initial_rel].  Directly witnesses the dehomogenisation
     invariant [Tx * TZ^2 = TX /\ Ty * TZ^3 = TY] for the loop's
