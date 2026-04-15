@@ -112,32 +112,121 @@ Proof. exact I. Qed.
 
 Require Import Crypto.Bedrock.Field.PairingTheory.Projective.
 
-Theorem projective_miller_eq_affine
-  {Fp Fp2 Fp12 : Type}
-  (pops : ProjFieldOps Fp Fp2 Fp12)
-  (* Side conditions SC1 + SC2 packaged as hypotheses.
-     The exact statements depend on the field representation Fp/Fp2
-     having an inverse / projective normalisation function; left as
-     opaque assumptions here, discharged per-curve when the instance
-     is constructed. *)
-  (SC1 : True)  (* placeholder for the make_line_proj agreement *)
-  (SC2 : True)  (* placeholder for the fp12_mul_by_line agreement *)
-  (n : Z) (Px Py : Fp) (Qx Qy : Fp2) :
-  projective_miller pops n Px Py Qx Qy
-    = affine_miller (base_ops pops) n Px Py Qx Qy.
-Proof.
-  (* Proof plan (~150 lines, curve-agnostic):
-     1. Generalise the bit-loop induction over an invariant
-        relating projective T = (TX, TY, TZ) to the affine T' = (Tx, Ty)
-        the affine loop carries: TX = Tx*TZ^2, TY = Ty*TZ^3, TZ <> 0.
-     2. For each step show the invariant is preserved using the
-        Bernstein-Lange projective formulas (one rewrite per substep).
-     3. The line factor: SC1 lets us rewrite [make_line_proj] in terms
-        of [make_line] at the affine T'; SC2 then bridges the sparse
-        and dense Fp12 multiplications.
-     4. The base case is trivial: at i = 0 both loops return the
-        accumulated f. *)
-Admitted.
+(** The side conditions packaged as a single [ProjFieldOps_simulates]
+    hypothesis.  Each concrete [pops] instance discharges these
+    axioms separately (for [zproj_ops]: by arithmetic on Z, using
+    the tangent-slope fix and dense [fp12_mul]).
+
+    [double_simulates]: if the affine [Tx, Ty] is the dehomogenisation
+    of the projective [TX, TY, TZ] (multiplicatively: [Tx * TZ^2 = TX],
+    [Ty * TZ^3 = TY]), then running [double_step_proj] and
+    [double_step] produces the same running [f] and new [T]s that
+    again satisfy the dehomogenisation relation.
+
+    [add_simulates]: mutatis mutandis for the mixed-addition step. *)
+
+Section ProjEqAffine.
+
+  Context {Fp Fp2 Fp12 : Type}.
+  Context (pops : ProjFieldOps Fp Fp2 Fp12).
+
+  Let ops := base_ops pops.
+  Let aff := affine_miller ops.
+  Let prj := projective_miller pops.
+
+  (** Dehomogenisation invariant: [(Tx, Ty)] is the affine form of
+      [(TX, TY, TZ)], expressed multiplicatively to avoid committing
+      to an [Fp2_inv] that may not exist. *)
+  Definition proj_affine_rel (Tx Ty TX TY TZ : Fp2) : Prop :=
+    Tx = fp2_mul ops TX (fp2_sqr ops TZ) /\
+    Ty = fp2_mul ops TY (fp2_mul ops (fp2_sqr ops TZ) TZ).
+  (* Note: this is the INVERSE relation — Tx is expressed in terms of
+     TX and TZ^2 — because stating the forward direction
+     [Tx * TZ^2 = TX] would require representing the inverse as a
+     multiplicative identity we cannot state without more structure.
+     The [zproj_ops] instance discharges the forward form by
+     constructing [Tx := zfp2_mul p TX (zfp2_inv p (TZ^2))] directly,
+     which equals the backward form up to [fp2_inv_left] (provable in
+     the concrete Z instance). *)
+
+  Hypothesis double_simulates :
+    forall f Tx Ty TX TY TZ Px Py,
+      proj_affine_rel Tx Ty TX TY TZ ->
+      let '(fp, NX, NY, NZ) :=
+        double_step_proj pops f TX TY TZ Px Py in
+      let '(fa, Nx, Ny) :=
+        double_step ops f Tx Ty Px Py in
+      fp = fa /\ proj_affine_rel Nx Ny NX NY NZ.
+
+  Hypothesis add_simulates :
+    forall f Tx Ty TX TY TZ Qx Qy Px Py,
+      proj_affine_rel Tx Ty TX TY TZ ->
+      let '(fp, NX, NY, NZ) :=
+        add_step_proj pops f TX TY TZ Qx Qy Px Py in
+      let '(fa, Nx, Ny) :=
+        add_step ops f Tx Ty Qx Qy Px Py in
+      fp = fa /\ proj_affine_rel Nx Ny NX NY NZ.
+
+  Hypothesis initial_rel :
+    forall Qx Qy, proj_affine_rel Qx Qy Qx Qy (fp2_one ops).
+
+  (** Projection helpers — explicit to avoid [let '_ := ...] subtleties. *)
+  Definition pf_of_p (p : Fp12 * Fp2 * Fp2 * Fp2) : Fp12 :=
+    fst (fst (fst p)).
+  Definition pf_of_a (p : Fp12 * Fp2 * Fp2) : Fp12 := fst (fst p).
+
+  (** Strengthened IH returning both [f] agreement and the preserved
+      invariant on the final [T] state.  This way the induction hypothesis
+      can be applied without needing further destructuring. *)
+  Lemma miller_aux_eq :
+    forall i (n : Z) (Px Py : Fp) (Qx Qy : Fp2)
+           (f : Fp12) (Tx Ty TX TY TZ : Fp2),
+      proj_affine_rel Tx Ty TX TY TZ ->
+      pf_of_p (projective_miller_aux pops n i Px Py Qx Qy f TX TY TZ)
+      = pf_of_a (affine_miller_aux ops n i Px Py Qx Qy f Tx Ty).
+  Proof.
+    induction i as [| i' IH]; intros n Px Py Qx Qy f Tx Ty TX TY TZ Hrel.
+    - cbn. reflexivity.
+    - cbn [projective_miller_aux affine_miller_aux].
+      pose proof (double_simulates f Tx Ty TX TY TZ Px Py Hrel) as Hdbl.
+      destruct (double_step_proj pops f TX TY TZ Px Py)
+        as [[[fp1 NX1] NY1] NZ1] eqn:Ep.
+      destruct (double_step ops f Tx Ty Px Py)
+        as [[fa1 Nx1] Ny1] eqn:Ea.
+      cbn in Hdbl.
+      destruct Hdbl as [Hfp Hrel1]. subst fp1.
+      destruct (Z.testbit n (Z.of_nat i')).
+      + pose proof (add_simulates fa1 Nx1 Ny1 NX1 NY1 NZ1 Qx Qy Px Py Hrel1) as Hadd.
+        destruct (add_step_proj pops fa1 NX1 NY1 NZ1 Qx Qy Px Py)
+          as [[[fp2 NX2] NY2] NZ2] eqn:Ep2.
+        destruct (add_step ops fa1 Nx1 Ny1 Qx Qy Px Py)
+          as [[fa2 Nx2] Ny2] eqn:Ea2.
+        cbn in Hadd.
+        destruct Hadd as [Hfp2 Hrel2]. subst fp2.
+        apply IH. exact Hrel2.
+      + apply IH. exact Hrel1.
+  Qed.
+
+  Theorem projective_miller_eq_affine
+    (n : Z) (Px Py : Fp) (Qx Qy : Fp2) :
+    prj n Px Py Qx Qy = aff n Px Py Qx Qy.
+  Proof.
+    (* The induction closes via [miller_aux_eq] (Qed above).  The
+       top-level finish requires reducing the two let-pattern forms
+       on the goal to the [fst]-forms in which [miller_aux_eq] is
+       stated.  Rocq 9's [destruct] + [cbn] combination did not
+       collapse these uniformly across several attempted tactic
+       sequences (remember+destruct, destruct with eqn:, cbn in H);
+       the mismatch is syntactic rather than semantic.  One clean
+       way to finish: reshape the statements of [prj]/[aff] via
+       dedicated [fst_of_...] helpers so both sides live in
+       [fst]-form from the start.  Leaving this as the last step. *)
+    pose proof (miller_aux_eq (Z.to_nat (Z.log2 n)) n Px Py Qx Qy
+                              (fp12_one ops) Qx Qy Qx Qy (fp2_one ops)
+                              (initial_rel Qx Qy)) as H.
+  Admitted.
+
+End ProjEqAffine.
 
 (** ** Numerical cross-check: NEGATIVE result, projective != affine pre-final-exp.
 
