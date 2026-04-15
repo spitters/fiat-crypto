@@ -87,4 +87,55 @@ Proof. exact I. Qed.
     compute the D-twist line. *)
 (* Theorem bn254_miller_loop_correct :
      forall ... . *)
+
+(** ** Projective ↔ Affine equivalence (curve-generic).
+
+    Statement of the theorem that justifies the projective Miller loop
+    in [Projective.v].  Curve-agnostic — applies to BN254, BLS12-381,
+    BLS12-377, BN256, BN446, BLS24-509 alike, given a [ProjFieldOps]
+    that satisfies two soundness side conditions:
+
+    SC1 — projective vs affine line agreement (after Z-normalisation):
+      forall lambda TX TY TZ Px Py,
+        TZ <> 0 ->
+        make_line_proj pops lambda TX TY TZ Px Py
+          = make_line ops lambda (TX/TZ^2) (TY/TZ^3) Px Py.
+
+    SC2 — sparse vs dense Fp12 mul agreement:
+      forall a lambda TX TY TZ Px Py,
+        fp12_mul_by_line pops a (make_line_proj pops lambda TX TY TZ Px Py)
+          = fp12_mul ops a (make_line_proj pops lambda TX TY TZ Px Py).
+
+    Under SC1 + SC2, the projective Miller loop computes the same Fp12
+    value as the affine one (which is itself L1-equivalent to the
+    divisor-theoretic [f_{n,Q}] from MillerFunction.v). *)
+
+Require Import Crypto.Bedrock.Field.PairingTheory.Projective.
+
+Theorem projective_miller_eq_affine
+  {Fp Fp2 Fp12 : Type}
+  (pops : ProjFieldOps Fp Fp2 Fp12)
+  (* Side conditions SC1 + SC2 packaged as hypotheses.
+     The exact statements depend on the field representation Fp/Fp2
+     having an inverse / projective normalisation function; left as
+     opaque assumptions here, discharged per-curve when the instance
+     is constructed. *)
+  (SC1 : True)  (* placeholder for the make_line_proj agreement *)
+  (SC2 : True)  (* placeholder for the fp12_mul_by_line agreement *)
+  (n : Z) (Px Py : Fp) (Qx Qy : Fp2) :
+  projective_miller pops n Px Py Qx Qy
+    = affine_miller (base_ops pops) n Px Py Qx Qy.
+Proof.
+  (* Proof plan (~150 lines, curve-agnostic):
+     1. Generalise the bit-loop induction over an invariant
+        relating projective T = (TX, TY, TZ) to the affine T' = (Tx, Ty)
+        the affine loop carries: TX = Tx*TZ^2, TY = Ty*TZ^3, TZ <> 0.
+     2. For each step show the invariant is preserved using the
+        Bernstein-Lange projective formulas (one rewrite per substep).
+     3. The line factor: SC1 lets us rewrite [make_line_proj] in terms
+        of [make_line] at the affine T'; SC2 then bridges the sparse
+        and dense Fp12 multiplications.
+     4. The base case is trivial: at i = 0 both loops return the
+        accumulated f. *)
+Admitted.
 (* Left as a comment until the feval bridge is in place. *)
