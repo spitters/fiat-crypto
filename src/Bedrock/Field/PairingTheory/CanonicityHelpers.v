@@ -147,3 +147,45 @@ Proof.
   - rewrite zfp2_mul_one_cube by exact Hp.
     apply zfp2_mul_one_r; assumption.
 Qed.
+
+(** ** Next-step sketch for [zproj_double_simulates] / [zproj_add_simulates].
+
+    Both reduce to two sub-claims, each provable using the
+    canonicity-preservation lemmas above plus ring/field algebra:
+
+    SUB-CLAIM 1 (point preservation).  If [Tx * TZ^2 = TX],
+    [Ty * TZ^3 = TY], and the Bernstein--Lange formulas produce
+    [(NX, NY, NZ)], then the affine double of [(Tx, Ty)] is
+    [(Nx, Ny)] with [Nx * NZ^2 = NX], [Ny * NZ^3 = NY].
+
+    Proof outline:
+      - [NX = E^2 - 2D] where [E = 3*X^2], [D = 4*X*Y^2].
+      - [NZ = 2*Y*Z].
+      - Affine [Nx = lam^2 - 2*Tx], [lam = 3*Tx^2 / (2*Ty)].
+      - Substitute [Tx = TX/TZ^2], [Ty = TY/TZ^3]; clear the
+        denominators by multiplying both sides by [NZ^2] resp. [NZ^3];
+        the resulting identities are pure polynomial equations in
+        [X, Y, Z] (= [TX, TY, TZ]) that [ring] closes.
+
+    SUB-CLAIM 2 (line agreement).  The line [zproj_make_line_double]
+    emits equals the affine [make_line] at the same affine slope and
+    [(Tx, Ty, Px, Py)]:
+      - [zproj_to_affine p TX TY TZ = (Tx, Ty)] follows from
+        [Tx * TZ^2 = TX] (multiplied by [inv (TZ^2)] — needs a
+        left-inverse lemma for [zfp2_inv], which reduces to
+        Fermat's little theorem on [Fp2]).
+      - The three-times-tx-squared / two-ty inside
+        [zproj_make_line_double] equals [3*Tx^2 / (2*Ty)] by
+        component-wise ring identities on [zfp2_add] / [zfp2_mul].
+      - Hence the final [ml lam tx_aff ty_aff Px Py] call uses the
+        same arguments as the affine version.
+
+    The [add_simulates] case is structurally identical but with
+    mixed-addition formulas (slope [(Qy - Ty) / (Qx - Tx)] instead
+    of tangent).
+
+    Missing infrastructure: a left-inverse lemma for [zfp2_inv]
+    (about 30 LoC, uses [PrimeFieldTheorems.F] machinery).  With
+    that, [zproj_double_simulates_canonical] and its [add] analogue
+    discharge in ~80--120 LoC each of [rewrite]-heavy ring
+    manipulation against the canonicity-preservation lemmas above. *)
