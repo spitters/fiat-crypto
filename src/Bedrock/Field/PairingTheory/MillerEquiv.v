@@ -351,18 +351,25 @@ End ProjEqAffine.
    For canonical generators, witnesses are supplied by
    [zproj_initial_rel_canonical] in [CanonicityHelpers.v] (proved Qed). *)
 
-(** Concrete closing path for [zproj_double_simulates]:
+(** Concrete closing path for [zproj_double_simulates] (both admits):
+    Scaffold 100% in place — see FProjAlgebra (8 Qed), CanonicityHelpers
+    (16 Qed), FProjBridge (11 Qed).  Remaining two pieces:
+
     1. [fp = fa] requires the LINE values to agree, which in turn
-       requires [zproj_to_affine TX TY TZ = (Tx, Ty)].  That identity
-       follows from [Tx * TZ^2 = TX] (the hypothesis) via the
-       left-inverse property of [zfp2_inv].  The left-inverse lemma
-       is [zfp2_mul x (zfp2_inv x) = (1,0)] for nonzero [x]; it
-       reduces to Fermat's little theorem on [Fp2] (~60 LoC building
-       on [PrimeFieldTheorems.F_inv_nonzero]).
-    2. [proj_affine_rel Nx Ny NX NY NZ] is the arithmetic content
-       already Qed'd in [FProjAlgebra.zproj_double_preserves_\{x,y\}].
-       Lowering to Z-level via [FProjBridge] is ~30 LoC of
-       [F.eq_to_Z_iff + rewrite zfp2_mul_to_F] plumbing. *)
+       requires [zproj_to_affine TX TY TZ = (Tx, Ty)] under the
+       dehomogenisation invariant.  That identity follows from
+       [Tx * TZ^2 = TX] via a left-inverse property of [zfp2_inv].
+       The left-inverse reduces to Fermat's little theorem on [Fp2]
+       (~60 LoC building on [PrimeFieldTheorems.F_inv_nonzero] plus a
+       [F.of_Z q (zfp_inv (Z.pos q) x) = F.inv (F.of_Z q x)] bridge).
+
+    2. [proj_affine_rel Nx Ny NX NY NZ] (the invariant half): arithmetic
+       content Qed'd in [FProjAlgebra.zproj_double_preserves_\{x,y\}];
+       lower to Z-level via [FProjBridge.proj_invariant_to_F] +
+       [F.eq_of_Z_iff].  ~30 LoC of tactical plumbing.
+
+    Plus: Section-level [TZ <> 0], [Ty <> 0] hypotheses need to be
+    propagated through [miller_aux_eq] as a loop invariant (~40 LoC). *)
 Lemma zproj_double_simulates :
   forall c ml (f : Fp12_Z) (Tx Ty TX TY TZ : Fp2_Z) (Px Py : Z),
     proj_affine_rel (zproj_ops c ml) Tx Ty TX TY TZ ->
