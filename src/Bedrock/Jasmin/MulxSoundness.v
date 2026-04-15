@@ -460,7 +460,13 @@ Section WithWordCmd.
     : list jasmin_cmd -> list jasmin_cmd -> Prop :=
   | mulx_rewrite_intro : forall (prefix middle suffix : list jasmin_cmd)
                                 (a'' b'' : jasmin_expr),
+      (* middle doesn't touch hi (soundness of moving hi-write earlier) *)
       (forall c, In c middle -> cmd_touches hi c = false) ->
+      (* middle doesn't touch any var read by a (so a's eval stable) *)
+      (forall c x, In c middle -> expr_reads x a = true -> cmd_touches x c = false) ->
+      (* middle doesn't touch any var read by b *)
+      (forall c x, In c middle -> expr_reads x b = true -> cmd_touches x c = false) ->
+      (* a'' and a have same eval under any env — post-def_map resolution *)
       (forall (ev : env), eval_jexpr ev a = eval_jexpr ev a'') ->
       (forall (ev : env), eval_jexpr ev b = eval_jexpr ev b'') ->
       mulx_rewrite hi lo a b
@@ -666,33 +672,118 @@ Section WithWordCmd.
         intros c' Hin. apply Hsafe. right. exact Hin.
   Qed.
 
-  (** Single-match rewrite preserves [jeval_list].  Proof outline:
-      1. Inversion on [mulx_rewrite] splits cs into
-         prefix ++ [JCset lo (JEmul a b)] ++ middle ++ [JCset hi (JEmulhuu a'' b'')] ++ suffix.
-      2. jeval_list_app + inversion gives us the chain of intermediate
-         environments through each part of the split.
-      3. For the rewritten list, we reconstruct the same final env:
-         - prefix executes identically
-         - JCmulx writes both hi (to mulhuu va vb) and lo (to mul va vb),
-           whereas original JCset only wrote lo
-         - middle executes — original preserves hi, rewrite keeps hi at mulhuu va vb
-           (both give same non-hi vars by jeval_agnostic_to_var applied
-           inductively, hi value is different but the original's hi value
-           gets REPLACED by JCset hi at mulhuu_idx anyway)
-         - At mulhuu position: original writes hi with word.mulhuu(eval a'', eval b'')
-           which equals word.mulhuu(eval a, eval b) by Ha_eq/Hb_eq. Rewrite has
-           JCskip (identity). After this step both envs agree on hi.
-         - suffix executes identically.
-      This proof is ~80 lines of careful env-tracking; left admitted in
-      this session to keep the commit focused.  The semantic foundation
-      (Phase 3a + 3b + jeval_agnostic_to_var + jeval_list_hi_update_commutes)
-      is what makes this theorem provable at all. *)
+  (** If an expression's read-set is untouched by the command, its
+      evaluation is preserved. *)
+  Lemma eval_preserved_through_cmd :
+    forall c expr env env',
+      (forall x, expr_reads x expr = true -> cmd_touches x c = false) ->
+      jeval env c env' ->
+      eval_jexpr env' expr = eval_jexpr env expr.
+  Proof.
+    intros c expr env env' Hsafe Hev.
+    induction expr; simpl; try reflexivity.
+    - (* JEvar *) simpl in Hsafe.
+      specialize (Hsafe x).
+      destruct (String.eqb x x) eqn:Heq; [|rewrite String.eqb_refl in Heq; discriminate].
+      specialize (Hsafe eq_refl).
+      apply (cmd_touches_preserves_var _ _ _ _ Hsafe) in Hev. congruence.
+    - (* JEadd, JEsub, ..., JEmulhuu — all binary *)
+      rewrite IHexpr1, IHexpr2; try reflexivity;
+        simpl in Hsafe; intros x Hr; apply Hsafe;
+        apply orb_true_iff; [right; exact Hr | left; exact Hr].
+    - rewrite IHexpr1, IHexpr2; try reflexivity;
+        simpl in Hsafe; intros x Hr; apply Hsafe;
+        apply orb_true_iff; [right; exact Hr | left; exact Hr].
+    - rewrite IHexpr1, IHexpr2; try reflexivity;
+        simpl in Hsafe; intros x Hr; apply Hsafe;
+        apply orb_true_iff; [right; exact Hr | left; exact Hr].
+    - rewrite IHexpr1, IHexpr2; try reflexivity;
+        simpl in Hsafe; intros x Hr; apply Hsafe;
+        apply orb_true_iff; [right; exact Hr | left; exact Hr].
+    - rewrite IHexpr1, IHexpr2; try reflexivity;
+        simpl in Hsafe; intros x Hr; apply Hsafe;
+        apply orb_true_iff; [right; exact Hr | left; exact Hr].
+    - rewrite IHexpr1, IHexpr2; try reflexivity;
+        simpl in Hsafe; intros x Hr; apply Hsafe;
+        apply orb_true_iff; [right; exact Hr | left; exact Hr].
+    - rewrite IHexpr1, IHexpr2; try reflexivity;
+        simpl in Hsafe; intros x Hr; apply Hsafe;
+        apply orb_true_iff; [right; exact Hr | left; exact Hr].
+    - rewrite IHexpr1, IHexpr2; try reflexivity;
+        simpl in Hsafe; intros x Hr; apply Hsafe;
+        apply orb_true_iff; [right; exact Hr | left; exact Hr].
+    - rewrite IHexpr1, IHexpr2; try reflexivity;
+        simpl in Hsafe; intros x Hr; apply Hsafe;
+        apply orb_true_iff; [right; exact Hr | left; exact Hr].
+    - rewrite IHexpr1, IHexpr2; try reflexivity;
+        simpl in Hsafe; intros x Hr; apply Hsafe;
+        apply orb_true_iff; [right; exact Hr | left; exact Hr].
+    - rewrite IHexpr1, IHexpr2; try reflexivity;
+        simpl in Hsafe; intros x Hr; apply Hsafe;
+        apply orb_true_iff; [right; exact Hr | left; exact Hr].
+  Qed.
+
+  (** Lift to jeval_list. *)
+  Lemma eval_preserved_through_list :
+    forall cs expr env env',
+      (forall c x, In c cs -> expr_reads x expr = true -> cmd_touches x c = false) ->
+      jeval_list env cs env' ->
+      eval_jexpr env' expr = eval_jexpr env expr.
+  Proof.
+    induction cs as [|c cs IH]; intros expr env env' Hsafe Hev.
+    - inversion Hev; subst. reflexivity.
+    - inversion Hev as [| e0 e1 e'0 c0 cs0 Hc Hcs ]; subst.
+      rewrite (IH expr e1 env'). 2:{
+        intros c' x Hin Hr. apply Hsafe; [right; exact Hin | exact Hr].
+      } 2: exact Hcs.
+      apply eval_preserved_through_cmd with (c := c); [|exact Hc].
+      intros x Hr. apply Hsafe; [left; reflexivity | exact Hr].
+  Qed.
+
+  (** Single-match rewrite preserves [jeval_list].
+      Proof structure: inversion on mulx_rewrite, decompose cs into
+      5 parts, reconstruct cs' execution.
+
+      Required additional property (not in current [mulx_rewrite]
+      relation): [expr_reads lo a = false] and [expr_reads lo b = false]
+      — i.e., the [JCset lo (JEmul a b)] itself doesn't affect operand
+      evaluation.  This is naturally satisfied by [scan_mulx_pairs]
+      because the matched operands come from a [def_map] built BEFORE
+      the JCset lo (so they can't reference lo).
+
+      The proof outline (using already-Qed lemmas):
+      1. jeval_list_app to split cs into prefix execution + rest.
+      2. inversion on cons to extract JCset lo execution:
+         va = eval env_after_prefix a, vb = eval env_after_prefix b,
+         env_after_mul = update env_after_prefix lo (word.mul va vb).
+      3. jeval_list_app on rest to split middle + JCset hi :: suffix.
+      4. inversion on JCset hi:
+         env_after_mulhuu = update env_after_middle hi
+                                   (word.mulhuu va'' vb'')
+         where va'' = eval env_after_middle a'', vb'' = eval env_after_middle b''.
+         By Ha_eq + eval_preserved_through_list (using Hmid_a):
+           va'' = eval env_after_middle a = eval env_after_mul a.
+         With lo ∉ reads(a): = eval env_after_prefix a = va.
+         Similarly vb'' = vb.
+      5. Build rewritten execution:
+         - prefix: same as original (Hev_pre).
+         - JCmulx: produces env_after_mulx =
+             update (update env_after_prefix hi (word.mulhuu va vb)) lo (word.mul va vb).
+         - middle from env_after_mulx: by jeval_list_hi_update_commutes
+           (applied with w = word.mulhuu va vb), produces
+             update env_after_middle hi (word.mulhuu va vb)
+             = update env_after_middle hi (word.mulhuu va'' vb'')
+             = env_after_mulhuu.
+         - JCskip: identity, env stays at env_after_mulhuu.
+         - suffix: same as original. *)
   Theorem rewrite_mulx_one_match_sound :
-    forall hi lo a b cs cs' env env',
+    forall hi lo a b cs cs' ev ev',
       mulx_rewrite hi lo a b cs cs' ->
       hi <> lo ->
-      jeval_list env cs env' ->
-      jeval_list env cs' env'.
+      expr_reads lo a = false ->
+      expr_reads lo b = false ->
+      jeval_list ev cs ev' ->
+      jeval_list ev cs' ev'.
   Admitted.
 
 End WithWordCmd.
