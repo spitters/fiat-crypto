@@ -178,5 +178,39 @@ Admitted.
     [zproj_make_line] needs the per-step [Z^k] scaling baked in.  The
     Bernstein-Lange formulas in [Projective.double_step_proj] and
     [Projective.add_step_proj] are correct as-is; only the line
-    builder needs work. *)
+    builder needs work.
+
+    UPDATE 1 (commit redesign): the [ProjFieldOps] record has been
+    split: [make_line_proj] -> [make_line_proj_double] +
+    [make_line_proj_add], each receiving both [T_old] and [T_new]
+    projective triples plus [P] (and [Q] for addition).  This lets
+    the spec instance ([zproj_make_line_double] / [..._add] in
+    [ZModTower.v]) compute the affine slope from the projective
+    state via [zproj_double_slope] (= chord through dehomogenised
+    [T_old], [T_new]) and dispatch the existing affine [make_line].
+
+    UPDATE 2: the redesigned cross-check ALSO failed by [native_compute]
+    in 11min 20sec (+ unifier "Unable to unify").  Two diagnoses are
+    possible:
+
+    (a) The Bernstein--Lange [double_step_proj] / [add_step_proj]
+        formulas in [Projective.v] use a homogeneity convention where
+        [T_new = 2 * T_old] (resp.\ [T_old + Q]) in affine after
+        dehomogenisation, BUT THEY DO NOT — the formulas track a
+        scaled-up version of [T_new] whose dehomogenised affine form
+        differs by a known [Z]-power factor.  In that case the chord
+        slope through dehomogenised [T_old] / [T_new] is NOT the
+        affine tangent slope.
+
+    (b) Even if (a) is wrong and the affine slope agrees, the
+        accumulated [f] still picks up a [Z^k] factor from the line
+        evaluation [L(P)] being computed in projective coordinates.
+        The chord-slope fix addresses the line FORMULA but not the
+        line VALUE at [P].
+
+    Resolving requires a careful per-curve derivation of the
+    projective Miller invariant — exactly what arkworks, blst, and
+    relic encode in their hand-written line builders.  This is the
+    100-150 lines/curve cost of option A in earlier discussion;
+    not done here. *)
 (* Left as a comment until the feval bridge is in place. *)

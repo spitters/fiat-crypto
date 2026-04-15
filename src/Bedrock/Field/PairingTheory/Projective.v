@@ -40,27 +40,48 @@ Local Open Scope Z_scope.
 
 (** Extra projective field ops, on top of [FieldOps] from [Affine.v].
     A curve whose [feval_ops : FieldOps Fp Fp2 Fp12] already exists
-    builds a [ProjFieldOps] by adding two functions. *)
+    builds a [ProjFieldOps] by adding three functions.
+
+    Doubling and addition need separate line builders because the
+    affine slope ([3X^2 / 2Y] vs.\ [(Qy - Ty) / (Qx - Tx)]) has a
+    different denominator structure in projective coordinates: doubling
+    divides by [2YZ], addition by [Qx*Z^2 - X].  Splitting the line
+    builder along that boundary lets each curve's spec implementation
+    apply the right normalisation, and lets the fast (sparse) instance
+    use the optimal Bernstein--Lange line formula for each. *)
 Record ProjFieldOps (Fp Fp2 Fp12 : Type) : Type := {
   base_ops : FieldOps Fp Fp2 Fp12;
 
-  (** Projective line builder.
-      Inputs: lambda numerator (Fp2),
-              T = (TX, TY, TZ) projective (3 * Fp2),
+  (** Doubling line builder.
+      Inputs: T_old = (TX, TY, TZ) projective (3 * Fp2),
+              T_new = (NX, NY, NZ) projective (3 * Fp2) — the doubled point,
               P = (Px, Py) affine (2 * Fp).
-      Output: a sparse Fp12 representing the line through T at P,
-              in the curve's twist basis. *)
-  make_line_proj :
-    Fp2 -> Fp2 -> Fp2 -> Fp2 -> Fp -> Fp -> Fp12;
+      Output: Fp12 line in the curve's twist basis. *)
+  make_line_proj_double :
+    Fp2 -> Fp2 -> Fp2 ->
+    Fp2 -> Fp2 -> Fp2 ->
+    Fp -> Fp -> Fp12;
+
+  (** Mixed-addition line builder.
+      Inputs: T_old = (TX, TY, TZ) projective (3 * Fp2),
+              Q = (Qx, Qy) affine (2 * Fp2),
+              T_new = (NX, NY, NZ) projective (3 * Fp2) — the sum point,
+              P = (Px, Py) affine (2 * Fp). *)
+  make_line_proj_add :
+    Fp2 -> Fp2 -> Fp2 ->
+    Fp2 -> Fp2 ->
+    Fp2 -> Fp2 -> Fp2 ->
+    Fp -> Fp -> Fp12;
 
   (** Sparse Fp12 mul.  [fp12_mul_by_line a sparse_b] computes
-      [a * sparse_b] in the same basis [make_line_proj] uses,
+      [a * sparse_b] in the same basis the line builders use,
       skipping the 6 zero components of [sparse_b]. *)
   fp12_mul_by_line : Fp12 -> Fp12 -> Fp12;
 }.
 
 Arguments base_ops {Fp Fp2 Fp12} _.
-Arguments make_line_proj {Fp Fp2 Fp12} _ _ _ _ _ _ _.
+Arguments make_line_proj_double {Fp Fp2 Fp12} _ _ _ _ _ _ _ _ _.
+Arguments make_line_proj_add {Fp Fp2 Fp12} _ _ _ _ _ _ _ _ _ _.
 Arguments fp12_mul_by_line {Fp Fp2 Fp12} _ _ _.
 
 Section ProjectiveMiller.
@@ -107,7 +128,7 @@ Section ProjectiveMiller.
     let nx  := g -2 d -2 d in
     let ny  := e *2 (d -2 nx) -2 (c +2 c +2 c +2 c +2 c +2 c +2 c +2 c) in
     let nz  := (TY +2 TZ) ^^2 -2 b -2 (TZ ^^2) in
-    let line := make_line_proj pops e TX TY TZ Px Py in
+    let line := make_line_proj_double pops TX TY TZ nx ny nz Px Py in
     let f2  := fp12_mul_by_line pops (fp12_sqr ops f) line in
     (f2, nx, ny, nz).
 
@@ -144,7 +165,7 @@ Section ProjectiveMiller.
     let nx   := r ^^2 -2 j -2 v -2 v in
     let ny   := r *2 (v -2 nx) -2 ((TY *2 j) +2 (TY *2 j)) in
     let nz   := (TZ +2 h) ^^2 -2 z1z1 -2 hh in
-    let line := make_line_proj pops r TX TY TZ Px Py in
+    let line := make_line_proj_add pops TX TY TZ Qx Qy nx ny nz Px Py in
     let f'   := fp12_mul_by_line pops f line in
     (f', nx, ny, nz).
 

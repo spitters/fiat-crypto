@@ -304,17 +304,46 @@ Definition bls12_377_zmod_ops : FieldOps Z Fp2_Z Fp12_Z :=
 
 Require Import Crypto.Bedrock.Field.PairingTheory.Projective.
 
-(** Z-normalise (TX, TY, TZ) -> (TX/TZ^2, TY/TZ^3) before calling [ml]. *)
-Definition zproj_make_line
-    (p : Z)
-    (ml : Fp2_Z -> Fp2_Z -> Fp2_Z -> Z -> Z -> Fp12_Z)
-    (lam TX TY TZ : Fp2_Z) (Px Py : Z) : Fp12_Z :=
+(** Dehomogenise a projective point [(TX, TY, TZ)] to its affine form
+    [(TX/TZ^2, TY/TZ^3)]. *)
+Definition zproj_to_affine (p : Z) (TX TY TZ : Fp2_Z) : Fp2_Z * Fp2_Z :=
   let z2 := zfp2_sqr p TZ in
   let z3 := zfp2_mul p z2 TZ in
-  let inv_z2 := zfp2_inv p z2 in
-  let inv_z3 := zfp2_inv p z3 in
-  let tx_aff := zfp2_mul p TX inv_z2 in
-  let ty_aff := zfp2_mul p TY inv_z3 in
+  (zfp2_mul p TX (zfp2_inv p z2),
+   zfp2_mul p TY (zfp2_inv p z3)).
+
+(** Affine slope from [T_old] (projective) and [T_new] (projective) on a
+    short-Weierstrass curve [y^2 = x^3 + b].  [T_new = 2 * T_old] in
+    affine, so the affine slope of the tangent at [T_old] equals
+    [(T_new_y - T_old_y) / (T_new_x - T_old_x)] when [T_old != T_new].
+    Symbolic, derived from the affine point identity, valid for any
+    doubling formula; sidesteps the projective-numerator bookkeeping. *)
+Definition zproj_double_slope
+    (p : Z) (TX TY TZ NX NY NZ : Fp2_Z) : Fp2_Z :=
+  let '(tx_aff, ty_aff) := zproj_to_affine p TX TY TZ in
+  let '(nx_aff, ny_aff) := zproj_to_affine p NX NY NZ in
+  zfp2_mul p (zfp2_sub p ny_aff ty_aff)
+             (zfp2_inv p (zfp2_sub p nx_aff tx_aff)).
+
+(** Spec instance: dehomogenise + reuse existing affine [ml].  Slow
+    (uses Fp2 inversions) but correct.  Each curve's fast bedrock2
+    instance avoids the inversions via the proper Bernstein--Lange line
+    formula and proves equivalent at the L4 level. *)
+Definition zproj_make_line_double
+    (p : Z)
+    (ml : Fp2_Z -> Fp2_Z -> Fp2_Z -> Z -> Z -> Fp12_Z)
+    (TX TY TZ NX NY NZ : Fp2_Z) (Px Py : Z) : Fp12_Z :=
+  let '(tx_aff, ty_aff) := zproj_to_affine p TX TY TZ in
+  let lam := zproj_double_slope p TX TY TZ NX NY NZ in
+  ml lam tx_aff ty_aff Px Py.
+
+Definition zproj_make_line_add
+    (p : Z)
+    (ml : Fp2_Z -> Fp2_Z -> Fp2_Z -> Z -> Z -> Fp12_Z)
+    (TX TY TZ Qx Qy NX NY NZ : Fp2_Z) (Px Py : Z) : Fp12_Z :=
+  let '(tx_aff, ty_aff) := zproj_to_affine p TX TY TZ in
+  let lam := zfp2_mul p (zfp2_sub p Qy ty_aff)
+                        (zfp2_inv p (zfp2_sub p Qx tx_aff)) in
   ml lam tx_aff ty_aff Px Py.
 
 Definition zproj_ops
@@ -325,7 +354,8 @@ Definition zproj_ops
   let xi := (xi_re c, xi_im c) in
   {|
     Projective.base_ops := zmod_ops c ml;
-    Projective.make_line_proj := zproj_make_line p ml;
+    Projective.make_line_proj_double := zproj_make_line_double p ml;
+    Projective.make_line_proj_add := zproj_make_line_add p ml;
     Projective.fp12_mul_by_line := zfp12_mul p xi;
   |}.
 
