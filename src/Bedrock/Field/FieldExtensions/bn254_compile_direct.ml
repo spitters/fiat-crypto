@@ -11,20 +11,18 @@
  *   -> Bridge_simple_v2.to_jasmin_cmd               (EXTRACTED, Qed in Rocq)
  *   -> wrap_func / build_prog                       (this file, unverified plumbing)
  *   -> Conv.cuprog_of_prog                          (jasmin library)
- *   -> Compile.compile_prog_to_asm                  (jasminc full compiler)
+ *   -> Compile.compile                              (jasminc full pipeline)
  *   -> Pp_x86.print_prog                            (assembly output)
  *
- * RUNTIME BLOCKER (2026-04-15): bridge_simple_v2.ml has 8 unrealized
- * Coq axioms (5 Uint63 ops + int_to_ident + int_to_funname + type int)
- * that raise at runtime.  See BRIDGE_SIMPLE_V2_README.md for the
- * [Extract Constant] directives needed to regenerate a runtime-clean
- * bridge_simple_v2.ml.  Until then, this file compiles but cannot run.
+ * Usage:
+ *   ./bn254_compile_direct <out.s>                   # all functions
+ *   ./bn254_compile_direct <out.s> --func <name>     # one function
+ *   ./bn254_compile_direct <out.s> --verbose         # per-pass tracing
  *
- * Register-pressure partitioning (the Montgomery-mul 1096-intermediate
- * workaround in compile_direct.ml lines 366-716) is not included here
- * because BN254's 4-limb Fp mul has far lower register pressure than
- * BLS12's 6-limb mul.  If jasminc's allocator spills too aggressively,
- * port partition_for_regalloc from compile_direct.ml verbatim. *)
+ * Register-pressure partitioning (compile_direct.ml lines 366-716) is not
+ * included here; BN254's 4-limb Fp mul has lower register pressure than
+ * BLS12's 6-limb mul.  If jasminc's allocator spills too aggressively, port
+ * partition_for_regalloc from compile_direct.ml verbatim. *)
 
 open Jasmin
 open Prog
@@ -46,7 +44,6 @@ let implode cs = String.init (List.length cs) (fun i -> List.nth cs i)
 
 let var_tbl : (string, var) Hashtbl.t = Hashtbl.create 97
 let fn_tbl : (string, CoreIdent.funname) Hashtbl.t = Hashtbl.create 97
-let fn_counter = ref 0
 
 let mk_var (name : string) : var =
   match Hashtbl.find_opt var_tbl name with
@@ -84,14 +81,22 @@ let wrap_func (f : Bn254_full_jasmin_extracted.jasmin_func)
   : (unit, X86_arch.extended_op Sopn.asm_op_t) func =
   let name = implode f.jf_name in
   let body = translate_to_jasmin f.jf_body in
+  let args = List.map (fun (n, _ty) -> mk_var (implode n)) f.jf_params in
+  let tyin = List.map (fun _ -> Bty (U U64)) args in
+  (* Add [nospill] annotation to match compile_direct.ml — protects Export
+     functions from the CF.90 bug in jasminc that manifests when AutoSpill
+     is applied to large functions. *)
+  let nospill_annot = { FInfo.f_annot_empty with
+    FInfo.f_user_annot =
+      [(Location.mk_loc Location._dummy "nospill", None)] } in
   {
     f_loc      = Location._dummy;
-    f_annot    = FInfo.f_annot_empty;
+    f_annot    = nospill_annot;
     f_info     = ();
     f_cc       = FInfo.Export;
     f_name     = mk_funname name;
-    f_tyin     = [];
-    f_args     = [];
+    f_tyin     = tyin;
+    f_args     = args;
     f_body     = body;
     f_tyout    = [];
     f_ret_info = { FInfo.ret_annot = []; ret_loc = Location._dummy };
@@ -102,23 +107,132 @@ let build_prog (funcs : Bn254_full_jasmin_extracted.jasmin_func list)
   : (unit, X86_arch.extended_op Sopn.asm_op_t) prog =
   ([], List.map wrap_func funcs)
 
-(* ---------------- Call compile_prog_to_asm ------------------------ *)
+(* ---------------- CLI ---------------------------------------------- *)
 
-(* See compile_direct.ml lines ~740-920 for the full boilerplate:
-   - Conv.cuprog_of_prog
-   - Conv.to_uprog x86_asmop
-   - Compiler.compile_prog_to_asm
-   - Pp_x86.print_prog
-   Omitted here because the runtime is blocked by the Uint63 axioms
-   (translate_to_jasmin will raise before we get to the prog wrap).
-   Copy verbatim from compile_direct.ml lines 740-920 once
-   bridge_simple_v2.ml is regenerated with Extract Constant directives. *)
+let usage () =
+  Printf.eprintf "usage: %s <output.s> [--func <name>] [--verbose]\n" Sys.argv.(0);
+  Printf.eprintf "  --func <name>  compile only the named function (must be a leaf)\n";
+  exit 2
+
+let parse_args () =
+  let args = Array.to_list Sys.argv in
+  match args with
+  | [_; out] -> (out, None, false)
+  | [_; out; "--verbose"] -> (out, None, true)
+  | [_; out; "--func"; fname] -> (out, Some fname, false)
+  | [_; out; "--func"; fname; "--verbose"] -> (out, Some fname, true)
+  | _ -> usage ()
+
+(* ---------------- Pass-name helper for verbose tracing ------------ *)
+
+let step_name (s : Compiler.compiler_step) =
+  match s with
+  | Typing -> "Typing" | ParamsExpansion -> "ParamsExpansion"
+  | RemoveAssertion -> "RemoveAssertion" | InsertRenaming -> "InsertRenaming"
+  | WintWord -> "WintWord" | ArrayCopy -> "ArrayCopy"
+  | AddArrInit -> "AddArrInit" | LowerSpill -> "LowerSpill"
+  | Inlining -> "Inlining" | RemoveUnusedFunction -> "RemoveUnusedFunction"
+  | Unrolling -> "Unrolling" | Splitting -> "Splitting"
+  | Renaming -> "Renaming" | RemovePhiNodes -> "RemovePhiNodes"
+  | DeadCode_Renaming -> "DeadCode_Renaming" | RemoveArrInit -> "RemoveArrInit"
+  | MakeRefArguments -> "MakeRefArguments"
+  | RegArrayExpansion -> "RegArrayExpansion"
+  | RemoveGlobal -> "RemoveGlobal"
+  | LoadConstantsInCond -> "LoadConstantsInCond"
+  | LowerInstruction -> "LowerInstruction"
+  | PropagateInline -> "PropagateInline"
+  | SLHLowering -> "SLHLowering" | LowerAddressing -> "LowerAddressing"
+  | StackAllocation -> "StackAllocation" | RemoveReturn -> "RemoveReturn"
+  | RegAllocation -> "RegAllocation"
+  | DeadCode_RegAllocation -> "DeadCode_RegAllocation"
+  | Linearization -> "Linearization" | StackZeroization -> "StackZeroization"
+  | Tunneling -> "Tunneling" | Assembly -> "Assembly"
+
+(* ---------------- Main ------------------------------------------- *)
 
 let () =
-  let funcs = Bn254_full_jasmin_extracted.bn254_full_jasmin in
-  Printf.printf "[bn254-compile_direct] %d functions\n" (List.length funcs);
-  (* Wrap each in a func record — this exercises the whole pipeline
-     structurally at compile-time. Runtime will hit Uint63 axioms. *)
-  let _prog = build_prog funcs in
-  Printf.printf "[bn254-compile_direct] All functions wrapped in Jasmin prog\n";
-  Printf.printf "[bn254-compile_direct] (compile_prog_to_asm call pending runtime fix)\n"
+  let outfile, func_filter, verbose = parse_args () in
+
+  (* Step 1: Load + dedup *)
+  let all_funcs = Bn254_full_jasmin_extracted.bn254_full_jasmin in
+  let seen = Hashtbl.create 97 in
+  let funcs = List.filter (fun (f : Bn254_full_jasmin_extracted.jasmin_func) ->
+    let name = implode f.jf_name in
+    if Hashtbl.mem seen name then false
+    else (Hashtbl.add seen name (); true)
+  ) all_funcs in
+  Printf.eprintf "[bn254-compile_direct] loaded %d unique functions\n" (List.length funcs);
+
+  (* Step 2: Optional --func filter *)
+  let funcs_to_compile =
+    match func_filter with
+    | None -> funcs
+    | Some fname ->
+      let matches = List.filter (fun (f : Bn254_full_jasmin_extracted.jasmin_func) ->
+        implode f.jf_name = fname
+      ) funcs in
+      match matches with
+      | [] ->
+        Printf.eprintf "[bn254-compile_direct] ERROR: function '%s' not found.\n" fname;
+        Printf.eprintf "Available functions:\n";
+        List.iter (fun (f : Bn254_full_jasmin_extracted.jasmin_func) ->
+          Printf.eprintf "  %s\n" (implode f.jf_name)
+        ) funcs;
+        exit 1
+      | _ ->
+        Printf.eprintf "[bn254-compile_direct] filtering to function '%s'\n" fname;
+        matches
+  in
+
+  (* Step 3: Pre-register funnames *)
+  List.iter (fun (f : Bn254_full_jasmin_extracted.jasmin_func) ->
+    ignore (mk_funname (implode f.jf_name))
+  ) funcs_to_compile;
+
+  (* Step 4: Translate + wrap *)
+  let prog = build_prog funcs_to_compile in
+  Printf.eprintf "[bn254-compile_direct] built prog with %d functions\n"
+    (List.length (snd prog));
+
+  (* Step 5: jasminc pipeline *)
+  Printf.eprintf "[bn254-compile_direct] Conv.cuprog_of_prog ...\n%!";
+  let cprog =
+    try Conv.cuprog_of_prog prog
+    with e ->
+      Printf.eprintf "[bn254-compile_direct] Conv.cuprog_of_prog raised: %s\n"
+        (Printexc.to_string e);
+      Printexc.print_backtrace stderr;
+      exit 1
+  in
+  Printf.eprintf "[bn254-compile_direct] Compile.compile ...\n%!";
+  let visit_prog_after_pass ~debug:_ step _prog =
+    if verbose then Printf.eprintf "  [pass] %s OK\n%!" (step_name step)
+  in
+  let result =
+    try Compile.compile (module X86_arch) visit_prog_after_pass prog cprog
+    with
+    | Utils.HiError hierr ->
+      Printf.eprintf "[bn254-compile_direct] Compile.compile raised HiError:\n";
+      Format.eprintf "  %a\n" Utils.pp_hierror hierr;
+      exit 1
+    | e ->
+      Printf.eprintf "[bn254-compile_direct] Compile.compile raised: %s\n"
+        (Printexc.to_string e);
+      Printexc.print_backtrace stderr;
+      exit 1
+  in
+  match result with
+  | Utils0.Ok asm_prog ->
+    Printf.eprintf "[bn254-compile_direct] compilation succeeded!\n";
+    let oc = open_out outfile in
+    let fmt = Format.formatter_of_out_channel oc in
+    Pp_x86.print_prog fmt (Obj.magic asm_prog);
+    Format.pp_print_flush fmt ();
+    close_out oc;
+    Printf.eprintf "[bn254-compile_direct] wrote assembly to %s\n" outfile
+  | Utils0.Error err ->
+    let hierr = Conv.error_of_cerror
+      (Printer.pp_err ~debug:true) err in
+    Printf.eprintf "[bn254-compile_direct] compilation FAILED:\n";
+    Format.eprintf "  %a\n" Utils.pp_hierror hierr;
+    exit 1
