@@ -100,7 +100,7 @@ Section FevalBridge.
   Proof. unfold fp_to_Z. rewrite F.to_Z_0. reflexivity. Qed.
 
   Lemma fp_to_Z_one : fp_to_Z (@F.one M_pos) = 1 mod (Z.pos M_pos).
-  Proof. unfold fp_to_Z. rewrite F.to_Z_1. reflexivity. Qed.
+  Proof. reflexivity. Qed.
 
   (** Fp2-level bridging: component-wise *)
   Lemma fp2_to_Z_add (x y : Fp * Fp) :
