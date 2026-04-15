@@ -207,24 +207,68 @@ Section ProjEqAffine.
       + apply IH. exact Hrel1.
   Qed.
 
+  (** Value-level restatement of [projective_miller] / [affine_miller]
+      via the [fst] projections.  The original defs use
+      [let '(f, _, _, _) := ... in f] which is the same function
+      value but with a different unfolding shape; phrasing the
+      theorem against the [fst] forms makes it an immediate
+      corollary of [miller_aux_eq]. *)
+
+  Definition prj_fst (n : Z) (Px Py : Fp) (Qx Qy : Fp2) : Fp12 :=
+    pf_of_p (projective_miller_aux pops n (Z.to_nat (Z.log2 n))
+               Px Py Qx Qy (fp12_one ops) Qx Qy (fp2_one ops)).
+  Definition aff_fst (n : Z) (Px Py : Fp) (Qx Qy : Fp2) : Fp12 :=
+    pf_of_a (affine_miller_aux ops n (Z.to_nat (Z.log2 n))
+               Px Py Qx Qy (fp12_one ops) Qx Qy).
+
   Theorem projective_miller_eq_affine
     (n : Z) (Px Py : Fp) (Qx Qy : Fp2) :
-    prj n Px Py Qx Qy = aff n Px Py Qx Qy.
+    prj_fst n Px Py Qx Qy = aff_fst n Px Py Qx Qy.
   Proof.
-    (* The induction closes via [miller_aux_eq] (Qed above).  The
-       top-level finish requires reducing the two let-pattern forms
-       on the goal to the [fst]-forms in which [miller_aux_eq] is
-       stated.  Rocq 9's [destruct] + [cbn] combination did not
-       collapse these uniformly across several attempted tactic
-       sequences (remember+destruct, destruct with eqn:, cbn in H);
-       the mismatch is syntactic rather than semantic.  One clean
-       way to finish: reshape the statements of [prj]/[aff] via
-       dedicated [fst_of_...] helpers so both sides live in
-       [fst]-form from the start.  Leaving this as the last step. *)
-    pose proof (miller_aux_eq (Z.to_nat (Z.log2 n)) n Px Py Qx Qy
-                              (fp12_one ops) Qx Qy Qx Qy (fp2_one ops)
-                              (initial_rel Qx Qy)) as H.
-  Admitted.
+    apply (miller_aux_eq (Z.to_nat (Z.log2 n)) n Px Py Qx Qy
+                         (fp12_one ops) Qx Qy Qx Qy (fp2_one ops)).
+    apply initial_rel.
+  Qed.
+
+  (** Bridge lemmas connecting [prj_fst]/[aff_fst] to the original
+      [projective_miller]/[affine_miller] definitions.  Both close
+      by case-analysis on the returned tuples — each pair of forms
+      computes the same first component, definitionally after the
+      tuple is made concrete. *)
+
+  Lemma prj_fst_eq_projective_miller n Px Py Qx Qy :
+    prj_fst n Px Py Qx Qy = projective_miller pops n Px Py Qx Qy.
+  Proof.
+    unfold prj_fst, pf_of_p, projective_miller, ops.
+    (* Abstract [projective_miller_aux] so the subsequent [intros]
+       case-analysis rewrites both occurrences (under the fst chain
+       AND inside the let-pattern) consistently.  Unfolding [ops]
+       is essential — otherwise the two occurrences differ
+       syntactically ([ops] vs [base_ops pops]) and [generalize]
+       only catches one. *)
+    generalize (projective_miller_aux pops n (Z.to_nat (Z.log2 n))
+                  Px Py Qx Qy (fp12_one (base_ops pops)) Qx Qy
+                  (fp2_one (base_ops pops))).
+    intros [[[f1 X1] Y1] Z1]. reflexivity.
+  Qed.
+
+  Lemma aff_fst_eq_affine_miller n Px Py Qx Qy :
+    aff_fst n Px Py Qx Qy = affine_miller ops n Px Py Qx Qy.
+  Proof.
+    unfold aff_fst, pf_of_a, affine_miller, ops.
+    generalize (affine_miller_aux (base_ops pops) n (Z.to_nat (Z.log2 n))
+                  Px Py Qx Qy (fp12_one (base_ops pops)) Qx Qy).
+    intros [[f2 X2] Y2]. reflexivity.
+  Qed.
+
+  Corollary projective_miller_eq_affine_original
+    (n : Z) (Px Py : Fp) (Qx Qy : Fp2) :
+    projective_miller pops n Px Py Qx Qy
+      = affine_miller ops n Px Py Qx Qy.
+  Proof.
+    rewrite <- prj_fst_eq_projective_miller, <- aff_fst_eq_affine_miller.
+    apply projective_miller_eq_affine.
+  Qed.
 
 End ProjEqAffine.
 
