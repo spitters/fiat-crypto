@@ -83,7 +83,10 @@ Section FevalBridge.
 
   Lemma fp_to_Z_sub (x y : Fp) :
     fp_to_Z (F.sub x y) = ((fp_to_Z x) - (fp_to_Z y)) mod (Z.pos M_pos).
-  Proof. unfold fp_to_Z. apply F.to_Z_sub. Qed.
+  Proof.
+    unfold fp_to_Z, F.sub. rewrite F.to_Z_add, F.to_Z_opp.
+    rewrite Zplus_mod_idemp_r. f_equal. ring.
+  Qed.
 
   Lemma fp_to_Z_mul (x y : Fp) :
     fp_to_Z (F.mul x y) = ((fp_to_Z x) * (fp_to_Z y)) mod (Z.pos M_pos).

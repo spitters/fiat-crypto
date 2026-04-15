@@ -66,7 +66,7 @@ Section __.
       WeakestPrecondition.call functions ca_name tr m
         [pXo; pX2; pYo; pY2; pZo; pZ2; pXo; pYo; pZo]
         (fun tr' m' rets => rets = [] /\ tr = tr' /\
-           let '(Xo', Yo', Zo') := curve_add Xo X2 Yo Y2 Zo Z2 in
+           let '\<Xo', Yo', Zo'\> := curve_add Xo X2 Yo Y2 Zo Z2 in
            (FElem (Some tight_bounds) pXo Xo' ⋆ FElem (Some tight_bounds) pYo Yo'
             ⋆ FElem (Some tight_bounds) pZo Zo' ⋆ FElem (Some tight_bounds) pX2 X2
             ⋆ FElem (Some tight_bounds) pY2 Y2 ⋆ FElem (Some tight_bounds) pZ2 Z2
@@ -86,7 +86,7 @@ Section __.
       WeakestPrecondition.call functions ca_name tr m
         [pX; pX; pY; pY; pZ; pZ; pX; pY; pZ]
         (fun tr' m' rets => rets = [] /\ tr = tr' /\
-           let '(Xo, Yo, Zo) := curve_add X X Y Y Z Z in
+           let '\<Xo, Yo, Zo\> := curve_add X X Y Y Z Z in
            (FElem (Some tight_bounds) pX Xo ⋆ FElem (Some tight_bounds) pY Yo
             ⋆ FElem (Some tight_bounds) pZ Zo ⋆ R) m').
 
