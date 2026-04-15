@@ -347,6 +347,39 @@ Proof.
   - intros. apply zproj_initial_rel.
 Qed.
 
+(** One-line specialisations to each of the five pairing curves.
+    Each is a [Qed] witness modulo the three [zproj_*] admits. *)
+
+Theorem bn254_projective_eq_affine
+  n Px Py Qx Qy :
+  projective_miller bn254_zmod_proj_ops n Px Py Qx Qy
+    = affine_miller bn254_zmod_ops n Px Py Qx Qy.
+Proof. apply projective_miller_eq_affine_zproj. Qed.
+
+Theorem bls12_381_projective_eq_affine
+  n Px Py Qx Qy :
+  projective_miller bls12_381_zmod_proj_ops n Px Py Qx Qy
+    = affine_miller bls12_381_zmod_ops n Px Py Qx Qy.
+Proof. apply projective_miller_eq_affine_zproj. Qed.
+
+Theorem bls12_377_projective_eq_affine
+  n Px Py Qx Qy :
+  projective_miller bls12_377_zmod_proj_ops n Px Py Qx Qy
+    = affine_miller bls12_377_zmod_ops n Px Py Qx Qy.
+Proof. apply projective_miller_eq_affine_zproj. Qed.
+
+Theorem bn256_projective_eq_affine
+  n Px Py Qx Qy :
+  projective_miller bn256_zmod_proj_ops n Px Py Qx Qy
+    = affine_miller bn256_zmod_ops n Px Py Qx Qy.
+Proof. apply projective_miller_eq_affine_zproj. Qed.
+
+Theorem bn446_projective_eq_affine
+  n Px Py Qx Qy :
+  projective_miller bn446_zmod_proj_ops n Px Py Qx Qy
+    = affine_miller bn446_zmod_ops n Px Py Qx Qy.
+Proof. apply projective_miller_eq_affine_zproj. Qed.
+
 (** ** Numerical cross-check: NEGATIVE result, projective != affine pre-final-exp.
 
     A first attempt to assert
