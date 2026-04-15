@@ -29,6 +29,7 @@ Local Open Scope Z_scope.
 
 Require Import Crypto.Bedrock.Jasmin.Core.
 Require Import Crypto.Bedrock.Jasmin.ExprBridge.
+Require Import Crypto.Bedrock.Jasmin.MulxSoundness.
 
 Section WithWord.
 

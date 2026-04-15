@@ -379,36 +379,32 @@ Section WithWordCmd.
       apply cmd_touches_preserves_var with (c := c); assumption.
   Qed.
 
-  (** Range lift: no statement strictly between [mul_idx] and [mulhuu_idx]
-      touches [hi], so [hi]'s value is preserved across the subrange.
-      Stated as a conjecture — the exact statement needs list-indexing
-      machinery (nth, skipn) that's straightforward but adds ~40 lines. *)
-  Conjecture jeval_list_unaffected_range :
-    forall (cs : list jasmin_cmd) (mul_idx mulhuu_idx : nat)
-           (hi : string) (e e' : env),
-      stmts_between_safe hi mul_idx mulhuu_idx 0 cs = true ->
-      jeval_list e cs e' ->
-      (* Middle sub-range is hi-preserving.  Full statement requires
-         skipn/firstn indexing; placeholder True for now. *)
-      True.
-
   (** Every tuple [(mul_idx, mulhuu_idx, hi, lo, a, b)] from
-      [scan_mulx_pairs cs] satisfies: at [mul_idx] the list has
-      [JCset lo (JEmul a' b')], at [mulhuu_idx] it has
-      [JCset hi (JEmulhuu a'' b'')], and [equiv_cp m_k a a'],
-      [equiv_cp m_k b b'], [equiv_cp m_k a a''], [equiv_cp m_k b b'']
-      under the running [def_map] [m_k].  Statement left as informal;
-      the scan is traceable by induction on the scan_aux invariant. *)
-  Conjecture scan_mulx_pairs_valid :
-    forall (cs : list jasmin_cmd),
-      (* see Phase 3c remaining plan in
-         project_phase3_mulx_soundness.md *)
-      True.
+      [scan_mulx_pairs cs] satisfies the [mulx_rewrite] relation
+      (defined below) between [cs] and the result of applying that
+      single match.  The proof requires a strengthened invariant on
+      [scan_mulx_pairs_aux] that tracks: running position, def_map,
+      pending mul list, and accumulated matches.  At each step the
+      invariant says: every entry in the accumulator corresponds to a
+      valid [mulx_rewrite] of the original [cs] slice.  ~60 lines.
 
-  (** (Relational version of rewrite_mulx_one_match_sound appears below
-      after [mulx_rewrite] is defined.) *)
+      Defined after [mulx_rewrite] to reference it — see end of file. *)
 
-  (** Full soundness: [lower_mulx_pairs] preserves [jeval_list]. *)
+  (** Full soundness of [lower_mulx_pairs] on lists.  The final
+      composition theorem, bridging [scan_mulx_pairs] output to the
+      [mulx_rewrite] relation proved sound by [rewrite_mulx_one_match_sound].
+
+      Remaining work for Qed:
+      (a) prove every match returned by [scan_mulx_pairs_aux] corresponds
+          to a valid [mulx_rewrite] under the running def_map (strengthened
+          scan invariant, ~60 lines);
+      (b) show that [rewrite_mulx_aux n ms cs] equals iterative application
+          of single-match rewrites when the ms are position-disjoint
+          (always true for scan output since mul_idx < mulhuu_idx for each
+          match and scan processes positions monotonically).
+
+      Neither (a) nor (b) requires new semantic machinery — only the
+      already-Qed [rewrite_mulx_one_match_sound] plus list/index reasoning. *)
   Conjecture lower_mulx_pairs_list_correct :
     forall cs e e',
       wf_mulx_list cs = true ->
@@ -784,6 +780,82 @@ Section WithWordCmd.
       expr_reads lo b = false ->
       jeval_list ev cs ev' ->
       jeval_list ev cs' ev'.
-  Admitted.
+  Proof.
+    intros hi lo a b cs cs' ev ev' Hrew Hhi_lo Ha_lo Hb_lo Hev.
+    inversion Hrew as [prefix middle suffix a'' b''
+                       Hmid_hi Hmid_a Hmid_b Ha_eq Hb_eq]; subst.
+    (* Step 1: prefix then rest *)
+    apply jeval_list_app in Hev as [e1 [Hev_pre Hev_rest]].
+    (* Step 2: JCset lo :: middle ++ JCset hi :: suffix *)
+    inversion Hev_rest; subst.
+    match goal with H : jeval e1 (JCset lo (JEmul a b)) _ |- _ =>
+      rename H into Hev_mul end.
+    match goal with H : jeval_list _ (middle ++ _) ev' |- _ =>
+      rename H into Hev_rest2 end.
+    inversion Hev_mul; subst.
+    match goal with H : eval_jexpr e1 (JEmul a b) = Some _ |- _ =>
+      rename H into Heval_mul end.
+    simpl in Heval_mul.
+    destruct (eval_jexpr e1 a) as [va|] eqn:Hva_ev; [|discriminate].
+    destruct (eval_jexpr e1 b) as [vb|] eqn:Hvb_ev; [|discriminate].
+    injection Heval_mul; intros <-; clear Heval_mul.
+    (* Step 3: middle then JCset hi :: suffix *)
+    apply jeval_list_app in Hev_rest2 as [e2 [Hev_mid Hev_rest3]].
+    inversion Hev_rest3; subst.
+    match goal with H : jeval e2 (JCset hi (JEmulhuu a'' b'')) _ |- _ =>
+      rename H into Hev_mulhuu end.
+    match goal with H : jeval_list _ suffix ev' |- _ =>
+      rename H into Hev_suf end.
+    inversion Hev_mulhuu; subst.
+    match goal with H : eval_jexpr e2 (JEmulhuu a'' b'') = Some _ |- _ =>
+      rename H into Heval_mulhuu end.
+    simpl in Heval_mulhuu.
+    destruct (eval_jexpr e2 a'') as [va2|] eqn:Hva2_ev; [|discriminate].
+    destruct (eval_jexpr e2 b'') as [vb2|] eqn:Hvb2_ev; [|discriminate].
+    injection Heval_mulhuu; intros <-; clear Heval_mulhuu.
+    (* Step 4: show va2 = va, vb2 = vb via Ha_eq + eval_preserved + lo-unread *)
+    rewrite <- (Ha_eq e2) in Hva2_ev.
+    rewrite (eval_preserved_through_list middle a _ _ Hmid_a Hev_mid)
+      in Hva2_ev.
+    rewrite <- (Hb_eq e2) in Hvb2_ev.
+    rewrite (eval_preserved_through_list middle b _ _ Hmid_b Hev_mid)
+      in Hvb2_ev.
+    (* Now Hva2_ev: eval_jexpr (update e1 lo (word.mul va vb)) a = Some va2
+       Use eval_jexpr_agnostic_to_var (with x = lo): since lo ∉ reads(a),
+       the update doesn't change eval a. *)
+    rewrite <- (eval_jexpr_agnostic_to_var a lo e1 (word.mul va vb) Ha_lo)
+      in Hva2_ev.
+    rewrite Hva_ev in Hva2_ev. injection Hva2_ev as Hva_eq2.
+    rewrite <- (eval_jexpr_agnostic_to_var b lo e1 (word.mul va vb) Hb_lo)
+      in Hvb2_ev.
+    rewrite Hvb_ev in Hvb2_ev. injection Hvb2_ev as Hvb_eq2.
+    subst va2 vb2.
+    (* Step 5: build rewritten execution *)
+    apply jeval_list_app. exists e1. split; [exact Hev_pre|].
+    (* JCmulx hi lo a b :: middle ++ JCskip :: suffix *)
+    eapply jeval_list_cons.
+    { apply jeval_mulx with (va := va) (vb := vb); assumption. }
+    (* After JCmulx: state is
+         update (update e1 hi (word.mulhuu va vb)) lo (word.mul va vb) *)
+    apply jeval_list_app.
+    (* Apply jeval_list_hi_update_commutes to push the hi-update through
+       middle.  middle runs from env_after_mul = update e1 lo (word.mul va vb)
+       to e2.  Adding hi-update: runs from
+         update (update e1 lo ...) hi (mulhuu va vb)
+       to update e2 hi (mulhuu va vb).  But we need to start from
+         update (update e1 hi (mulhuu va vb)) lo (word.mul va vb)
+       — these are equal by update_comm (hi <> lo). *)
+    exists (update e2 hi (word.mulhuu va vb)). split.
+    { rewrite (update_comm e1 hi lo _ _ Hhi_lo).
+      apply jeval_list_hi_update_commutes; [exact Hmid_hi | exact Hev_mid]. }
+    (* Then JCskip :: suffix from update e2 hi (mulhuu va vb).
+       After JCskip: same env.  Then suffix execution; we have
+       Hev_suf: jeval_list (update e2 hi (mulhuu va vb)) suffix ev'
+       because update e2 hi (mulhuu va vb) is exactly the post-mulhuu env
+       in the original execution. *)
+    eapply jeval_list_cons.
+    { constructor. }
+    exact Hev_suf.
+  Qed.
 
 End WithWordCmd.
