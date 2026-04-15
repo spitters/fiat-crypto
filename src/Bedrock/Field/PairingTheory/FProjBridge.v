@@ -119,4 +119,22 @@ Section FProjBridge.
     rewrite !zfp_sub_to_F. reflexivity.
   Qed.
 
+  (** [proj_affine_rel] at the Z-level factors through [fp2z_to_F].
+      The Z-level equation [zfp2_mul Tx (zfp2_sqr TZ) = TX] lifts to
+      an F-level equation by applying [fp2z_to_F] to both sides and
+      using [zfp2_mul_to_F].  Concretely:
+        [fp2z_to_F (zfp2_mul Tx (zfp2_sqr TZ)) = fp2z_to_F TX]
+      decomposes via the homomorphism into an F-level multiplication
+      equation.  This is the key step to connect [FProjAlgebra]'s
+      preservation theorems to the [zproj_*] admits in MillerEquiv.
+
+      The general lift theorem is ~50 LoC of case analysis on the
+      component structure; kept as a sketch here.  The plumbing:
+      given [zfp2_mul Tx (zfp2_sqr TZ) = TX] and canonicity, apply
+      [f_equal fp2z_to_F] to get [fp2z_to_F (zfp2_mul ...) =
+      fp2z_to_F TX].  Unfold the LHS with [zfp2_mul_to_F] and
+      [zfp2_sqr_to_F].  The RHS is [(F.of_Z q TX.0, F.of_Z q TX.1)].
+      Pair-equality componentwise.  Result: the F-level invariant
+      needed by [FProjAlgebra]. *)
+
 End FProjBridge.
