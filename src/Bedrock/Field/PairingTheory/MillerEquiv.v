@@ -163,8 +163,12 @@ Section ProjEqAffine.
         add_step ops f Tx Ty Qx Qy Px Py in
       fp = fa /\ proj_affine_rel Nx Ny NX NY NZ.
 
-  Hypothesis initial_rel :
-    forall Qx Qy, proj_affine_rel Qx Qy Qx Qy (fp2_one ops).
+  (* [initial_rel] is no longer a universal Hypothesis — it is now
+     a PER-CALL argument to the top-level theorem [initial_rel_at].
+     This lets concrete instances prove [initial_rel_at] for specific
+     canonical [Qx, Qy] (via [zproj_initial_rel_canonical] in
+     [CanonicityHelpers.v]) without needing the universally-quantified
+     form that fails for non-canonical inputs in [Fp2_Z = Z * Z]. *)
 
   (** Projection helpers — explicit to avoid [let '_ := ...] subtleties. *)
   Definition pf_of_p (p : Fp12 * Fp2 * Fp2 * Fp2) : Fp12 :=
@@ -218,12 +222,13 @@ Section ProjEqAffine.
                Px Py Qx Qy (fp12_one ops) Qx Qy).
 
   Theorem projective_miller_eq_affine
-    (n : Z) (Px Py : Fp) (Qx Qy : Fp2) :
+    (n : Z) (Px Py : Fp) (Qx Qy : Fp2)
+    (initial_rel : proj_affine_rel Qx Qy Qx Qy (fp2_one ops)) :
     prj_fst n Px Py Qx Qy = aff_fst n Px Py Qx Qy.
   Proof.
     apply (miller_aux_eq (Z.to_nat (Z.log2 n)) n Px Py Qx Qy
                          (fp12_one ops) Qx Qy Qx Qy (fp2_one ops)).
-    apply initial_rel.
+    exact initial_rel.
   Qed.
 
   (** Bridge lemmas connecting [prj_fst]/[aff_fst] to the original
@@ -258,12 +263,13 @@ Section ProjEqAffine.
   Qed.
 
   Corollary projective_miller_eq_affine_original
-    (n : Z) (Px Py : Fp) (Qx Qy : Fp2) :
+    (n : Z) (Px Py : Fp) (Qx Qy : Fp2)
+    (initial_rel : proj_affine_rel Qx Qy Qx Qy (fp2_one ops)) :
     projective_miller pops n Px Py Qx Qy
       = affine_miller ops n Px Py Qx Qy.
   Proof.
     rewrite <- prj_fst_eq_projective_miller, <- aff_fst_eq_affine_miller.
-    apply projective_miller_eq_affine.
+    apply projective_miller_eq_affine. exact initial_rel.
   Qed.
 
 End ProjEqAffine.
@@ -340,11 +346,10 @@ End ProjEqAffine.
     [Section ProjEqAffine] to parameterise [initial_rel] on specific
     [Qx, Qy], OR switching the representation away from [Z * Z]. *)
 
-Lemma zproj_initial_rel :
-  forall c ml (Qx Qy : Fp2_Z),
-    proj_affine_rel (zproj_ops c ml) Qx Qy Qx Qy
-      (fp2_one (zmod_ops c ml)).
-Admitted.
+(* [zproj_initial_rel] admit REMOVED: with the Section restructuring,
+   [initial_rel] is now a per-call argument to [projective_miller_eq_affine].
+   For canonical generators, witnesses are supplied by
+   [zproj_initial_rel_canonical] in [CanonicityHelpers.v] (proved Qed). *)
 
 Lemma zproj_double_simulates :
   forall c ml (f : Fp12_Z) (Tx Ty TX TY TZ : Fp2_Z) (Px Py : Z),
@@ -371,48 +376,62 @@ Admitted.
 Theorem projective_miller_eq_affine_zproj
   (c : CurveParams)
   (ml : Fp2_Z -> Fp2_Z -> Fp2_Z -> Z -> Z -> Fp12_Z)
-  (n : Z) (Px Py : Z) (Qx Qy : Fp2_Z) :
+  (n : Z) (Px Py : Z) (Qx Qy : Fp2_Z)
+  (init_rel : proj_affine_rel (zproj_ops c ml) Qx Qy Qx Qy
+                (fp2_one (zmod_ops c ml))) :
   projective_miller (zproj_ops c ml) n Px Py Qx Qy
     = affine_miller (zmod_ops c ml) n Px Py Qx Qy.
 Proof.
   apply (projective_miller_eq_affine_original (zproj_ops c ml)).
   - intros. apply zproj_double_simulates; assumption.
   - intros. apply zproj_add_simulates; assumption.
-  - intros. apply zproj_initial_rel.
+  - exact init_rel.
 Qed.
 
 (** One-line specialisations to each of the five pairing curves.
-    Each is a [Qed] witness modulo the three [zproj_*] admits. *)
+    Each takes the [init_rel] witness for the specific [Qx, Qy] call.
+    For canonical generators, the witness is supplied by
+    [zproj_initial_rel_canonical] in [CanonicityHelpers.v]. *)
 
 Theorem bn254_projective_eq_affine
-  n Px Py Qx Qy :
+  n Px Py Qx Qy
+  (init_rel : proj_affine_rel bn254_zmod_proj_ops Qx Qy Qx Qy
+                (fp2_one bn254_zmod_ops)) :
   projective_miller bn254_zmod_proj_ops n Px Py Qx Qy
     = affine_miller bn254_zmod_ops n Px Py Qx Qy.
-Proof. apply projective_miller_eq_affine_zproj. Qed.
+Proof. apply projective_miller_eq_affine_zproj. exact init_rel. Qed.
 
 Theorem bls12_381_projective_eq_affine
-  n Px Py Qx Qy :
+  n Px Py Qx Qy
+  (init_rel : proj_affine_rel bls12_381_zmod_proj_ops Qx Qy Qx Qy
+                (fp2_one bls12_381_zmod_ops)) :
   projective_miller bls12_381_zmod_proj_ops n Px Py Qx Qy
     = affine_miller bls12_381_zmod_ops n Px Py Qx Qy.
-Proof. apply projective_miller_eq_affine_zproj. Qed.
+Proof. apply projective_miller_eq_affine_zproj. exact init_rel. Qed.
 
 Theorem bls12_377_projective_eq_affine
-  n Px Py Qx Qy :
+  n Px Py Qx Qy
+  (init_rel : proj_affine_rel bls12_377_zmod_proj_ops Qx Qy Qx Qy
+                (fp2_one bls12_377_zmod_ops)) :
   projective_miller bls12_377_zmod_proj_ops n Px Py Qx Qy
     = affine_miller bls12_377_zmod_ops n Px Py Qx Qy.
-Proof. apply projective_miller_eq_affine_zproj. Qed.
+Proof. apply projective_miller_eq_affine_zproj. exact init_rel. Qed.
 
 Theorem bn256_projective_eq_affine
-  n Px Py Qx Qy :
+  n Px Py Qx Qy
+  (init_rel : proj_affine_rel bn256_zmod_proj_ops Qx Qy Qx Qy
+                (fp2_one bn256_zmod_ops)) :
   projective_miller bn256_zmod_proj_ops n Px Py Qx Qy
     = affine_miller bn256_zmod_ops n Px Py Qx Qy.
-Proof. apply projective_miller_eq_affine_zproj. Qed.
+Proof. apply projective_miller_eq_affine_zproj. exact init_rel. Qed.
 
 Theorem bn446_projective_eq_affine
-  n Px Py Qx Qy :
+  n Px Py Qx Qy
+  (init_rel : proj_affine_rel bn446_zmod_proj_ops Qx Qy Qx Qy
+                (fp2_one bn446_zmod_ops)) :
   projective_miller bn446_zmod_proj_ops n Px Py Qx Qy
     = affine_miller bn446_zmod_ops n Px Py Qx Qy.
-Proof. apply projective_miller_eq_affine_zproj. Qed.
+Proof. apply projective_miller_eq_affine_zproj. exact init_rel. Qed.
 
 (** ** Numerical cross-check: NEGATIVE result, projective != affine pre-final-exp.
 
