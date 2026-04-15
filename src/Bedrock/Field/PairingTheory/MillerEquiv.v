@@ -138,4 +138,45 @@ Proof.
      4. The base case is trivial: at i = 0 both loops return the
         accumulated f. *)
 Admitted.
+
+(** ** Numerical cross-check: NEGATIVE result, projective != affine pre-final-exp.
+
+    A first attempt to assert
+      [projective_miller bn254_zmod_proj_ops loop P Q
+        = affine_miller bn254_zmod_ops loop P Q]
+    on the BN254 generators FAILED at [vm_compute] (`Unable to unify`,
+    11-minute compute).  This is a real algebraic finding, not a bug
+    in the formulas: projective and affine Miller loops produce
+    [f] values that differ by a [Z^k] scaling factor.  The factor
+    vanishes inside the final exponentiation [(p^12 - 1) / r] (any
+    [Z^k] in [F_{p^{12}}^*] that arises from a scalar lift to
+    projective is killed by the easy part [(p^6 - 1)(p^2 + 1)] for the
+    BN family), so the resulting PAIRING values agree.
+
+    Two ways to recover an L2-level value equality:
+
+    A. Tighten [make_line_proj] to absorb the [Z^k] scaling per step.
+       The arkworks implementation does this by multiplying the line
+       polynomial by appropriate powers of [Z] before evaluation at P.
+       The same can be done in [zproj_make_line] in [ZModTower.v]; the
+       resulting [projective_miller] then equals [affine_miller]
+       definitionally, and our [vm_compute] cross-check would close.
+
+    B. State the equivalence at the pairing level (after final exp):
+       [optimal_ate_pairing pops P Q = optimal_ate_pairing ops P Q]
+       where [optimal_ate_pairing := final_exp ∘ miller].  The L2/L1
+       chain in [PairingSpec.v] is naturally at this level.
+
+    The theorem [projective_miller_eq_affine] above is currently
+    stated at the L2 level (pre-final-exp).  Either we strengthen
+    [zproj_make_line] (option A) or we rephrase the theorem to be
+    after-final-exp (option B).  Option A is preferable because it
+    keeps the spec aligned with what the bedrock2 implementation does.
+
+    Concretely — the negative result tells us that adopting projective
+    coordinates is more than a 50-line per-curve change: each curve's
+    [zproj_make_line] needs the per-step [Z^k] scaling baked in.  The
+    Bernstein-Lange formulas in [Projective.double_step_proj] and
+    [Projective.add_step_proj] are correct as-is; only the line
+    builder needs work. *)
 (* Left as a comment until the feval bridge is in place. *)
