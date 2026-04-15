@@ -370,3 +370,6 @@ Definition bn446_zmod_proj_ops : ProjFieldOps Z Fp2_Z Fp12_Z :=
 
 Definition bls12_377_zmod_proj_ops : ProjFieldOps Z Fp2_Z Fp12_Z :=
   zproj_ops bls12_377_params (dtwist_make_line (bls12_377_params.(prime_p))).
+
+(* The per-instance simulation lemmas and [projective_miller_eq_affine_zproj]
+   live in [MillerEquiv.v] (cannot go here due to the import direction). *)

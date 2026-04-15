@@ -275,6 +275,78 @@ End ProjEqAffine.
     the three hypotheses by arithmetic.  This makes the generic
     equivalence fully closed as a parametric theorem. *)
 
+(** ** Simulation-hypothesis scaffold for [zproj_ops] (plan #1).
+
+    For any [zproj_ops c ml] (c : CurveParams, ml : affine make_line),
+    the three hypotheses reduce to pure Z-arithmetic modulo [prime_p c]:
+
+    - [initial_rel] — trivially [fp2_mul x (fp2_sqr fp2_one) = x].
+      Unfolds [zfp2_mul p], [zfp2_sqr p] on [(1, 0)] to reflexivity.
+
+    - [double_simulates] — given [Tx * TZ^2 = TX], [Ty * TZ^3 = TY],
+      prove that after the Bernstein--Lange doubling step:
+        [Nx * NZ^2 = NX], [Ny * NZ^3 = NY]
+      where [NX = (3X^2)^2 - 2D], [NZ = 2YZ], and affine
+      [Nx = lam^2 - 2Tx] with [lam = 3Tx^2/(2Ty)].  The tangent-slope
+      fix (commit 566feeeb5) ensures the line value agrees too.
+      Proof: expand both sides, use [Tx = TX/TZ^2], [Ty = TY/TZ^3],
+      clear denominators, [ring].
+
+    - [add_simulates] — similar for mixed addition with
+      [lam = (Qy - Ty)/(Qx - Tx)].
+
+    Discharging the two simulation lemmas is algebraically
+    straightforward (~100 lines each in Rocq's [field] tactic
+    with Z/pZ field theory) but requires plumbing the field
+    instance for [Fp2_Z].  Stated as [Admitted] here with the
+    proof plan above; execution is follow-up work.
+
+    Once proved, the corollary [projective_miller_eq_affine_zproj]
+    gives all five pairing curves a [Qed]'d projective-vs-affine
+    equivalence automatically, without requiring per-curve
+    [native_compute] cross-checks. *)
+
+Lemma zproj_initial_rel :
+  forall c ml (Qx Qy : Fp2_Z),
+    proj_affine_rel (zproj_ops c ml) Qx Qy Qx Qy
+      (fp2_one (zmod_ops c ml)).
+Admitted.
+
+Lemma zproj_double_simulates :
+  forall c ml (f : Fp12_Z) (Tx Ty TX TY TZ : Fp2_Z) (Px Py : Z),
+    proj_affine_rel (zproj_ops c ml) Tx Ty TX TY TZ ->
+    let '(fp, NX, NY, NZ) :=
+      double_step_proj (zproj_ops c ml) f TX TY TZ Px Py in
+    let '(fa, Nx, Ny) :=
+      double_step (zmod_ops c ml) f Tx Ty Px Py in
+    fp = fa /\
+    proj_affine_rel (zproj_ops c ml) Nx Ny NX NY NZ.
+Admitted.
+
+Lemma zproj_add_simulates :
+  forall c ml (f : Fp12_Z) (Tx Ty TX TY TZ Qx Qy : Fp2_Z) (Px Py : Z),
+    proj_affine_rel (zproj_ops c ml) Tx Ty TX TY TZ ->
+    let '(fp, NX, NY, NZ) :=
+      add_step_proj (zproj_ops c ml) f TX TY TZ Qx Qy Px Py in
+    let '(fa, Nx, Ny) :=
+      add_step (zmod_ops c ml) f Tx Ty Qx Qy Px Py in
+    fp = fa /\
+    proj_affine_rel (zproj_ops c ml) Nx Ny NX NY NZ.
+Admitted.
+
+Theorem projective_miller_eq_affine_zproj
+  (c : CurveParams)
+  (ml : Fp2_Z -> Fp2_Z -> Fp2_Z -> Z -> Z -> Fp12_Z)
+  (n : Z) (Px Py : Z) (Qx Qy : Fp2_Z) :
+  projective_miller (zproj_ops c ml) n Px Py Qx Qy
+    = affine_miller (zmod_ops c ml) n Px Py Qx Qy.
+Proof.
+  apply (projective_miller_eq_affine_original (zproj_ops c ml)).
+  - intros. apply zproj_double_simulates; assumption.
+  - intros. apply zproj_add_simulates; assumption.
+  - intros. apply zproj_initial_rel.
+Qed.
+
 (** ** Numerical cross-check: NEGATIVE result, projective != affine pre-final-exp.
 
     A first attempt to assert
