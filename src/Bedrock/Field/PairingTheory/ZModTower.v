@@ -286,3 +286,60 @@ Definition bls12_377_zmod_ops : FieldOps Z Fp2_Z Fp12_Z :=
   zmod_ops
     (bls12_377_params)
     (dtwist_make_line (bls12_377_params.(prime_p))).
+
+(** ** Projective ops (spec form).
+
+    Wraps [zmod_ops] with the two extra fields the projective Miller
+    loop needs.  Spec-only: we use the existing [make_line] composed
+    with Z-normalisation for [make_line_proj], and the existing dense
+    [fp12_mul] for [fp12_mul_by_line].  This gives a [ProjFieldOps]
+    that is observably equal to the affine instance — useful for
+    [vm_compute] cross-checks and for building correctness theorems
+    against [projective_miller_eq_affine] (the SC1/SC2 side conditions
+    reduce to definitional equality on this representation).
+
+    The fast version (real projective line formula + actual sparse
+    mul) lives in the bedrock2 implementation file and uses these
+    spec values as its correctness target. *)
+
+Require Import Crypto.Bedrock.Field.PairingTheory.Projective.
+
+(** Z-normalise (TX, TY, TZ) -> (TX/TZ^2, TY/TZ^3) before calling [ml]. *)
+Definition zproj_make_line
+    (p : Z)
+    (ml : Fp2_Z -> Fp2_Z -> Fp2_Z -> Z -> Z -> Fp12_Z)
+    (lam TX TY TZ : Fp2_Z) (Px Py : Z) : Fp12_Z :=
+  let z2 := zfp2_sqr p TZ in
+  let z3 := zfp2_mul p z2 TZ in
+  let inv_z2 := zfp2_inv p z2 in
+  let inv_z3 := zfp2_inv p z3 in
+  let tx_aff := zfp2_mul p TX inv_z2 in
+  let ty_aff := zfp2_mul p TY inv_z3 in
+  ml lam tx_aff ty_aff Px Py.
+
+Definition zproj_ops
+    (c : CurveParams)
+    (ml : Fp2_Z -> Fp2_Z -> Fp2_Z -> Z -> Z -> Fp12_Z)
+  : ProjFieldOps Z Fp2_Z Fp12_Z :=
+  let p := prime_p c in
+  let xi := (xi_re c, xi_im c) in
+  {|
+    Projective.base_ops := zmod_ops c ml;
+    Projective.make_line_proj := zproj_make_line p ml;
+    Projective.fp12_mul_by_line := zfp12_mul p xi;
+  |}.
+
+Definition bn254_zmod_proj_ops : ProjFieldOps Z Fp2_Z Fp12_Z :=
+  zproj_ops bn254_params (dtwist_make_line (bn254_params.(prime_p))).
+
+Definition bls12_381_zmod_proj_ops : ProjFieldOps Z Fp2_Z Fp12_Z :=
+  zproj_ops bls12_381_params (mtwist_make_line (bls12_381_params.(prime_p))).
+
+Definition bn256_zmod_proj_ops : ProjFieldOps Z Fp2_Z Fp12_Z :=
+  zproj_ops bn256_params (dtwist_make_line (bn256_params.(prime_p))).
+
+Definition bn446_zmod_proj_ops : ProjFieldOps Z Fp2_Z Fp12_Z :=
+  zproj_ops bn446_params (dtwist_make_line (bn446_params.(prime_p))).
+
+Definition bls12_377_zmod_proj_ops : ProjFieldOps Z Fp2_Z Fp12_Z :=
+  zproj_ops bls12_377_params (dtwist_make_line (bls12_377_params.(prime_p))).
