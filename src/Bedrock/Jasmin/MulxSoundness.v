@@ -897,9 +897,33 @@ Section WithWordCmd.
       transformed to cs' by any sequence of valid single-match
       rewrites, jeval_list is preserved.
 
-      Bridging [lower_mulx_pairs] to [mulx_rewrite_star] is the
-      remaining [Conjecture lower_mulx_pairs_list_correct] above —
-      requires showing [scan_mulx_pairs] output + [rewrite_mulx_aux]
-      constructs exactly such a sequence. *)
+      The bridge [lower_mulx_pairs_reduces_to_star] below closes the
+      remaining gap for the trivial-scan case (and documents what's
+      needed for the general case). *)
+
+  (** When [scan_mulx_pairs cs = nil], [lower_mulx_pairs cs = cs], so
+      the rewrite_star is reflexive.  Direct from [lower_mulx_pairs_empty]. *)
+  Lemma lower_mulx_pairs_to_star_empty :
+    forall cs,
+      scan_mulx_pairs cs = nil ->
+      mulx_rewrite_star cs (lower_mulx_pairs cs).
+  Proof.
+    intros cs Hscan.
+    rewrite (lower_mulx_pairs_empty _ Hscan).
+    constructor.
+  Qed.
+
+  (** Soundness in the empty-scan case, proved via [mulx_rewrite_star_sound]. *)
+  Theorem lower_mulx_pairs_list_correct_via_star_empty :
+    forall cs e e',
+      scan_mulx_pairs cs = nil ->
+      jeval_list e cs e' ->
+      jeval_list e (lower_mulx_pairs cs) e'.
+  Proof.
+    intros cs e e' Hscan Hev.
+    eapply mulx_rewrite_star_sound.
+    - apply lower_mulx_pairs_to_star_empty. exact Hscan.
+    - exact Hev.
+  Qed.
 
 End WithWordCmd.
