@@ -135,19 +135,14 @@ Section ProjEqAffine.
   Let prj := projective_miller pops.
 
   (** Dehomogenisation invariant: [(Tx, Ty)] is the affine form of
-      [(TX, TY, TZ)], expressed multiplicatively to avoid committing
-      to an [Fp2_inv] that may not exist. *)
+      [(TX, TY, TZ)], expressed multiplicatively as
+        [Tx * TZ^2 = TX], [Ty * TZ^3 = TY].
+      This avoids committing to an [Fp2_inv] operator at the
+      [FieldOps] level while still capturing exactly the
+      projective/affine identity. *)
   Definition proj_affine_rel (Tx Ty TX TY TZ : Fp2) : Prop :=
-    Tx = fp2_mul ops TX (fp2_sqr ops TZ) /\
-    Ty = fp2_mul ops TY (fp2_mul ops (fp2_sqr ops TZ) TZ).
-  (* Note: this is the INVERSE relation — Tx is expressed in terms of
-     TX and TZ^2 — because stating the forward direction
-     [Tx * TZ^2 = TX] would require representing the inverse as a
-     multiplicative identity we cannot state without more structure.
-     The [zproj_ops] instance discharges the forward form by
-     constructing [Tx := zfp2_mul p TX (zfp2_inv p (TZ^2))] directly,
-     which equals the backward form up to [fp2_inv_left] (provable in
-     the concrete Z instance). *)
+    fp2_mul ops Tx (fp2_sqr ops TZ) = TX /\
+    fp2_mul ops Ty (fp2_mul ops (fp2_sqr ops TZ) TZ) = TY.
 
   Hypothesis double_simulates :
     forall f Tx Ty TX TY TZ Px Py,
