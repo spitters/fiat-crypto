@@ -351,6 +351,18 @@ End ProjEqAffine.
    For canonical generators, witnesses are supplied by
    [zproj_initial_rel_canonical] in [CanonicityHelpers.v] (proved Qed). *)
 
+(** Concrete closing path for [zproj_double_simulates]:
+    1. [fp = fa] requires the LINE values to agree, which in turn
+       requires [zproj_to_affine TX TY TZ = (Tx, Ty)].  That identity
+       follows from [Tx * TZ^2 = TX] (the hypothesis) via the
+       left-inverse property of [zfp2_inv].  The left-inverse lemma
+       is [zfp2_mul x (zfp2_inv x) = (1,0)] for nonzero [x]; it
+       reduces to Fermat's little theorem on [Fp2] (~60 LoC building
+       on [PrimeFieldTheorems.F_inv_nonzero]).
+    2. [proj_affine_rel Nx Ny NX NY NZ] is the arithmetic content
+       already Qed'd in [FProjAlgebra.zproj_double_preserves_\{x,y\}].
+       Lowering to Z-level via [FProjBridge] is ~30 LoC of
+       [F.eq_to_Z_iff + rewrite zfp2_mul_to_F] plumbing. *)
 Lemma zproj_double_simulates :
   forall c ml (f : Fp12_Z) (Tx Ty TX TY TZ : Fp2_Z) (Px Py : Z),
     proj_affine_rel (zproj_ops c ml) Tx Ty TX TY TZ ->
@@ -362,6 +374,12 @@ Lemma zproj_double_simulates :
     proj_affine_rel (zproj_ops c ml) Nx Ny NX NY NZ.
 Admitted.
 
+(** Same closing path as [zproj_double_simulates]: left-inverse
+    for [zfp2_inv] + lowering via [FProjBridge] of the F-level
+    [FProjAlgebra.zproj_add_preserves_\{x,y\}] theorems.  The
+    additional side condition [Qx * TZ^2 \<\> TX] (ensuring
+    [Qx <> Tx] in affine) comes from the pairing well-formedness
+    preconditions ([P \<\> Q] for mixed addition to make sense). *)
 Lemma zproj_add_simulates :
   forall c ml (f : Fp12_Z) (Tx Ty TX TY TZ Qx Qy : Fp2_Z) (Px Py : Z),
     proj_affine_rel (zproj_ops c ml) Tx Ty TX TY TZ ->
