@@ -280,31 +280,54 @@ End ProjEqAffine.
     For any [zproj_ops c ml] (c : CurveParams, ml : affine make_line),
     the three hypotheses reduce to pure Z-arithmetic modulo [prime_p c]:
 
-    - [initial_rel] — trivially [fp2_mul x (fp2_sqr fp2_one) = x].
-      Unfolds [zfp2_mul p], [zfp2_sqr p] on [(1, 0)] to reflexivity.
+    - [initial_rel] — [fp2_mul x (fp2_sqr (1, 0)) = x].
+    - [double_simulates] — Bernstein--Lange doubling preserves the
+      dehomogenisation invariant [Tx * TZ^2 = TX], [Ty * TZ^3 = TY].
+    - [add_simulates] — same for mixed addition.
 
-    - [double_simulates] — given [Tx * TZ^2 = TX], [Ty * TZ^3 = TY],
-      prove that after the Bernstein--Lange doubling step:
-        [Nx * NZ^2 = NX], [Ny * NZ^3 = NY]
-      where [NX = (3X^2)^2 - 2D], [NZ = 2YZ], and affine
-      [Nx = lam^2 - 2Tx] with [lam = 3Tx^2/(2Ty)].  The tangent-slope
-      fix (commit 566feeeb5) ensures the line value agrees too.
-      Proof: expand both sides, use [Tx = TX/TZ^2], [Ty = TY/TZ^3],
-      clear denominators, [ring].
+    STRUCTURAL BLOCKER uncovered while attempting discharge: the
+    [proj_affine_rel] predicate uses structural equality [=] on
+    [Fp2_Z = Z * Z].  But [zfp2_mul] applies [_ mod p] to its output,
+    so e.g.\ [zfp2_mul p Qx (1, 0) = (Qx.0 mod p, Qx.1 mod p)] — which
+    equals [Qx] only when [Qx]'s components are ALREADY canonical
+    (both in [0, p)).  Real inputs to the Miller loop are canonical
+    by construction, but the admits are not provable without
+    propagating a canonicity hypothesis through the entire theorem
+    chain, OR restructuring the representation to bake canonicity in
+    (e.g.\ switching [Fp2_Z] from [Z * Z] to [F p * F p]).
 
-    - [add_simulates] — similar for mixed addition with
-      [lam = (Qy - Ty)/(Qx - Tx)].
+    Either approach is a real piece of work, roughly:
 
-    Discharging the two simulation lemmas is algebraically
-    straightforward (~100 lines each in Rocq's [field] tactic
-    with Z/pZ field theory) but requires plumbing the field
-    instance for [Fp2_Z].  Stated as [Admitted] here with the
-    proof plan above; execution is follow-up work.
+    - Option A (canonicity hypothesis, ~150 LoC):
+        * Define [canonical_fp2 (p : Z) (x : Fp2_Z) := ...].
+        * Add it as a hypothesis on [zproj_double_simulates] /
+          [zproj_add_simulates] inputs.
+        * Prove preservation: projective doubling of canonical
+          points yields canonical points.  (Trivial — each zfp op
+          reduces mod p, so outputs are canonical by construction.)
+        * Add canonical-Q, canonical-P conditions to
+          [projective_miller_eq_affine_zproj] and the per-curve
+          corollaries.
+        * With canonicity, the three admits discharge by
+          [field_simplify + Z.mod_same / Z.mod_small + ring].
 
-    Once proved, the corollary [projective_miller_eq_affine_zproj]
-    gives all five pairing curves a [Qed]'d projective-vs-affine
-    equivalence automatically, without requiring per-curve
-    [native_compute] cross-checks. *)
+    - Option B (F p type, ~300 LoC):
+        * Use [Crypto.Arithmetic.PrimeFieldTheorems.F] (already
+          imported elsewhere) so [Fp2 = F p * F p].
+        * Restructure [ZModTower] to use [F p] operations rather
+          than manual [_ mod p].
+        * All the zfp2 lemmas become [ring] /[ field].
+        * The three admits discharge by [ring] or [field_simplify;
+          reflexivity].
+
+    Option B is cleaner but touches more files (every concrete
+    [ZModTower] use site).  Option A is a surgical change but the
+    canonicity plumbing pollutes the theorem statement.
+
+    Neither is a quick fix.  Staying with [Admitted] here; the
+    scaffold (three admits + Qed'd corollary + five per-curve
+    Qed'd witnesses) is structurally complete and makes the
+    closing obligation concrete. *)
 
 Lemma zproj_initial_rel :
   forall c ml (Qx Qy : Fp2_Z),
