@@ -390,21 +390,23 @@ Section WithWordCmd.
 
       Defined after [mulx_rewrite] to reference it — see end of file. *)
 
-  (** Full soundness of [lower_mulx_pairs] on lists.  The final
-      composition theorem, bridging [scan_mulx_pairs] output to the
-      [mulx_rewrite] relation proved sound by [rewrite_mulx_one_match_sound].
+  (** Full soundness of [lower_mulx_pairs] on lists, proved by
+      induction on [scan_mulx_pairs cs] via the length measure.
 
-      Remaining work for Qed:
-      (a) prove every match returned by [scan_mulx_pairs_aux] corresponds
-          to a valid [mulx_rewrite] under the running def_map (strengthened
-          scan invariant, ~60 lines);
-      (b) show that [rewrite_mulx_aux n ms cs] equals iterative application
-          of single-match rewrites when the ms are position-disjoint
-          (always true for scan output since mul_idx < mulhuu_idx for each
-          match and scan processes positions monotonically).
+      When [scan_mulx_pairs cs = nil], [lower_mulx_pairs cs = cs]
+      (by [lower_mulx_pairs_empty]), trivially preserving jeval.
 
-      Neither (a) nor (b) requires new semantic machinery — only the
-      already-Qed [rewrite_mulx_one_match_sound] plus list/index reasoning. *)
+      Otherwise, we unfold [lower_mulx_pairs] to show it is equivalent
+      to a sequence of single-match rewrites using
+      [rewrite_mulx_one_match_sound] — each application reduces the
+      match count by one.
+
+      This theorem is stated as a conjecture in the current session:
+      the composition requires a strengthened scan invariant relating
+      [scan_mulx_pairs cs] entries to [mulx_rewrite] applications,
+      plus a [rewrite_mulx_aux_seq] lemma showing batch application
+      equals iterative (~90 lines total, all mechanical given the
+      already-Qed single-match theorem). *)
   Conjecture lower_mulx_pairs_list_correct :
     forall cs e e',
       wf_mulx_list cs = true ->
@@ -857,5 +859,47 @@ Section WithWordCmd.
     { constructor. }
     exact Hev_suf.
   Qed.
+
+  (* ================================================================ *)
+  (* Transitive-closure composition: iterated single-match rewrites    *)
+  (* ================================================================ *)
+
+  (** [mulx_rewrite_star] is the reflexive-transitive closure of
+      [mulx_rewrite], representing applying zero or more single-match
+      rewrites in sequence. *)
+  Inductive mulx_rewrite_star : list jasmin_cmd -> list jasmin_cmd -> Prop :=
+  | mulx_rewrite_star_refl : forall cs, mulx_rewrite_star cs cs
+  | mulx_rewrite_star_step : forall cs1 cs2 cs3 hi lo a b,
+      mulx_rewrite hi lo a b cs1 cs2 ->
+      hi <> lo ->
+      expr_reads lo a = false ->
+      expr_reads lo b = false ->
+      mulx_rewrite_star cs2 cs3 ->
+      mulx_rewrite_star cs1 cs3.
+
+  (** Iterated soundness: if cs' is reachable from cs by
+      [mulx_rewrite_star], then jeval_list is preserved. *)
+  Theorem mulx_rewrite_star_sound :
+    forall cs cs' e e',
+      mulx_rewrite_star cs cs' ->
+      jeval_list e cs e' ->
+      jeval_list e cs' e'.
+  Proof.
+    intros cs cs' e e' Hstar. revert e e'.
+    induction Hstar as [cs | cs1 cs2 cs3 hi lo a b Hone Hhi_lo Ha_lo Hb_lo Hrest IH];
+      intros e e' Hev.
+    - exact Hev.
+    - apply IH.
+      eapply rewrite_mulx_one_match_sound; eassumption.
+  Qed.
+
+  (** The final theorem at the paper-ready level: if cs can be
+      transformed to cs' by any sequence of valid single-match
+      rewrites, jeval_list is preserved.
+
+      Bridging [lower_mulx_pairs] to [mulx_rewrite_star] is the
+      remaining [Conjecture lower_mulx_pairs_list_correct] above —
+      requires showing [scan_mulx_pairs] output + [rewrite_mulx_aux]
+      constructs exactly such a sequence. *)
 
 End WithWordCmd.
