@@ -213,4 +213,25 @@ Admitted.
     relic encode in their hand-written line builders.  This is the
     100-150 lines/curve cost of option A in earlier discussion;
     not done here. *)
+
+(** ** Third cross-check attempt: tangent slope (not chord slope).
+
+    The two earlier failures used, respectively, the raw slope
+    numerator ([e = 3*X^2]) and the chord slope through dehomogenised
+    [T_old] and [T_new].  Both were wrong: the tangent at [T_old]
+    hits the curve at [T_old] (double root) and [-T_new], not at
+    [T_new] itself; the [T_old]-to-[T_new] chord is a geometrically
+    different line.  The correct affine slope for doubling is the
+    tangent slope [3*Tx_aff^2 / (2*Ty_aff)], which
+    [zproj_make_line_double] now computes directly. *)
+
+Definition bn254_miller_ref_proj : Fp12_Z :=
+  Eval native_compute in
+    projective_miller bn254_zmod_proj_ops bn254_loop_param
+      (fst bn254_G1) (snd bn254_G1)
+      (fst bn254_G2) (snd bn254_G2).
+
+Theorem bn254_proj_matches_affine_on_generators :
+  bn254_miller_ref_proj = bn254_miller_ref.
+Proof. native_compute. reflexivity. Qed.
 (* Left as a comment until the feval bridge is in place. *)

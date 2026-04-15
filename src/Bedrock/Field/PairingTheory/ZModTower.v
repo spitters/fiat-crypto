@@ -312,29 +312,26 @@ Definition zproj_to_affine (p : Z) (TX TY TZ : Fp2_Z) : Fp2_Z * Fp2_Z :=
   (zfp2_mul p TX (zfp2_inv p z2),
    zfp2_mul p TY (zfp2_inv p z3)).
 
-(** Affine slope from [T_old] (projective) and [T_new] (projective) on a
-    short-Weierstrass curve [y^2 = x^3 + b].  [T_new = 2 * T_old] in
-    affine, so the affine slope of the tangent at [T_old] equals
-    [(T_new_y - T_old_y) / (T_new_x - T_old_x)] when [T_old != T_new].
-    Symbolic, derived from the affine point identity, valid for any
-    doubling formula; sidesteps the projective-numerator bookkeeping. *)
-Definition zproj_double_slope
-    (p : Z) (TX TY TZ NX NY NZ : Fp2_Z) : Fp2_Z :=
-  let '(tx_aff, ty_aff) := zproj_to_affine p TX TY TZ in
-  let '(nx_aff, ny_aff) := zproj_to_affine p NX NY NZ in
-  zfp2_mul p (zfp2_sub p ny_aff ty_aff)
-             (zfp2_inv p (zfp2_sub p nx_aff tx_aff)).
-
 (** Spec instance: dehomogenise + reuse existing affine [ml].  Slow
     (uses Fp2 inversions) but correct.  Each curve's fast bedrock2
     instance avoids the inversions via the proper Bernstein--Lange line
-    formula and proves equivalent at the L4 level. *)
+    formula and proves equivalent at the L4 level.
+
+    IMPORTANT: the slope for doubling is the TANGENT slope at [T_old],
+    [3*Tx_aff^2 / (2*Ty_aff)], not the chord slope through [T_old] and
+    [T_new].  Geometrically, the tangent at [T_old] hits the curve at
+    [T_old] (double root) and [-T_new], not at [T_new] itself; using
+    the [T_old]-to-[T_new] chord gives a different line, which is why
+    the first cross-check attempt failed. *)
 Definition zproj_make_line_double
     (p : Z)
     (ml : Fp2_Z -> Fp2_Z -> Fp2_Z -> Z -> Z -> Fp12_Z)
     (TX TY TZ NX NY NZ : Fp2_Z) (Px Py : Z) : Fp12_Z :=
   let '(tx_aff, ty_aff) := zproj_to_affine p TX TY TZ in
-  let lam := zproj_double_slope p TX TY TZ NX NY NZ in
+  let tx_sq := zfp2_sqr p tx_aff in
+  let three_tx_sq := zfp2_add p (zfp2_add p tx_sq tx_sq) tx_sq in
+  let two_ty := zfp2_add p ty_aff ty_aff in
+  let lam := zfp2_mul p three_tx_sq (zfp2_inv p two_ty) in
   ml lam tx_aff ty_aff Px Py.
 
 Definition zproj_make_line_add
