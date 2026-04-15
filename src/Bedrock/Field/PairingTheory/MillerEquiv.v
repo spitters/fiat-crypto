@@ -23,6 +23,7 @@
 *)
 
 From Stdlib Require Import ZArith.ZArith.
+From Stdlib Require Import micromega.Lia.
 
 Require Import Crypto.Bedrock.Field.PairingTheory.Affine.
 Require Import Crypto.Bedrock.Field.PairingTheory.ZModTower.
@@ -328,6 +329,16 @@ End ProjEqAffine.
     scaffold (three admits + Qed'd corollary + five per-curve
     Qed'd witnesses) is structurally complete and makes the
     closing obligation concrete. *)
+
+(** The canonicity-based discharge path for the [zproj_*] admits
+    lives in a sibling file (see [CanonicityHelpers.v]).  Kept out
+    of this file to avoid re-running the 6-minute [native_compute]
+    cross-check on every tactic iteration.  The helper file proves
+    a [_canonical]-suffixed version of [zproj_initial_rel] under a
+    canonicity hypothesis on the inputs, but a universal
+    [zproj_initial_rel] (without canonicity) requires restructuring
+    [Section ProjEqAffine] to parameterise [initial_rel] on specific
+    [Qx, Qy], OR switching the representation away from [Z * Z]. *)
 
 Lemma zproj_initial_rel :
   forall c ml (Qx Qy : Fp2_Z),
