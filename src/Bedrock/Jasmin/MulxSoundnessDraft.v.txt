@@ -1,0 +1,164 @@
+(* ================================================================ *)
+(*   PHASE 3 ADDITIONS — draft, to be merged into PolishProofs.v    *)
+(* ================================================================ *)
+(*   Place inside [Section WithWordCmd] after existing              *)
+(*   lower_mulx_pairs_cmd_correct.                                   *)
+(* ================================================================ *)
+
+  (* -------------- wf_mulx well-formedness -------------------- *)
+
+  (** True if variable [x] appears as a [JEvar x] in expression [e]. *)
+  Fixpoint expr_reads (x : string) (e : jasmin_expr) : bool :=
+    match e with
+    | JEvar y => String.eqb x y
+    | JElit _ => false
+    | JEadd a b | JEsub a b | JEmul a b | JEmulhuu a b
+    | JEand a b | JEor  a b | JExor a b
+    | JEshr a b | JEshl a b | JEltu a b | JEeq a b =>
+        expr_reads x a || expr_reads x b
+    | JEload base _ => expr_reads x base
+    end.
+
+  (** True if command [c] reads or writes variable [x] anywhere in its
+      top-level instructions.  (For JCseq/JCif/JCwhile/JCdecl we recur
+      into their subcommands.) *)
+  Fixpoint cmd_touches (x : string) (c : jasmin_cmd) : bool :=
+    match c with
+    | JCskip => false
+    | JCseq c1 c2 => cmd_touches x c1 || cmd_touches x c2
+    | JCset y e => String.eqb x y || expr_reads x e
+    | JCstore base _ v => expr_reads x base || expr_reads x v
+    | JCcall _ args => existsb (expr_reads x) args
+    | JCif e ct cf => expr_reads x e || cmd_touches x ct || cmd_touches x cf
+    | JCwhile e body => expr_reads x e || cmd_touches x body
+    | JCdecl _ _ body => cmd_touches x body
+    | JCadd_flags cf r a b =>
+        String.eqb x cf || String.eqb x r || expr_reads x a || expr_reads x b
+    | JCadcx co r a b ci =>
+        String.eqb x co || String.eqb x r || String.eqb x ci
+        || expr_reads x a || expr_reads x b
+    | JCmulx h l a b =>
+        String.eqb x h || String.eqb x l || expr_reads x a || expr_reads x b
+    | JCsub_flags cf r a b =>
+        String.eqb x cf || String.eqb x r || expr_reads x a || expr_reads x b
+    | JCsbb co r a b ci =>
+        String.eqb x co || String.eqb x r || String.eqb x ci
+        || expr_reads x a || expr_reads x b
+    end.
+
+  (** No statement at positions strictly between [mul_idx] and
+      [mulhuu_idx] touches [hi].  [n] is the running position. *)
+  Fixpoint stmts_between_safe (hi : string) (mul_idx mulhuu_idx n : nat)
+      (cs : list jasmin_cmd) : bool :=
+    match cs with
+    | nil => true
+    | c :: rest =>
+        let is_between := Nat.ltb mul_idx n && Nat.ltb n mulhuu_idx in
+        (if is_between then negb (cmd_touches hi c) else true)
+        && stmts_between_safe hi mul_idx mulhuu_idx (S n) rest
+    end.
+
+  (** Every pair returned by [scan_mulx_pairs] must satisfy the safety
+      condition on its [hi] target. *)
+  Definition wf_mulx_list (cs : list jasmin_cmd) : bool :=
+    forallb (fun m =>
+               let '(mul_idx, mulhuu_idx, hi, _, _, _) := m in
+               stmts_between_safe hi mul_idx mulhuu_idx 0 cs)
+            (scan_mulx_pairs cs).
+
+  (** Lift to commands.  Simple (non-JCseq) commands have no pairs so
+      the list is empty. *)
+  Fixpoint wf_mulx_cmd (c : jasmin_cmd) : bool :=
+    match c with
+    | JCseq _ _ => wf_mulx_list (cmd_to_list c)
+    | JCif _ ct cf => wf_mulx_cmd ct && wf_mulx_cmd cf
+    | JCwhile _ body => wf_mulx_cmd body
+    | JCdecl _ _ body => wf_mulx_cmd body
+    | _ => true
+    end.
+
+  (* ------------ cmd_to_list / list_to_cmd soundness ------------ *)
+
+  (** List-level big-step evaluation. *)
+  Inductive jeval_list : env -> list jasmin_cmd -> env -> Prop :=
+  | jeval_list_nil  : forall e, jeval_list e nil e
+  | jeval_list_cons : forall e e1 e' c cs,
+      jeval e c e1 -> jeval_list e1 cs e' ->
+      jeval_list e (c :: cs) e'.
+
+  Lemma jeval_list_app :
+    forall cs1 cs2 e e',
+      jeval_list e (cs1 ++ cs2) e' <->
+      exists em, jeval_list e cs1 em /\ jeval_list em cs2 e'.
+  Proof.
+    induction cs1 as [|c cs1 IH]; intros cs2 e e'.
+    - split.
+      + intros H. exists e. split; [constructor | exact H].
+      + intros [em [Hl Hr]]. inversion Hl; subst. exact Hr.
+    - split.
+      + intros H. inversion H; subst.
+        apply IH in H5 as [em' [Hl Hr]].
+        exists em'. split; [econstructor; eassumption | exact Hr].
+      + intros [em [Hl Hr]].
+        inversion Hl; subst.
+        econstructor; [eassumption | apply IH; eauto].
+  Qed.
+
+  (** Flattening a JCseq-chain into a list preserves [jeval]. *)
+  Theorem cmd_to_list_sound :
+    forall c e e',
+      jeval e c e' <-> jeval_list e (cmd_to_list c) e'.
+  Proof.
+    induction c; intros e e'; simpl.
+    all: try (split;
+              [intros H; inversion H; subst;
+               econstructor; [eassumption | constructor]
+              |intros H; inversion H; subst;
+               inversion H5; subst; assumption]).
+    - (* JCskip *)
+      split.
+      + intros H. inversion H; subst. constructor.
+      + intros H. inversion H; subst. constructor.
+    - (* JCseq *)
+      split.
+      + intros H. inversion H; subst.
+        apply IHc1 in H2. apply IHc2 in H4.
+        apply jeval_list_app. eauto.
+      + intros H. apply jeval_list_app in H as [em [Hl Hr]].
+        apply IHc1 in Hl. apply IHc2 in Hr.
+        econstructor; eassumption.
+  Qed.
+
+  (** The inverse direction: wrapping a list with fold_right JCseq JCskip. *)
+  Theorem list_to_cmd_sound :
+    forall cs e e',
+      jeval_list e cs e' <-> jeval e (list_to_cmd cs) e'.
+  Proof.
+    induction cs as [|c cs IH]; intros e e'; unfold list_to_cmd; simpl.
+    - split.
+      + intros H. inversion H; subst. constructor.
+      + intros H. inversion H; subst. constructor.
+    - split.
+      + intros H. inversion H; subst.
+        econstructor; [eassumption|].
+        apply IH in H5. fold (list_to_cmd cs) in H5. exact H5.
+      + intros H. inversion H; subst.
+        econstructor; [eassumption|].
+        fold (list_to_cmd cs) in H4. apply IH. exact H4.
+  Qed.
+
+  (* ---------- TBD: rewrite_mulx_sound + lower_mulx_pairs_list ---- *)
+
+  (** Planned:
+      1. Lemma: if [cmd_touches hi c = false] then [jeval e c e' ->
+         e' hi = e hi] (and analogously for reads).
+      2. Lemma: under [wf_mulx_list cs], applying the rewrite at one
+         match preserves [jeval_list].  Key steps: split the list at
+         mul_idx and mulhuu_idx (three sub-lists), reassemble with the
+         new JCmulx+JCskip, use the safety hypothesis to show the
+         middle sub-list's [jeval_list] is insensitive to [hi]'s initial
+         value.
+      3. Lemma: [scan_mulx_pairs_valid] — every (mul_idx, mulhuu_idx,
+         hi, lo, a, b) returned by scan has operands equivalent under
+         the running [def_map].
+      4. Theorem: full [lower_mulx_pairs_list_correct]. *)
