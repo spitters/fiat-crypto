@@ -424,4 +424,38 @@ Section WithWordCmd.
       jeval_list e cs e' ->
       jeval_list e (lower_mulx_pairs cs) e'.
 
+  (* ================================================================ *)
+  (* Empty-match special case: fully Qed                               *)
+  (* ================================================================ *)
+
+  (** When [matches = nil], [rewrite_mulx_aux] is the identity. *)
+  Lemma rewrite_mulx_aux_nil_id :
+    forall n cs, rewrite_mulx_aux n nil cs = cs.
+  Proof.
+    intros n cs. revert n.
+    induction cs as [|c cs IH]; intros n; simpl; [reflexivity|].
+    rewrite IH. reflexivity.
+  Qed.
+
+  (** If [scan_mulx_pairs cs = nil], then [lower_mulx_pairs cs = cs]. *)
+  Lemma lower_mulx_pairs_empty :
+    forall cs,
+      scan_mulx_pairs cs = nil ->
+      lower_mulx_pairs cs = cs.
+  Proof.
+    intros cs Hscan. unfold lower_mulx_pairs.
+    rewrite Hscan. apply rewrite_mulx_aux_nil_id.
+  Qed.
+
+  (** Soundness in the empty-match case (no pairs found by scan). *)
+  Theorem lower_mulx_pairs_list_correct_empty :
+    forall cs e e',
+      scan_mulx_pairs cs = nil ->
+      jeval_list e cs e' ->
+      jeval_list e (lower_mulx_pairs cs) e'.
+  Proof.
+    intros cs e e' Hscan H.
+    rewrite (lower_mulx_pairs_empty _ Hscan). exact H.
+  Qed.
+
 End WithWordCmd.
