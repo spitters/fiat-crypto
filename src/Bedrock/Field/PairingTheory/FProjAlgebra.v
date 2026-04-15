@@ -115,3 +115,66 @@ Section FProjAlgebra.
   Qed.
 
 End FProjAlgebra.
+
+Section FProjAddAlgebra.
+  Context {q : positive} {prime_q : Znumtheory.prime q}.
+
+  Add Field _fproj_add_field : (Algebra.Field.field_theory_for_stdlib_tactic(T:=F q))
+    (morphism (F.ring_morph q),
+     constants [F.is_constant],
+     div (F.morph_div_theory q),
+     power_tac (F.power_theory q) [F.is_pow_constant]).
+
+  Variables TX TY TZ Tx Ty Qx Qy : F q.
+  Hypothesis HX : Tx * TZ^2 = TX.
+  Hypothesis HY : Ty * TZ^3 = TY.
+  Hypothesis HZ : TZ <> 0.
+  Hypothesis Hne : Qx * TZ^2 <> TX.  (* T and Q have distinct x-affine *)
+
+  Local Notation FZ n := (F.of_Z q n).
+
+  Let z1z1 := TZ^2.
+  Let u2 := Qx * z1z1.
+  Let s2 := Qy * TZ * z1z1.
+  Let h := u2 - TX.
+  Let hh := h^2.
+  Let i := FZ 4 * hh.
+  Let j := h * i.
+  Let r := FZ 2 * (s2 - TY).
+  Let v := TX * i.
+  Let NX := r^2 - j - FZ 2 * v.
+  Let NY := r * (v - NX) - FZ 2 * TY * j.
+  Let NZ := (TZ + h)^2 - z1z1 - hh.
+
+  Let lam := (Qy - Ty) / (Qx - Tx).
+  Let Nx := lam^2 - Tx - Qx.
+  Let Ny := lam * (Tx - Nx) - Ty.
+
+  Lemma Qx_sub_Tx_nonzero : Qx - Tx <> 0.
+  Proof.
+    intro HH.
+    apply Hne.
+    (* Qx - Tx = 0 -> Qx = Tx = TX/TZ^2, so Qx * TZ^2 = TX *)
+    assert (HQx : Qx = Tx) by (apply (f_equal (fun z => z + Tx)) in HH; ring_simplify in HH; exact HH).
+    rewrite HQx, <- HX. reflexivity.
+  Qed.
+
+  (** Preservation identity for the X-coordinate. *)
+  Lemma zproj_add_preserves_x : Nx * NZ^2 = NX.
+  Proof.
+    unfold Nx, NZ, NX, r, v, j, i, hh, h, u2, s2, z1z1, lam.
+    rewrite <- HX, <- HY.
+    assert (HQxTx : Qx - Tx <> 0) by apply Qx_sub_Tx_nonzero.
+    field; repeat split; assumption.
+  Qed.
+
+  (** Preservation identity for the Y-coordinate. *)
+  Lemma zproj_add_preserves_y : Ny * NZ^3 = NY.
+  Proof.
+    unfold Ny, Nx, NZ, NY, NX, r, v, j, i, hh, h, u2, s2, z1z1, lam.
+    rewrite <- HX, <- HY.
+    assert (HQxTx : Qx - Tx <> 0) by apply Qx_sub_Tx_nonzero.
+    field; repeat split; assumption.
+  Qed.
+
+End FProjAddAlgebra.
