@@ -91,4 +91,32 @@ Section FProjBridge.
     reflexivity.
   Qed.
 
+  Lemma zfp2_sqr_to_F (x : Fp2_Z) :
+    fp2z_to_F (zfp2_sqr (Z.pos q) x) =
+    let '(a, b) := fp2z_to_F x in
+    ((a * a - b * b)%F, (a * b + b * a)%F).
+  Proof. apply zfp2_mul_to_F. Qed.
+
+  Lemma zfp2_add_to_F (x y : Fp2_Z) :
+    fp2z_to_F (zfp2_add (Z.pos q) x y) =
+    let '(a, b) := fp2z_to_F x in
+    let '(c, d) := fp2z_to_F y in
+    ((a + c)%F, (b + d)%F).
+  Proof.
+    destruct x as [x0 x1]; destruct y as [y0 y1].
+    unfold fp2z_to_F, zfp2_add. cbn [fst snd].
+    rewrite !zfp_add_to_F. reflexivity.
+  Qed.
+
+  Lemma zfp2_sub_to_F (x y : Fp2_Z) :
+    fp2z_to_F (zfp2_sub (Z.pos q) x y) =
+    let '(a, b) := fp2z_to_F x in
+    let '(c, d) := fp2z_to_F y in
+    ((a - c)%F, (b - d)%F).
+  Proof.
+    destruct x as [x0 x1]; destruct y as [y0 y1].
+    unfold fp2z_to_F, zfp2_sub. cbn [fst snd].
+    rewrite !zfp_sub_to_F. reflexivity.
+  Qed.
+
 End FProjBridge.
