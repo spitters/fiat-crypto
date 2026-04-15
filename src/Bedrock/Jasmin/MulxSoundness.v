@@ -405,17 +405,8 @@ Section WithWordCmd.
          project_phase3_mulx_soundness.md *)
       True.
 
-  (** Rewriting a single match preserves [jeval_list] under
-      [wf_mulx_list]. *)
-  Conjecture rewrite_mulx_one_match_sound :
-    forall (cs : list jasmin_cmd) (mul_idx mulhuu_idx : nat)
-           (hi lo : string) (a b : jasmin_expr) (e e' : env),
-      stmts_between_safe hi mul_idx mulhuu_idx 0 cs = true ->
-      jeval_list e cs e' ->
-      (* let cs' := replace at mul_idx with JCmulx hi lo a b,
-                   replace at mulhuu_idx with JCskip in cs *)
-      (* jeval_list e cs' e' *)
-      True.
+  (** (Relational version of rewrite_mulx_one_match_sound appears below
+      after [mulx_rewrite] is defined.) *)
 
   (** Full soundness: [lower_mulx_pairs] preserves [jeval_list]. *)
   Conjecture lower_mulx_pairs_list_correct :
@@ -457,5 +448,251 @@ Section WithWordCmd.
     intros cs e e' Hscan H.
     rewrite (lower_mulx_pairs_empty _ Hscan). exact H.
   Qed.
+
+  (* ================================================================ *)
+  (* One-match rewrite soundness: relational formulation              *)
+  (* ================================================================ *)
+
+  (** Express the single-rewrite schema as a relation on lists.  This
+      side-steps list indexing and lets us reason directly about the
+      five-part decomposition. *)
+  Inductive mulx_rewrite (hi lo : string) (a b : jasmin_expr)
+    : list jasmin_cmd -> list jasmin_cmd -> Prop :=
+  | mulx_rewrite_intro : forall (prefix middle suffix : list jasmin_cmd)
+                                (a'' b'' : jasmin_expr),
+      (forall c, In c middle -> cmd_touches hi c = false) ->
+      (forall (ev : env), eval_jexpr ev a = eval_jexpr ev a'') ->
+      (forall (ev : env), eval_jexpr ev b = eval_jexpr ev b'') ->
+      mulx_rewrite hi lo a b
+        (prefix ++ JCset lo (JEmul a b) :: middle
+                ++ JCset hi (JEmulhuu a'' b'') :: suffix)
+        (prefix ++ JCmulx hi lo a b :: middle
+                ++ JCskip :: suffix).
+
+  (** A useful invariant: [jeval_list] on a middle range where no
+      statement touches [hi] preserves [hi]. *)
+  Lemma jeval_list_middle_preserves_hi :
+    forall middle hi env env',
+      (forall c, In c middle -> cmd_touches hi c = false) ->
+      jeval_list env middle env' ->
+      env' hi = env hi.
+  Proof.
+    induction middle as [|c cs IH]; intros hi env env' Hsafe Hev.
+    - inversion Hev; subst. reflexivity.
+    - inversion Hev as [| e0 e1 e'0 c0 cs0 Hc Hcs ]; subst.
+      assert (Hc_safe : cmd_touches hi c = false).
+      { apply Hsafe. left. reflexivity. }
+      rewrite (IH hi e1 env' (fun c' Hin => Hsafe c' (or_intror Hin)) Hcs).
+      apply cmd_touches_preserves_var with (c := c); assumption.
+  Qed.
+
+  (** If a variable [x] doesn't appear in expression [e], the
+      evaluation doesn't depend on [x]'s value in the environment. *)
+  Lemma eval_jexpr_agnostic_to_var :
+    forall e x env w,
+      expr_reads x e = false ->
+      eval_jexpr env e = eval_jexpr (update env x w) e.
+  Proof.
+    induction e; intros y env w Hnr; simpl in *; try reflexivity.
+    - (* JEvar *) unfold update.
+      destruct (String.eqb x y) eqn:Heq; [|reflexivity].
+      apply String.eqb_eq in Heq. subst. rewrite String.eqb_refl in Hnr.
+      discriminate.
+    - (* JEadd *) apply orb_false_iff in Hnr as [H1 H2].
+      rewrite <- (IHe1 y env w H1), <- (IHe2 y env w H2); reflexivity.
+    - (* JEsub *) apply orb_false_iff in Hnr as [H1 H2].
+      rewrite <- (IHe1 y env w H1), <- (IHe2 y env w H2); reflexivity.
+    - (* JEmul *) apply orb_false_iff in Hnr as [H1 H2].
+      rewrite <- (IHe1 y env w H1), <- (IHe2 y env w H2); reflexivity.
+    - (* JEmulhuu *) apply orb_false_iff in Hnr as [H1 H2].
+      rewrite <- (IHe1 y env w H1), <- (IHe2 y env w H2); reflexivity.
+    - (* JEand *) apply orb_false_iff in Hnr as [H1 H2].
+      rewrite <- (IHe1 y env w H1), <- (IHe2 y env w H2); reflexivity.
+    - (* JEor *) apply orb_false_iff in Hnr as [H1 H2].
+      rewrite <- (IHe1 y env w H1), <- (IHe2 y env w H2); reflexivity.
+    - (* JExor *) apply orb_false_iff in Hnr as [H1 H2].
+      rewrite <- (IHe1 y env w H1), <- (IHe2 y env w H2); reflexivity.
+    - (* JEshr *) apply orb_false_iff in Hnr as [H1 H2].
+      rewrite <- (IHe1 y env w H1), <- (IHe2 y env w H2); reflexivity.
+    - (* JEshl *) apply orb_false_iff in Hnr as [H1 H2].
+      rewrite <- (IHe1 y env w H1), <- (IHe2 y env w H2); reflexivity.
+    - (* JEltu *) apply orb_false_iff in Hnr as [H1 H2].
+      rewrite <- (IHe1 y env w H1), <- (IHe2 y env w H2); reflexivity.
+    - (* JEeq *) apply orb_false_iff in Hnr as [H1 H2].
+      rewrite <- (IHe1 y env w H1), <- (IHe2 y env w H2); reflexivity.
+    (* JEload closed by [try reflexivity] (eval_jexpr returns None
+       on both sides since JEload requires memory support). *)
+  Qed.
+
+  (** [update] at disjoint variables commutes. *)
+  Lemma update_comm : forall (env : env) x1 x2 w1 w2,
+      x1 <> x2 ->
+      update (update env x1 w1) x2 w2 = update (update env x2 w2) x1 w1.
+  Proof.
+    intros env x1 x2 w1 w2 Hneq.
+    apply functional_extensionality. intros y.
+    unfold update.
+    destruct (String.eqb y x2) eqn:H2;
+      destruct (String.eqb y x1) eqn:H1; try reflexivity.
+    apply String.eqb_eq in H1, H2. subst. contradiction.
+  Qed.
+
+  (** Helper: String.eqb sym. *)
+  Lemma streqb_sym_neq : forall x y,
+    String.eqb x y = false -> String.eqb y x = false.
+  Proof.
+    intros x y H. destruct (String.eqb y x) eqn:E; [|reflexivity].
+    apply String.eqb_eq in E. subst. rewrite String.eqb_refl in H. discriminate.
+  Qed.
+
+  (** If a command [c] doesn't touch [x], then adding an [x]-update
+      around the execution still works.  Structural induction on
+      [jeval]; uses [eval_jexpr_agnostic_to_var] for expressions and
+      [update_comm] to commute updates at disjoint vars. *)
+  Lemma jeval_agnostic_to_var :
+    forall env c env' x w,
+      cmd_touches x c = false ->
+      jeval env c env' ->
+      jeval (update env x w) c (update env' x w).
+  Proof.
+    intros env c env' x w Hnt H. revert x w Hnt.
+    induction H; intros y wy Hnt; simpl in Hnt.
+    - (* JCskip *) constructor.
+    - (* JCseq *)
+      apply orb_false_iff in Hnt as [A B].
+      econstructor; [apply IHjeval1; exact A | apply IHjeval2; exact B].
+    - (* JCset *)
+      apply orb_false_iff in Hnt as [A Bx].
+      assert (Hxy : String.eqb x y = false).
+      { apply streqb_sym_neq. exact A. }
+      rewrite update_comm by (intro; subst; rewrite String.eqb_refl in A; discriminate).
+      constructor. rewrite <- eval_jexpr_agnostic_to_var by exact Bx. exact H.
+    - (* JCdecl *) apply jeval_decl. apply IHjeval. exact Hnt.
+    - (* JCif_true *)
+      apply orb_false_iff in Hnt as [P Hcf].
+      apply orb_false_iff in P as [He Hct].
+      eapply jeval_if_true; [|exact H0|apply IHjeval; exact Hct].
+      rewrite <- eval_jexpr_agnostic_to_var by exact He. exact H.
+    - (* JCif_false *)
+      apply orb_false_iff in Hnt as [P Hcf].
+      apply orb_false_iff in P as [He Hct].
+      eapply jeval_if_false; [|apply IHjeval; exact Hcf].
+      rewrite <- eval_jexpr_agnostic_to_var by exact He. exact H.
+    - (* JCwhile_false *)
+      apply orb_false_iff in Hnt as [He _].
+      apply jeval_while_false.
+      rewrite <- eval_jexpr_agnostic_to_var by exact He. exact H.
+    - (* JCwhile_true *)
+      assert (Hnt' := Hnt).
+      apply orb_false_iff in Hnt as [He Hb].
+      eapply jeval_while_true.
+      + rewrite <- eval_jexpr_agnostic_to_var by exact He. exact H.
+      + exact H0.
+      + apply IHjeval1; exact Hb.
+      + apply IHjeval2; exact Hnt'.
+    - (* JCstore *)
+      apply orb_false_iff in Hnt as [Hb Hv].
+      eapply jeval_store.
+      + rewrite <- eval_jexpr_agnostic_to_var by exact Hb. exact H.
+      + rewrite <- eval_jexpr_agnostic_to_var by exact Hv. exact H0.
+    - (* JCcall *) constructor.
+    - (* JCadd_flags *)
+      apply orb_false_iff in Hnt as [P Hb].
+      apply orb_false_iff in P as [P Ha].
+      apply orb_false_iff in P as [Hcf Hr].
+      assert (Hry : r <> y) by (intros ->; rewrite String.eqb_refl in Hr; discriminate).
+      assert (Hcfy : cf <> y) by (intros ->; rewrite String.eqb_refl in Hcf; discriminate).
+      rewrite (update_comm _ r y _ _ Hry).
+      rewrite (update_comm _ cf y _ _ Hcfy).
+      apply jeval_add_flags; rewrite <- eval_jexpr_agnostic_to_var; eauto.
+    - (* JCadcx *)
+      apply orb_false_iff in Hnt as [P Hb].
+      apply orb_false_iff in P as [P Ha].
+      apply orb_false_iff in P as [P Hci].
+      apply orb_false_iff in P as [Hco Hr].
+      assert (Hry : r <> y) by (intros ->; rewrite String.eqb_refl in Hr; discriminate).
+      assert (Hcoy : co <> y) by (intros ->; rewrite String.eqb_refl in Hco; discriminate).
+      rewrite (update_comm _ r y _ _ Hry).
+      rewrite (update_comm _ co y _ _ Hcoy).
+      apply jeval_adcx; rewrite <- eval_jexpr_agnostic_to_var; eauto.
+    - (* JCmulx *)
+      apply orb_false_iff in Hnt as [P Hb].
+      apply orb_false_iff in P as [P Ha].
+      apply orb_false_iff in P as [Hh Hl].
+      assert (Hly : l <> y) by (intros ->; rewrite String.eqb_refl in Hl; discriminate).
+      assert (Hhy : h <> y) by (intros ->; rewrite String.eqb_refl in Hh; discriminate).
+      rewrite (update_comm _ l y _ _ Hly).
+      rewrite (update_comm _ h y _ _ Hhy).
+      apply jeval_mulx; rewrite <- eval_jexpr_agnostic_to_var; eauto.
+    - (* JCsub_flags *)
+      apply orb_false_iff in Hnt as [P Hb].
+      apply orb_false_iff in P as [P Ha].
+      apply orb_false_iff in P as [Hcf Hr].
+      assert (Hry : r <> y) by (intros ->; rewrite String.eqb_refl in Hr; discriminate).
+      assert (Hcfy : cf <> y) by (intros ->; rewrite String.eqb_refl in Hcf; discriminate).
+      rewrite (update_comm _ r y _ _ Hry).
+      rewrite (update_comm _ cf y _ _ Hcfy).
+      apply jeval_sub_flags; rewrite <- eval_jexpr_agnostic_to_var; eauto.
+    - (* JCsbb *)
+      apply orb_false_iff in Hnt as [P Hb].
+      apply orb_false_iff in P as [P Ha].
+      apply orb_false_iff in P as [P Hci].
+      apply orb_false_iff in P as [Hco Hr].
+      assert (Hry : r <> y) by (intros ->; rewrite String.eqb_refl in Hr; discriminate).
+      assert (Hcoy : co <> y) by (intros ->; rewrite String.eqb_refl in Hco; discriminate).
+      rewrite (update_comm _ r y _ _ Hry).
+      rewrite (update_comm _ co y _ _ Hcoy).
+      apply jeval_sbb; rewrite <- eval_jexpr_agnostic_to_var; eauto.
+  Qed.
+
+  (** Commute a [hi]-update past a middle range when middle doesn't
+      touch [hi]: executing the middle from [update env hi w] yields
+      the same values (for all non-hi vars) as executing from [env],
+      and [hi] stays at [w]. *)
+  Lemma jeval_list_hi_update_commutes :
+    forall middle hi env w env',
+      (forall c, In c middle -> cmd_touches hi c = false) ->
+      jeval_list env middle env' ->
+      jeval_list (update env hi w) middle (update env' hi w).
+  Proof.
+    induction middle as [|c cs IH]; intros hi env w env' Hsafe Hev.
+    - inversion Hev; subst. constructor.
+    - inversion Hev as [| e0 e1 e'0 c0 cs0 Hc Hcs ]; subst.
+      assert (Hc_safe : cmd_touches hi c = false).
+      { apply Hsafe. left. reflexivity. }
+      econstructor.
+      + eapply jeval_agnostic_to_var; eassumption.
+      + apply IH; [|exact Hcs].
+        intros c' Hin. apply Hsafe. right. exact Hin.
+  Qed.
+
+  (** Single-match rewrite preserves [jeval_list].  Proof outline:
+      1. Inversion on [mulx_rewrite] splits cs into
+         prefix ++ [JCset lo (JEmul a b)] ++ middle ++ [JCset hi (JEmulhuu a'' b'')] ++ suffix.
+      2. jeval_list_app + inversion gives us the chain of intermediate
+         environments through each part of the split.
+      3. For the rewritten list, we reconstruct the same final env:
+         - prefix executes identically
+         - JCmulx writes both hi (to mulhuu va vb) and lo (to mul va vb),
+           whereas original JCset only wrote lo
+         - middle executes — original preserves hi, rewrite keeps hi at mulhuu va vb
+           (both give same non-hi vars by jeval_agnostic_to_var applied
+           inductively, hi value is different but the original's hi value
+           gets REPLACED by JCset hi at mulhuu_idx anyway)
+         - At mulhuu position: original writes hi with word.mulhuu(eval a'', eval b'')
+           which equals word.mulhuu(eval a, eval b) by Ha_eq/Hb_eq. Rewrite has
+           JCskip (identity). After this step both envs agree on hi.
+         - suffix executes identically.
+      This proof is ~80 lines of careful env-tracking; left admitted in
+      this session to keep the commit focused.  The semantic foundation
+      (Phase 3a + 3b + jeval_agnostic_to_var + jeval_list_hi_update_commutes)
+      is what makes this theorem provable at all. *)
+  Theorem rewrite_mulx_one_match_sound :
+    forall hi lo a b cs cs' env env',
+      mulx_rewrite hi lo a b cs cs' ->
+      hi <> lo ->
+      jeval_list env cs env' ->
+      jeval_list env cs' env'.
+  Admitted.
 
 End WithWordCmd.
