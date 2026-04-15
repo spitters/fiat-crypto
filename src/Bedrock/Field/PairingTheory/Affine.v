@@ -162,6 +162,93 @@ Section AffineMiller.
 
 End AffineMiller.
 
+(** ** Sparse-line variant of the affine Miller loop.
+
+    The line emitted by [make_line] is sparse — only 6 of its 12
+    [Fp] components are non-zero (in the bedrock2 D-twist basis: c0.c0
+    and the [c1] block, in the M-twist basis: the [c0] block and
+    c1.c1).  A generic [Fp12] multiplier wastes work multiplying by
+    those zeros.  A specialised [fp12_mul_by_line] is roughly 2x faster
+    on real instances (~half the [Fp2] multiplications); arkworks calls
+    this its [ell()] routine and saves much of the per-iteration cost
+    of the Miller loop.
+
+    [affine_miller_sparse] is structurally identical to [affine_miller]
+    but uses an extra [mul_by_line : Fp12 -> Fp12 -> Fp12] argument
+    everywhere the line is multiplied into [f].  Curves whose
+    [FieldOps] doesn't have a sparse multiplier just pass [fp12_mul]
+    and pay the speed penalty; correctness is preserved by the trivial
+    equality [fp12_mul = mul_by_line] in that case. *)
+
+Section AffineMillerSparse.
+
+  Context {Fp Fp2 Fp12 : Type}.
+  Context (ops : FieldOps Fp Fp2 Fp12).
+  Context (mul_by_line : Fp12 -> Fp12 -> Fp12).
+
+  Local Notation "x +2 y" := (fp2_add  ops x y) (at level 50).
+  Local Notation "x -2 y" := (fp2_sub  ops x y) (at level 50).
+  Local Notation "x *2 y" := (fp2_mul  ops x y) (at level 40).
+  Local Notation "/2 x"   := (fp2_inv  ops x)   (at level 35).
+
+  Definition double_step_sparse
+      (f : Fp12) (Tx Ty : Fp2) (Px Py : Fp)
+    : Fp12 * Fp2 * Fp2 :=
+    let lam := affine_doubling_slope ops Tx Ty in
+    let line := make_line ops lam Tx Ty Px Py in
+    let f2 := mul_by_line (fp12_sqr ops f) line in
+    let new_x := (fp2_sqr ops lam) -2 Tx -2 Tx in
+    let new_y := (lam *2 (Tx -2 new_x)) -2 Ty in
+    (f2, new_x, new_y).
+
+  Definition add_step_sparse
+      (f : Fp12) (Tx Ty Qx Qy : Fp2) (Px Py : Fp)
+    : Fp12 * Fp2 * Fp2 :=
+    let lam := affine_chord_slope ops Tx Ty Qx Qy in
+    let line := make_line ops lam Tx Ty Px Py in
+    let f' := mul_by_line f line in
+    let new_x := ((fp2_sqr ops lam) -2 Tx) -2 Qx in
+    let new_y := (lam *2 (Tx -2 new_x)) -2 Ty in
+    (f', new_x, new_y).
+
+  Fixpoint affine_miller_sparse_aux
+      (n : Z) (i : nat)
+      (Px Py : Fp) (Qx Qy : Fp2)
+      (f : Fp12) (Tx Ty : Fp2)
+    : Fp12 * Fp2 * Fp2 :=
+    match i with
+    | O => (f, Tx, Ty)
+    | S i' =>
+      let '(f1, Tx1, Ty1) := double_step_sparse f Tx Ty Px Py in
+      let '(f2, Tx2, Ty2) :=
+        if Z.testbit n (Z.of_nat i') then
+          add_step_sparse f1 Tx1 Ty1 Qx Qy Px Py
+        else
+          (f1, Tx1, Ty1)
+      in
+      affine_miller_sparse_aux n i' Px Py Qx Qy f2 Tx2 Ty2
+    end.
+
+  Definition affine_miller_sparse
+      (n : Z) (Px Py : Fp) (Qx Qy : Fp2) : Fp12 :=
+    let nbits := Z.to_nat (Z.log2 n) in
+    let '(f, _, _) :=
+      affine_miller_sparse_aux n nbits Px Py Qx Qy
+        (fp12_one ops) Qx Qy
+    in f.
+
+End AffineMillerSparse.
+
+(** Soundness witness: with [mul_by_line := fp12_mul ops],
+    [affine_miller_sparse] reduces structurally to [affine_miller]. *)
+Lemma affine_miller_sparse_dense
+  {Fp Fp2 Fp12 : Type}
+  (ops : FieldOps Fp Fp2 Fp12)
+  (n : Z) (Px Py : Fp) (Qx Qy : Fp2) :
+  affine_miller_sparse ops (fp12_mul ops) n Px Py Qx Qy
+    = affine_miller ops n Px Py Qx Qy.
+Proof. reflexivity. Qed.
+
 (** ** Concrete instance: native-Z mod p arithmetic.
 
     This is the executable instance used by [Eval vm_compute] cross-checks.
