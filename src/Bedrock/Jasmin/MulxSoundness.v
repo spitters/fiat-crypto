@@ -1578,11 +1578,94 @@ Section WithWordCmd.
       split; [lia|auto].
   Qed.
 
+  (** Invariant preservation: JCset x e where e is NOT JEmul or JEmulhuu.
+      The def_map is updated but pending and acc are unchanged. *)
+  Lemma scan_inv_pred_step_JCset_other :
+    forall (cs_all : list jasmin_cmd) (n : nat) (m : def_map)
+           (pending : list pending_mul) (acc : list mulx_match)
+           (x : string) (e : jasmin_expr),
+      scan_inv_pred cs_all n m pending acc ->
+      (match e with JEmul _ _ => False | JEmulhuu _ _ => False | _ => True end) ->
+      nth_error cs_all n = Some (JCset x e) ->
+      scan_inv_pred cs_all (S n) (defmap_update m x e) pending acc.
+  Proof.
+    intros cs_all n m pending acc x e
+           [Hval Hdisj Hnodup Hbehind Hpend] Hnot_mulx Hnth.
+    constructor; auto.
+    - intros [[[[[mi mj] hi] lo] a] b] Hin.
+      specialize (Hbehind (mi,mj,hi,lo,a,b) Hin). destruct Hbehind.
+      split; lia.
+    - intros [[[idx lo_p] a_p] b_p] Hin.
+      specialize (Hpend (idx, lo_p, a_p, b_p) Hin). destruct Hpend.
+      split; [lia|auto].
+  Qed.
+
+  (** Invariant preservation: JCset x (JEmul a b).  The new pending
+      entry is valid (idx = n, JCset matches at position n). *)
+  Lemma scan_inv_pred_step_JCset_mul :
+    forall (cs_all : list jasmin_cmd) (n : nat) (m : def_map)
+           (pending : list pending_mul) (acc : list mulx_match)
+           (x : string) (a b : jasmin_expr),
+      scan_inv_pred cs_all n m pending acc ->
+      nth_error cs_all n = Some (JCset x (JEmul a b)) ->
+      scan_inv_pred cs_all (S n) (defmap_update m x (JEmul a b))
+                    ((n, x, a, b) :: pending) acc.
+  Proof.
+    intros cs_all n m pending acc x a b
+           [Hval Hdisj Hnodup Hbehind Hpend] Hnth.
+    constructor; auto.
+    - intros [[[[[mi mj] hi] lo] a0] b0] Hin.
+      specialize (Hbehind (mi,mj,hi,lo,a0,b0) Hin). destruct Hbehind.
+      split; lia.
+    - intros [[[idx lo_p] a_p] b_p] Hin. simpl in Hin.
+      destruct Hin as [Heq | Hin'].
+      + injection Heq as <- <- <- <-.
+        split; [lia | exact Hnth].
+      + specialize (Hpend (idx, lo_p, a_p, b_p) Hin'). destruct Hpend.
+        split; [lia|auto].
+  Qed.
+
+  (** Invariant preservation: JCset hi (JEmulhuu a b) with NO pending
+      match.  The def_map is updated; pending and acc unchanged. *)
+  Lemma scan_inv_pred_step_JCset_mulhuu_nomatch :
+    forall (cs_all : list jasmin_cmd) (n : nat) (m : def_map)
+           (pending : list pending_mul) (acc : list mulx_match)
+           (hi : string) (a b : jasmin_expr),
+      scan_inv_pred cs_all n m pending acc ->
+      find_matching_mul m a b pending = None ->
+      nth_error cs_all n = Some (JCset hi (JEmulhuu a b)) ->
+      scan_inv_pred cs_all (S n) (defmap_update m hi (JEmulhuu a b))
+                    pending acc.
+  Proof.
+    intros cs_all n m pending acc hi a b
+           [Hval Hdisj Hnodup Hbehind Hpend] _ Hnth.
+    constructor; auto.
+    - intros [[[[[mi mj] hi0] lo] a0] b0] Hin.
+      specialize (Hbehind (mi,mj,hi0,lo,a0,b0) Hin). destruct Hbehind.
+      split; lia.
+    - intros [[[idx lo_p] a_p] b_p] Hin.
+      specialize (Hpend (idx, lo_p, a_p, b_p) Hin). destruct Hpend.
+      split; [lia|auto].
+  Qed.
+
   (** Final theorem: the scan invariant is preserved through the aux
-      function.  All five invariant conditions mesh through the four
-      cases (JCset JEmul, JCset JEmulhuu+match, JCset JEmulhuu+no match,
-      JCset other, non-JCset) -- all mechanical but ~100 lines total.
-      Conjectured here. *)
+      function.  The remaining case is [JCset hi (JEmulhuu a b)] WITH
+      a pending match — the new [acc] entry must satisfy
+      [valid_match_at cs_all].  This is the hardest case, requiring:
+      (a) scope-valid hypothesis: [valid_match_at] requires
+          [forall ev, eval_jexpr ev a' = eval_jexpr ev a''] where a''
+          is captured from the [JEmulhuu] and a' is from pending.
+          [equiv_cp] under [defmap_consistent] gives this only for
+          [ev] consistent with the def_map, not universally.
+      (b) [expr_reads lo a' = false]: not structurally guaranteed by
+          the scan (programmer may write [lo = lo * 2]).
+
+      Possible closures: (i) weaken [valid_match_at] to a
+      defmap-consistent form, rewording [rewrite_mulx_one_match_sound]
+      accordingly; or (ii) extend [wf_mulx_list] to check the
+      self-read condition syntactically.  Both are ${\sim}30$~lines.
+      Left as Conjecture.  The 4 other cases (set_other, set_mul,
+      mulhuu_nomatch, nonset) are all Qed above. *)
   Conjecture scan_mulx_pairs_valid_and_disjoint :
     forall cs,
       wf_mulx_list cs = true ->
