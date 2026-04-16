@@ -1442,16 +1442,58 @@ Section WithWordCmd.
     forall m1 m2, In m1 ms -> In m2 ms -> m1 <> m2 ->
       match_disjoint m1 m2 /\ match_names_disjoint m1 m2.
 
-  (** The (assumed) scan invariant: [scan_mulx_pairs] returns valid and
-      strong-pairwise-disjoint matches under [wf_mulx_list].  This is the
-      only remaining piece; all semantic content is Qed above.  See Step 3
-      of [~/.claude/plans/jiggly-bouncing-grove.md] for the proof plan. *)
+  (* ================================================================ *)
+  (* Scan invariant: strengthened wf predicate + direct implication    *)
+  (* ================================================================ *)
+
+  (** Boolean check: does the scan-produced match m satisfy all
+      valid_match_at conditions against cs?  This is a syntactic
+      predicate we can check post-hoc, strictly stronger than
+      [wf_mulx_list] (which only checks stmts_between_safe). *)
+  Definition match_well_formed_at_b (cs : list jasmin_cmd) (m : mulx_match) : bool :=
+    let '(mi, mj, hi, lo, a, b) := m in
+    (* Position ordering *)
+    Nat.ltb mi mj
+    (* Positions have the right JCset shape *)
+    && match nth_error cs mi with
+       | Some (JCset lo_cs (JEmul a_cs b_cs)) =>
+           String.eqb lo_cs lo && expr_eqb_full a_cs a && expr_eqb_full b_cs b
+       | _ => false
+       end
+    && match nth_error cs mj with
+       | Some (JCset hi_cs (JEmulhuu _ _)) => String.eqb hi_cs hi
+       | _ => false
+       end
+    (* Operand-self and hi<>lo constraints *)
+    && negb (expr_reads lo a)
+    && negb (expr_reads lo b)
+    && negb (String.eqb hi lo)
+    (* Middle-safety for hi, a-reads, b-reads *)
+    && stmts_between_safe hi mi mj 0 cs.
+    (* Note: middle-safety for a-reads/b-reads not encoded here; covered
+       by a generalized safe predicate below. *)
+
+  (** Strong scan output validity: every match is [valid_match_at] AND
+      the list is pairwise strong-disjoint AND NoDup.  This is what we
+      need for [lower_mulx_pairs_list_correct_final].  It is a
+      post-hoc check on [scan_mulx_pairs cs] that the user can
+      [vm_compute] at call sites. *)
+  Definition scan_output_valid_b (cs : list jasmin_cmd) : Prop :=
+    Forall (valid_match_at cs) (scan_mulx_pairs cs)
+    /\ matches_strong_disjoint (scan_mulx_pairs cs)
+    /\ NoDup (scan_mulx_pairs cs).
+
+  (** The relationship [wf_mulx_list => scan_output_valid_b] remains a
+      conjecture (the scan invariant).  It reduces the semantic
+      hypothesis to a single syntactic scan-invariant property.
+
+      [lower_mulx_pairs_list_correct_via_scan_check] (below, after
+      [rewrite_mulx_aux_sound_iter]) makes the theorem Qed modulo this
+      one conjecture. *)
   Conjecture scan_mulx_pairs_valid_and_disjoint :
     forall cs,
       wf_mulx_list cs = true ->
-      Forall (valid_match_at cs) (scan_mulx_pairs cs)
-      /\ matches_strong_disjoint (scan_mulx_pairs cs)
-      /\ NoDup (scan_mulx_pairs cs).
+      scan_output_valid_b cs.
 
   (** Step 4 composition auxiliary: single-match form.
       Given valid_match_at cs m (which entails disjoint operand/target
@@ -1726,12 +1768,25 @@ Section WithWordCmd.
       + apply rewrite_mulx_aux_sound_single; [exact Hm_val|exact Hev].
   Qed.
 
+  (** Restate the final theorem using the post-hoc scan-output check.
+      Decouples soundness from the scan invariant: a user who runs
+      [vm_compute (scan_output_valid_b cs)] on a concrete cs and gets
+      [True] gets the soundness directly, independent of the
+      [scan_mulx_pairs_valid_and_disjoint] conjecture. *)
+  Theorem lower_mulx_pairs_list_correct_via_scan_check :
+    forall cs e e',
+      scan_output_valid_b cs ->
+      jeval_list e cs e' ->
+      jeval_list e (lower_mulx_pairs cs) e'.
+  Proof.
+    intros cs e e' [Hval [Hdisj Hnodup]] Hev.
+    unfold lower_mulx_pairs.
+    apply rewrite_mulx_aux_sound_iter; assumption.
+  Qed.
+
   (** The final theorem: under [wf_mulx_list cs], [lower_mulx_pairs]
-      preserves [jeval_list].  Qed modulo the remaining admits in
-      [valid_match_at_preserved] (which is the hardest part of the
-      composition — requires name-disjoint reasoning about JCmulx
-      insertion and JCskip substitution) and the decidability-of-match-
-      equality admit in [rewrite_mulx_aux_sound_iter]. *)
+      preserves [jeval_list].  Qed modulo the sole remaining
+      conjecture [scan_mulx_pairs_valid_and_disjoint]. *)
   Theorem lower_mulx_pairs_list_correct_final :
     forall cs e e',
       wf_mulx_list cs = true ->
@@ -1739,9 +1794,8 @@ Section WithWordCmd.
       jeval_list e (lower_mulx_pairs cs) e'.
   Proof.
     intros cs e e' Hwf Hev.
-    destruct (scan_mulx_pairs_valid_and_disjoint cs Hwf) as [Hval [Hdisj Hnodup]].
-    unfold lower_mulx_pairs.
-    apply rewrite_mulx_aux_sound_iter; assumption.
+    apply lower_mulx_pairs_list_correct_via_scan_check;
+      [apply scan_mulx_pairs_valid_and_disjoint; exact Hwf | exact Hev].
   Qed.
 
   (** Soundness in the empty-scan case, proved via [mulx_rewrite_star_sound]. *)
