@@ -426,6 +426,228 @@ Section WithWordCmd.
     rewrite IH. reflexivity.
   Qed.
 
+  (* ================================================================ *)
+  (* Step 1: Disjoint decomposition of rewrite_mulx_aux                *)
+  (* ================================================================ *)
+
+  (** Two matches are disjoint if their position ranges don't overlap. *)
+  Definition match_disjoint (m1 m2 : mulx_match) : Prop :=
+    let '(i1, j1, _, _, _, _) := m1 in
+    let '(i2, j2, _, _, _, _) := m2 in
+    i1 <> i2 /\ i1 <> j2 /\ j1 <> i2 /\ j1 <> j2.
+
+  (** Helper: find_mul_match on singleton [m] at position n. *)
+  Lemma find_mul_match_singleton :
+    forall n m,
+      let '(i, _, _, _, _, _) := m in
+      find_mul_match n [m] =
+        if Nat.eqb n i then Some m else None.
+  Proof.
+    intros n m. destruct m as [[[[[i j] hi] lo] a] b]. simpl.
+    destruct (Nat.eqb n i); reflexivity.
+  Qed.
+
+  (** Helper: is_mulhuu_idx on singleton [m]. *)
+  Lemma is_mulhuu_idx_singleton :
+    forall n m,
+      let '(_, j, _, _, _, _) := m in
+      is_mulhuu_idx n [m] = Nat.eqb n j.
+  Proof.
+    intros n m. destruct m as [[[[[i j] hi] lo] a] b]. simpl.
+    apply Bool.orb_false_r.
+  Qed.
+
+  (** Helper: find_mul_match on [m :: ms] — case split on match. *)
+  Lemma find_mul_match_cons :
+    forall n m ms,
+      let '(i, _, _, _, _, _) := m in
+      find_mul_match n (m :: ms) =
+        if Nat.eqb n i then Some m else find_mul_match n ms.
+  Proof.
+    intros n m ms. destruct m as [[[[[i j] hi] lo] a] b]. simpl.
+    destruct (Nat.eqb n i); reflexivity.
+  Qed.
+
+  (** Helper: is_mulhuu_idx on [m :: ms]. *)
+  Lemma is_mulhuu_idx_cons :
+    forall n m ms,
+      let '(_, j, _, _, _, _) := m in
+      is_mulhuu_idx n (m :: ms) = Nat.eqb n j || is_mulhuu_idx n ms.
+  Proof.
+    intros n m ms. destruct m as [[[[[i j] hi] lo] a] b]. reflexivity.
+  Qed.
+
+  (** Auxiliary: find_mul_match returns None on ms when n equals the
+      mul_idx of a disjoint m. *)
+  Lemma find_mul_match_disjoint_i :
+    forall m ms,
+      let '(i, _, _, _, _, _) := m in
+      Forall (match_disjoint m) ms ->
+      find_mul_match i ms = None.
+  Proof.
+    intros [[[[[i j] hi] lo] a] b] ms Hd.
+    induction ms as [|[[[[[i' j'] hi'] lo'] a'] b'] ms' IH]; [reflexivity|].
+    inversion Hd as [|x y Hhd Htl]; subst.
+    unfold match_disjoint in Hhd.
+    destruct Hhd as [Hii' _]. simpl.
+    destruct (Nat.eqb i i') eqn:E.
+    - apply Nat.eqb_eq in E. contradiction.
+    - apply IH. exact Htl.
+  Qed.
+
+  Lemma find_mul_match_disjoint_j :
+    forall m ms,
+      let '(_, j, _, _, _, _) := m in
+      Forall (match_disjoint m) ms ->
+      find_mul_match j ms = None.
+  Proof.
+    intros [[[[[i j] hi] lo] a] b] ms Hd.
+    induction ms as [|[[[[[i' j'] hi'] lo'] a'] b'] ms' IH]; [reflexivity|].
+    inversion Hd as [|x y Hhd Htl]; subst.
+    unfold match_disjoint in Hhd.
+    destruct Hhd as [_ [_ [Hji' _]]]. simpl.
+    destruct (Nat.eqb j i') eqn:E.
+    - apply Nat.eqb_eq in E. contradiction.
+    - apply IH. exact Htl.
+  Qed.
+
+  Lemma is_mulhuu_idx_disjoint_i :
+    forall m ms,
+      let '(i, _, _, _, _, _) := m in
+      Forall (match_disjoint m) ms ->
+      is_mulhuu_idx i ms = false.
+  Proof.
+    intros [[[[[i j] hi] lo] a] b] ms Hd.
+    induction ms as [|[[[[[i' j'] hi'] lo'] a'] b'] ms' IH]; [reflexivity|].
+    inversion Hd as [|x y Hhd Htl]; subst.
+    unfold match_disjoint in Hhd.
+    destruct Hhd as [_ [Hij' _]]. simpl.
+    destruct (Nat.eqb i j') eqn:E.
+    - apply Nat.eqb_eq in E. contradiction.
+    - apply IH. exact Htl.
+  Qed.
+
+  Lemma is_mulhuu_idx_disjoint_j :
+    forall m ms,
+      let '(_, j, _, _, _, _) := m in
+      Forall (match_disjoint m) ms ->
+      is_mulhuu_idx j ms = false.
+  Proof.
+    intros [[[[[i j] hi] lo] a] b] ms Hd.
+    induction ms as [|[[[[[i' j'] hi'] lo'] a'] b'] ms' IH]; [reflexivity|].
+    inversion Hd as [|x y Hhd Htl]; subst.
+    unfold match_disjoint in Hhd.
+    destruct Hhd as [_ [_ [_ Hjj']]]. simpl.
+    destruct (Nat.eqb j j') eqn:E.
+    - apply Nat.eqb_eq in E. contradiction.
+    - apply IH. exact Htl.
+  Qed.
+
+  (** Core Step 1 lemma: [rewrite_mulx_aux] on [m :: ms] equals
+      sequential application of [m] and then [ms], provided [m]'s
+      positions are disjoint from every match in [ms]. *)
+  (** Step lemma: unfold rewrite_mulx_aux one step. *)
+  Lemma rewrite_mulx_aux_step :
+    forall n ms c cs,
+      rewrite_mulx_aux n ms (c :: cs) =
+      (match find_mul_match n ms with
+       | Some (_, _, hi, lo, a, b) => JCmulx hi lo a b
+       | None => if is_mulhuu_idx n ms then JCskip else c
+       end) :: rewrite_mulx_aux (S n) ms cs.
+  Proof. intros. reflexivity. Qed.
+
+  (* ================================================================ *)
+  (* Step 2: Single-match rewrite produces mulx_rewrite                *)
+  (* ================================================================ *)
+
+  (** A match [m] is valid at [cs] if the required syntactic structure
+      is present and the safety conditions hold. *)
+  Definition valid_match_at (cs : list jasmin_cmd) (m : mulx_match) : Prop :=
+    let '(mul_idx, mulhuu_idx, hi, lo, a, b) := m in
+    (mul_idx < mulhuu_idx)%nat
+    /\ (exists a'' b'',
+          nth_error cs mul_idx = Some (JCset lo (JEmul a b))
+          /\ nth_error cs mulhuu_idx = Some (JCset hi (JEmulhuu a'' b''))
+          /\ (forall ev : env, eval_jexpr ev a = eval_jexpr ev a'')
+          /\ (forall ev : env, eval_jexpr ev b = eval_jexpr ev b''))
+    /\ (forall c i, (mul_idx < i < mulhuu_idx)%nat ->
+          nth_error cs i = Some c ->
+          cmd_touches hi c = false
+          /\ (forall x, expr_reads x a = true -> cmd_touches x c = false)
+          /\ (forall x, expr_reads x b = true -> cmd_touches x c = false))
+    /\ expr_reads lo a = false
+    /\ expr_reads lo b = false
+    /\ hi <> lo.
+
+  (** Splitting a list at a position: if nth_error cs k = Some x, then
+      cs = firstn k cs ++ x :: skipn (S k) cs. *)
+  Lemma list_split_nth :
+    forall (A : Type) (cs : list A) k x,
+      nth_error cs k = Some x ->
+      cs = firstn k cs ++ x :: skipn (S k) cs.
+  Proof.
+    induction cs as [|c cs IH]; intros [|k] x Hnth; simpl in *;
+      try discriminate.
+    - injection Hnth as <-. reflexivity.
+    - f_equal. apply IH. exact Hnth.
+  Qed.
+
+  Lemma nth_error_Some_length :
+    forall (A : Type) (cs : list A) k x,
+      nth_error cs k = Some x ->
+      (k < length cs)%nat.
+  Proof.
+    induction cs as [|c cs IH]; intros [|k] x Hnth; simpl in *;
+      try discriminate; try lia.
+    apply IH in Hnth. lia.
+  Qed.
+
+  (* rewrite_mulx_aux_single_is_rewrite defined below after mulx_rewrite *)
+
+  Lemma rewrite_mulx_aux_cons :
+    forall ms m n cs,
+      Forall (match_disjoint m) ms ->
+      rewrite_mulx_aux n (m :: ms) cs =
+      rewrite_mulx_aux n ms (rewrite_mulx_aux n [m] cs).
+  Proof.
+    intros ms m n cs Hdisj. revert n.
+    destruct m as [[[[[i j] hi] lo] a] b].
+    induction cs as [|c cs IH]; intros n; [reflexivity|].
+    (* Unfold LHS one step *)
+    rewrite rewrite_mulx_aux_step at 1.
+    (* Unfold inner [m] rewrite on RHS one step *)
+    rewrite rewrite_mulx_aux_step with (ms := [(i,j,hi,lo,a,b)]) at 1.
+    simpl find_mul_match. simpl is_mulhuu_idx.
+    rewrite Bool.orb_false_r.
+    destruct (Nat.eqb n i) eqn:Heq_i.
+    - (* n = i *)
+      apply Nat.eqb_eq in Heq_i. subst i.
+      (* LHS: find_mul_match n (m :: ms) = Some m (since n =? n = true) *)
+      (* After single-match rewrite at position n: JCmulx hi lo a b *)
+      rewrite rewrite_mulx_aux_step.
+      pose proof (find_mul_match_disjoint_i (n,j,hi,lo,a,b) ms Hdisj) as Hfm.
+      pose proof (is_mulhuu_idx_disjoint_i (n,j,hi,lo,a,b) ms Hdisj) as Hhu.
+      simpl in Hfm, Hhu.
+      rewrite Hfm, Hhu.
+      f_equal. apply IH.
+    - destruct (Nat.eqb n j) eqn:Heq_j.
+      + (* n = j *)
+        apply Nat.eqb_eq in Heq_j. subst j.
+        rewrite rewrite_mulx_aux_step.
+        pose proof (find_mul_match_disjoint_j (i,n,hi,lo,a,b) ms Hdisj) as Hfm.
+        pose proof (is_mulhuu_idx_disjoint_j (i,n,hi,lo,a,b) ms Hdisj) as Hhu.
+        simpl in Hfm, Hhu.
+        rewrite Hfm, Hhu.
+        f_equal. apply IH.
+      + (* n <> i and n <> j *)
+        rewrite rewrite_mulx_aux_step.
+        destruct (find_mul_match n ms) as [m'|] eqn:Hfm;
+          [|destruct (is_mulhuu_idx n ms) eqn:Hhu].
+        * f_equal. apply IH.
+        * f_equal. apply IH.
+        * f_equal. apply IH.
+  Qed.
+
   (** If [scan_mulx_pairs cs = nil], then [lower_mulx_pairs cs = cs]. *)
   Lemma lower_mulx_pairs_empty :
     forall cs,
@@ -472,6 +694,156 @@ Section WithWordCmd.
                 ++ JCset hi (JEmulhuu a'' b'') :: suffix)
         (prefix ++ JCmulx hi lo a b :: middle
                 ++ JCskip :: suffix).
+
+  (** Step 2: decomposed version.  When cs has the 5-part structure
+      required by [mulx_rewrite], [rewrite_mulx_aux] with the singleton
+      match at the corresponding positions produces exactly the
+      rewritten form. *)
+
+  (** Helper: rewrite_mulx_aux offset [m] traverses a list whose length
+      is exactly the position of m's mul_idx, producing the same list. *)
+  Lemma rewrite_mulx_aux_pre :
+    forall mi mj hi lo a b cs n,
+      (mi < mj)%nat ->
+      (n + length cs <= mi)%nat ->
+      rewrite_mulx_aux n [(mi, mj, hi, lo, a, b)] cs = cs.
+  Proof.
+    intros mi mj hi lo a b cs n Hmm Hlen. revert n Hlen.
+    induction cs as [|c cs IH]; intros n Hlen; simpl.
+    - reflexivity.
+    - simpl length in Hlen.
+      assert (Hni : n <> mi) by lia.
+      assert (Hnj : n <> mj) by lia.
+      apply Nat.eqb_neq in Hni. rewrite Hni.
+      apply Nat.eqb_neq in Hnj. rewrite Hnj. simpl.
+      f_equal. apply IH. lia.
+  Qed.
+
+  (** Helper: after the mul_idx, before the mulhuu_idx, in the middle
+      range, no match applies. *)
+  Lemma rewrite_mulx_aux_mid :
+    forall mi mj hi lo a b cs n,
+      (mi < n)%nat ->
+      (n + length cs <= mj)%nat ->
+      rewrite_mulx_aux n [(mi, mj, hi, lo, a, b)] cs = cs.
+  Proof.
+    intros mi mj hi lo a b cs n Hmi Hlen. revert n Hmi Hlen.
+    induction cs as [|c cs IH]; intros n Hmi Hlen; simpl.
+    - reflexivity.
+    - simpl length in Hlen.
+      assert (Hni : n <> mi) by lia.
+      assert (Hnj : n <> mj) by lia.
+      apply Nat.eqb_neq in Hni. rewrite Hni.
+      apply Nat.eqb_neq in Hnj. rewrite Hnj. simpl.
+      f_equal. apply IH; lia.
+  Qed.
+
+  (** Helper: after mulhuu_idx, no match applies. *)
+  Lemma rewrite_mulx_aux_post :
+    forall mi mj hi lo a b cs n,
+      (mi < mj)%nat ->
+      (mj < n)%nat ->
+      rewrite_mulx_aux n [(mi, mj, hi, lo, a, b)] cs = cs.
+  Proof.
+    intros mi mj hi lo a b cs n Hmm Hmj. revert n Hmj.
+    induction cs as [|c cs IH]; intros n Hmj; simpl.
+    - reflexivity.
+    - assert (Hni : n <> mi) by lia.
+      assert (Hnj : n <> mj) by lia.
+      apply Nat.eqb_neq in Hni. rewrite Hni.
+      apply Nat.eqb_neq in Hnj. rewrite Hnj. simpl.
+      f_equal. apply IH. lia.
+  Qed.
+
+  (** Generalized over offset [n]: [rewrite_mulx_aux n] on a
+      decomposed cs produces the rewritten decomposition, when
+      positions align. *)
+  Lemma rewrite_mulx_aux_single_decomposed_offset :
+    forall prefix middle suffix hi lo a b a'' b'' n,
+      let mi := (n + length prefix)%nat in
+      let mj := (mi + 1 + length middle)%nat in
+      rewrite_mulx_aux n [(mi, mj, hi, lo, a, b)]
+        (prefix ++ JCset lo (JEmul a b) :: middle
+                ++ JCset hi (JEmulhuu a'' b'') :: suffix)
+      = prefix ++ JCmulx hi lo a b :: middle
+              ++ JCskip :: suffix.
+  Proof.
+    induction prefix as [|c prefix IH];
+      intros middle suffix hi lo a b a'' b'' n;
+      cbn [length].
+    - (* prefix = nil: start at position n, n = mi *)
+      cbn [app].
+      rewrite Nat.add_0_r.
+      rewrite rewrite_mulx_aux_step.
+      cbn [find_mul_match is_mulhuu_idx].
+      rewrite Nat.eqb_refl. cbn [orb].
+      f_equal.
+      (* rewrite_mulx_aux (S n) [(n, n+1+length middle, ...)]
+           (middle ++ JCset hi ... :: suffix) *)
+      (* Now traverse middle (S n .. mj-1), then JCset hi at mj,
+         then suffix *)
+      assert (Hmid :
+        forall mid sfx k,
+          (n < k)%nat ->
+          (k + length mid = n + 1 + length middle)%nat ->
+          rewrite_mulx_aux k [(n, (n + 1 + length middle)%nat, hi, lo, a, b)]
+            (mid ++ JCset hi (JEmulhuu a'' b'') :: sfx)
+          = mid ++ JCskip :: sfx).
+      { induction mid as [|cm mid IHmid]; intros sfx k Hk Hlen;
+        cbn [length] in Hlen; cbn [app].
+        - (* mid = nil: k should equal mj *)
+          assert (Hkmj : k = (n + 1 + length middle)%nat) by lia.
+          subst k.
+          rewrite rewrite_mulx_aux_step.
+          cbn [find_mul_match is_mulhuu_idx].
+          assert (Hkneq : ((n + 1 + length middle)%nat <> n)%nat) by lia.
+          apply Nat.eqb_neq in Hkneq. rewrite Hkneq.
+          rewrite Nat.eqb_refl. cbn [orb].
+          f_equal.
+          apply rewrite_mulx_aux_post; lia.
+        - assert (Hkni : k <> n) by lia.
+          assert (Hknj : k <> (n + 1 + length middle)%nat) by lia.
+          rewrite rewrite_mulx_aux_step.
+          cbn [find_mul_match is_mulhuu_idx].
+          apply Nat.eqb_neq in Hkni. rewrite Hkni.
+          apply Nat.eqb_neq in Hknj. rewrite Hknj. cbn [orb].
+          f_equal. apply IHmid; lia. }
+      specialize (Hmid middle suffix (S n)).
+      apply Hmid; lia.
+    - (* prefix = c :: prefix': advance offset *)
+      simpl.
+      set (mi' := (n + S (length prefix))%nat).
+      set (mj' := (mi' + 1 + length middle)%nat).
+      (* At position n: not a match because n < mi' = n + S (length prefix) *)
+      assert (Hni : n <> mi') by (unfold mi'; lia).
+      assert (Hnj : n <> mj') by (unfold mj', mi'; lia).
+      apply Nat.eqb_neq in Hni. rewrite Hni.
+      apply Nat.eqb_neq in Hnj. rewrite Hnj. simpl.
+      f_equal.
+      specialize (IH middle suffix hi lo a b a'' b'' (S n)).
+      cbv zeta in IH.
+      replace (S n + length prefix)%nat with (n + S (length prefix))%nat in IH by lia.
+      replace (n + S (length prefix) + 1 + length middle)%nat
+        with (mi' + 1 + length middle)%nat in IH by (unfold mi'; lia).
+      exact IH.
+  Qed.
+
+  (** The decomposed form at offset 0. *)
+  Lemma rewrite_mulx_aux_single_decomposed :
+    forall prefix middle suffix hi lo a b a'' b'',
+      let mi := length prefix in
+      let mj := (mi + 1 + length middle)%nat in
+      rewrite_mulx_aux 0 [(mi, mj, hi, lo, a, b)]
+        (prefix ++ JCset lo (JEmul a b) :: middle
+                ++ JCset hi (JEmulhuu a'' b'') :: suffix)
+      = prefix ++ JCmulx hi lo a b :: middle
+              ++ JCskip :: suffix.
+  Proof.
+    intros. pose proof
+      (rewrite_mulx_aux_single_decomposed_offset
+         prefix middle suffix hi lo a b a'' b'' 0) as H.
+    cbv zeta in H. subst mi mj. exact H.
+  Qed.
 
   (** A useful invariant: [jeval_list] on a middle range where no
       statement touches [hi] preserves [hi]. *)
@@ -911,6 +1283,120 @@ Section WithWordCmd.
     intros cs Hscan.
     rewrite (lower_mulx_pairs_empty _ Hscan).
     constructor.
+  Qed.
+
+  (** Step 2 main theorem: applying rewrite_mulx_aux 0 [m] yields a
+      [mulx_rewrite], given [valid_match_at cs m]. *)
+  Lemma rewrite_mulx_aux_single_is_rewrite :
+    forall cs m,
+      valid_match_at cs m ->
+      let '(_, _, hi, lo, a, b) := m in
+      mulx_rewrite hi lo a b cs (rewrite_mulx_aux 0 [m] cs).
+  Proof.
+    intros cs [[[[[mi mj] hi] lo] a] b] Hv.
+    destruct Hv as [Hij [[a'' [b'' [Hnth_mul [Hnth_mulhuu [Ha_eq Hb_eq]]]]]
+                    [Hmid [Hla [Hlb Hhi_lo]]]]].
+    (* Split cs at positions mi and mj *)
+    set (prefix := firstn mi cs).
+    set (middle := firstn (mj - S mi) (skipn (S mi) cs)).
+    set (suffix := skipn (S mj) cs).
+    (* Key structural decomposition of cs *)
+    assert (Hcs_eq :
+      cs = prefix ++ JCset lo (JEmul a b) :: middle
+                ++ JCset hi (JEmulhuu a'' b'') :: suffix).
+    { pose proof (list_split_nth _ cs mi _ Hnth_mul) as E1.
+      rewrite E1 at 1. f_equal.
+      (* need skipn (S mi) cs = middle ++ JCset hi (...) :: suffix *)
+      assert (Hskip_mi :
+        skipn (S mi) cs
+        = middle ++ JCset hi (JEmulhuu a'' b'') :: suffix).
+      { subst middle suffix.
+        rewrite <- (firstn_skipn (mj - S mi) (skipn (S mi) cs)) at 1.
+        f_equal.
+        rewrite skipn_skipn.
+        replace (mj - S mi + S mi)%nat with mj by lia.
+        (* skipn mj cs = JCset hi :: skipn (S mj) cs *)
+        assert (Hnth_skipn : nth_error (skipn mj cs) 0
+                             = Some (JCset hi (JEmulhuu a'' b''))).
+        { rewrite nth_error_skipn. rewrite Nat.add_0_r. exact Hnth_mulhuu. }
+        destruct (skipn mj cs) as [|c' tail] eqn:Hsk.
+        - simpl in Hnth_skipn. discriminate.
+        - simpl in Hnth_skipn. injection Hnth_skipn as <-.
+          f_equal.
+          replace (S mj) with (1 + mj)%nat by lia.
+          rewrite <- skipn_skipn. rewrite Hsk. reflexivity. }
+      f_equal. exact Hskip_mi. }
+    (* Apply the decomposed rewrite lemma *)
+    assert (Hmi_len : length prefix = mi).
+    { subst prefix. apply List.firstn_length_le.
+      assert (Hmi_lt : (mi < length cs)%nat) by
+        (eapply nth_error_Some_length; eassumption). lia. }
+    assert (Hmid_len : (length prefix + 1 + length middle = mj)%nat).
+    { subst middle. rewrite Hmi_len.
+      rewrite List.firstn_length_le.
+      - lia.
+      - rewrite skipn_length.
+        assert (Hmj_lt : (mj < length cs)%nat) by
+          (eapply nth_error_Some_length; eassumption). lia. }
+    rewrite Hcs_eq.
+    rewrite <- Hmi_len. rewrite <- Hmid_len.
+    rewrite rewrite_mulx_aux_single_decomposed.
+    apply mulx_rewrite_intro; try assumption.
+    (* middle safety: follows from Hmid applied per-element *)
+    - intros c Hin.
+      subst middle.
+      apply In_nth_error in Hin as [k Hnth].
+      assert (Hk_bound : (k < mj - S mi)%nat).
+      { apply nth_error_Some_length in Hnth.
+        rewrite firstn_length_le in Hnth; [exact Hnth|].
+        rewrite skipn_length.
+        assert (Hmj_lt : (mj < length cs)%nat) by
+          (eapply nth_error_Some_length; eassumption). lia. }
+      assert (HSmi_le : (S mi <= mj)%nat) by lia.
+      assert (Horig : nth_error cs (S mi + k) = Some c).
+      { rewrite <- nth_error_skipn.
+        rewrite nth_error_firstn in Hnth.
+        destruct (Nat.ltb k (mj - S mi)) eqn:Hlt; [exact Hnth|].
+        apply Nat.ltb_ge in Hlt. lia. }
+      assert (HiRange : (mi < S mi + k < mj)%nat) by lia.
+      pose proof (Hmid c (S mi + k)%nat HiRange Horig) as [Hmid_hi [_ _]].
+      exact Hmid_hi.
+    - intros c x Hin Hrx.
+      subst middle.
+      apply In_nth_error in Hin as [k Hnth].
+      assert (Hk_bound : (k < mj - S mi)%nat).
+      { apply nth_error_Some_length in Hnth.
+        rewrite firstn_length_le in Hnth; [exact Hnth|].
+        rewrite skipn_length.
+        assert (Hmj_lt : (mj < length cs)%nat) by
+          (eapply nth_error_Some_length; eassumption). lia. }
+      assert (HSmi_le : (S mi <= mj)%nat) by lia.
+      assert (Horig : nth_error cs (S mi + k) = Some c).
+      { rewrite <- nth_error_skipn.
+        rewrite nth_error_firstn in Hnth.
+        destruct (Nat.ltb k (mj - S mi)) eqn:Hlt; [exact Hnth|].
+        apply Nat.ltb_ge in Hlt. lia. }
+      assert (HiRange : (mi < S mi + k < mj)%nat) by lia.
+      pose proof (Hmid c (S mi + k)%nat HiRange Horig) as [_ [Hmid_a _]].
+      apply Hmid_a. exact Hrx.
+    - intros c x Hin Hrx.
+      subst middle.
+      apply In_nth_error in Hin as [k Hnth].
+      assert (Hk_bound : (k < mj - S mi)%nat).
+      { apply nth_error_Some_length in Hnth.
+        rewrite firstn_length_le in Hnth; [exact Hnth|].
+        rewrite skipn_length.
+        assert (Hmj_lt : (mj < length cs)%nat) by
+          (eapply nth_error_Some_length; eassumption). lia. }
+      assert (HSmi_le : (S mi <= mj)%nat) by lia.
+      assert (Horig : nth_error cs (S mi + k) = Some c).
+      { rewrite <- nth_error_skipn.
+        rewrite nth_error_firstn in Hnth.
+        destruct (Nat.ltb k (mj - S mi)) eqn:Hlt; [exact Hnth|].
+        apply Nat.ltb_ge in Hlt. lia. }
+      assert (HiRange : (mi < S mi + k < mj)%nat) by lia.
+      pose proof (Hmid c (S mi + k)%nat HiRange Horig) as [_ [_ Hmid_b]].
+      apply Hmid_b. exact Hrx.
   Qed.
 
   (** Soundness in the empty-scan case, proved via [mulx_rewrite_star_sound]. *)
