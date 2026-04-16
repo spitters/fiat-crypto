@@ -576,8 +576,36 @@ Section ZProjDoubleSim.
   Admitted.
 End ZProjDoubleSim.
 
+(** [prime_p c] is positive — derivable from primality.  Used to
+    construct the [positive] q from the [Z] [prime_p c] when wiring
+    [Section ZProjDoubleSim] to the unconditional wrapper. *)
+Lemma prime_p_pos : forall c, prime (prime_p c) -> 0 < prime_p c.
+Proof. intros c Hp. pose proof (prime_ge_2 _ Hp). lia. Qed.
+
+Lemma prime_p_pos_to_pos : forall c, prime (prime_p c) ->
+  Z.pos (Z.to_pos (prime_p c)) = prime_p c.
+Proof.
+  intros c Hp. pose proof (prime_p_pos c Hp) as Hpos.
+  destruct (prime_p c) eqn:E; cbn; try lia.
+Qed.
+
+(** Unconditional wrapper for the doubling simulation: takes per-curve
+    hypotheses (primality, [q ≡ 3 mod 4], non-2-torsion of the iterate)
+    as explicit arguments, then invokes [Section ZProjDoubleSim]'s
+    canonical proof.  The [q] of the section is constructed as
+    [Z.to_pos (prime_p c)] and the bridge equality uses
+    [prime_p_pos_to_pos]. *)
 Lemma zproj_double_simulates :
-  forall c ml (f : Fp12_Z) (Tx Ty TX TY TZ : Fp2_Z) (Px Py : Z),
+  forall c ml,
+  prime (prime_p c) ->
+  prime_p c mod 4 = 3 ->
+  (forall (f : Fp12_Z) (Tx Ty TX TY TZ : Fp2_Z) (Px Py : Z),
+      z_proj_affine_rel c ml Tx Ty TX TY TZ ->
+      z_proj_nonzero_rel c ml Ty TZ ->
+      let '(_, _, Ny, _) :=
+        double_step_proj (zproj_ops c ml) f TX TY TZ Px Py in
+      Ny <> (0, 0)) ->
+  forall (f : Fp12_Z) (Tx Ty TX TY TZ : Fp2_Z) (Px Py : Z),
     z_proj_affine_rel c ml Tx Ty TX TY TZ ->
     z_proj_nonzero_rel c ml Ty TZ ->
     canonical_fp_z (prime_p c) Px ->
@@ -589,7 +617,15 @@ Lemma zproj_double_simulates :
     fp = fa /\
     z_proj_affine_rel c ml Nx Ny NX NY NZ /\
     z_proj_nonzero_rel c ml Ny NZ.
-Admitted.
+Proof.
+  intros c ml Hpr Hmod HNyhyp f Tx Ty TX TY TZ Px Py Hrel Hnz HcPx HcPy.
+  set (q := Z.to_pos (prime_p c)).
+  assert (q_eq : Z.pos q = prime_p c) by (apply prime_p_pos_to_pos; exact Hpr).
+  assert (prime_q : prime (Z.pos q)) by (rewrite q_eq; exact Hpr).
+  assert (q_3mod4 : Z.pos q mod 4 = 3) by (rewrite q_eq; exact Hmod).
+  apply (zproj_double_simulates_canonical c q q_eq prime_q q_3mod4 ml HNyhyp);
+    assumption.
+Qed.
 
 (** ** Per-curve preconditions for [zproj_add_simulates] discharge.
     Mirrors [Section ZProjDoubleSim].  The additional side condition
@@ -699,14 +735,30 @@ Section ZProjAddSim.
   Admitted.
 End ZProjAddSim.
 
-(** Same closing path as [zproj_double_simulates]: left-inverse
-    for [zfp2_inv] + lowering via [FProjBridge] of the F-level
-    [FProjAlgebra.zproj_add_preserves_\{x,y\}] theorems.  The
-    additional side condition [Qx * TZ^2 <> TX] (ensuring
-    [Qx <> Tx] in affine) comes from the pairing well-formedness
-    preconditions ([P <> Q] for mixed addition to make sense). *)
+(** Unconditional wrapper for the addition simulation: takes per-curve
+    hypotheses (primality, [q ≡ 3 mod 4], [Qx * TZ^2 ≠ TX] for each
+    call, non-2-torsion of the iterate) and invokes
+    [Section ZProjAddSim]'s canonical proof via the same
+    [Z.to_pos]-based bridge as [zproj_double_simulates]. *)
 Lemma zproj_add_simulates :
-  forall c ml (f : Fp12_Z) (Tx Ty TX TY TZ Qx Qy : Fp2_Z) (Px Py : Z),
+  forall c ml,
+  prime (prime_p c) ->
+  prime_p c mod 4 = 3 ->
+  (forall (f : Fp12_Z) (Tx Ty TX TY TZ Qx Qy : Fp2_Z) (Px Py : Z),
+      z_proj_affine_rel c ml Tx Ty TX TY TZ ->
+      z_proj_nonzero_rel c ml Ty TZ ->
+      canonical_fp2_z (prime_p c) Qx ->
+      canonical_fp2_z (prime_p c) Qy ->
+      let '(_, _, Ny, _) :=
+        add_step_proj (zproj_ops c ml) f TX TY TZ Qx Qy Px Py in
+      Ny <> (0, 0)) ->
+  (forall (Tx Ty TX TY TZ Qx Qy : Fp2_Z),
+      z_proj_affine_rel c ml Tx Ty TX TY TZ ->
+      z_proj_nonzero_rel c ml Ty TZ ->
+      canonical_fp2_z (prime_p c) Qx ->
+      canonical_fp2_z (prime_p c) Qy ->
+      zfp2_mul (prime_p c) Qx (zfp2_sqr (prime_p c) TZ) <> TX) ->
+  forall (f : Fp12_Z) (Tx Ty TX TY TZ Qx Qy : Fp2_Z) (Px Py : Z),
     z_proj_affine_rel c ml Tx Ty TX TY TZ ->
     z_proj_nonzero_rel c ml Ty TZ ->
     canonical_fp_z (prime_p c) Px ->
@@ -720,11 +772,45 @@ Lemma zproj_add_simulates :
     fp = fa /\
     z_proj_affine_rel c ml Nx Ny NX NY NZ /\
     z_proj_nonzero_rel c ml Ny NZ.
-Admitted.
+Proof.
+  intros c ml Hpr Hmod HNyhyp HQxhyp f Tx Ty TX TY TZ Qx Qy Px Py
+         Hrel Hnz HcPx HcPy HcQx HcQy.
+  set (q := Z.to_pos (prime_p c)).
+  assert (q_eq : Z.pos q = prime_p c) by (apply prime_p_pos_to_pos; exact Hpr).
+  assert (prime_q : prime (Z.pos q)) by (rewrite q_eq; exact Hpr).
+  assert (q_3mod4 : Z.pos q mod 4 = 3) by (rewrite q_eq; exact Hmod).
+  apply (zproj_add_simulates_canonical c q q_eq prime_q q_3mod4 ml
+           HQxhyp HNyhyp); assumption.
+Qed.
 
 Theorem projective_miller_eq_affine_zproj
   (c : CurveParams)
   (ml : Fp2_Z -> Fp2_Z -> Fp2_Z -> Z -> Z -> Fp12_Z)
+  (Hpr : prime (prime_p c))
+  (Hmod : prime_p c mod 4 = 3)
+  (HdblNy :
+     forall (f : Fp12_Z) (Tx Ty TX TY TZ : Fp2_Z) (Px Py : Z),
+       z_proj_affine_rel c ml Tx Ty TX TY TZ ->
+       z_proj_nonzero_rel c ml Ty TZ ->
+       let '(_, _, Ny, _) :=
+         double_step_proj (zproj_ops c ml) f TX TY TZ Px Py in
+       Ny <> (0, 0))
+  (HaddNy :
+     forall (f : Fp12_Z) (Tx Ty TX TY TZ Qx Qy : Fp2_Z) (Px Py : Z),
+       z_proj_affine_rel c ml Tx Ty TX TY TZ ->
+       z_proj_nonzero_rel c ml Ty TZ ->
+       canonical_fp2_z (prime_p c) Qx ->
+       canonical_fp2_z (prime_p c) Qy ->
+       let '(_, _, Ny, _) :=
+         add_step_proj (zproj_ops c ml) f TX TY TZ Qx Qy Px Py in
+       Ny <> (0, 0))
+  (HaddQxNe :
+     forall (Tx Ty TX TY TZ Qx Qy : Fp2_Z),
+       z_proj_affine_rel c ml Tx Ty TX TY TZ ->
+       z_proj_nonzero_rel c ml Ty TZ ->
+       canonical_fp2_z (prime_p c) Qx ->
+       canonical_fp2_z (prime_p c) Qy ->
+       zfp2_mul (prime_p c) Qx (zfp2_sqr (prime_p c) TZ) <> TX)
   (n : Z) (Px Py : Z) (Qx Qy : Fp2_Z)
   (init_rel : z_proj_affine_rel c ml Qx Qy Qx Qy
                 (fp2_one (zmod_ops c ml)))
@@ -739,8 +825,8 @@ Theorem projective_miller_eq_affine_zproj
 Proof.
   apply (projective_miller_eq_affine_original (zproj_ops c ml)
            (canonical_fp_z (prime_p c)) (canonical_fp2_z (prime_p c))).
-  - intros. apply zproj_double_simulates; assumption.
-  - intros. apply zproj_add_simulates; assumption.
+  - intros. apply (zproj_double_simulates c ml Hpr Hmod HdblNy); assumption.
+  - intros. apply (zproj_add_simulates c ml Hpr Hmod HaddNy HaddQxNe); assumption.
   - exact init_rel.
   - exact init_nz.
   - exact canPx.
@@ -754,8 +840,68 @@ Qed.
     For canonical generators, the witness is supplied by
     [zproj_initial_rel_canonical] in [CanonicityHelpers.v]. *)
 
+(** Per-curve per-call Ny_nonzero + QxNe hypotheses are genuine
+    per-instance axioms — they assert the Miller loop iterate never hits
+    2-torsion and that Q is distinct from T through the loop, both of
+    which hold because r (subgroup order) is a large prime different
+    from 2, but formalising that is a separate subgroup-order theorem.
+    Primality + 3mod4 for the four [beta=-1] curves come from
+    [CurvePrimalityFacts] (imported by the caller).
+
+    For BLS12-377, [prime_p c mod 4 = 3] is FALSE (it is 1), so these
+    theorems CANNOT be instantiated for BLS12-377.  This is correct:
+    the projective ↔ affine equivalence uses [zfp2_inv] which is
+    unsound for [u² = -5] (BLS12-377's actual tower).  Users of
+    BLS12-377 should rely on the L4 [feval] chain instead. *)
+
+Notation per_curve_hyps c ml :=
+  (prime (prime_p c) *
+   prime_p c mod 4 = 3 *
+   (forall f Tx Ty TX TY TZ Px Py,
+      z_proj_affine_rel c ml Tx Ty TX TY TZ ->
+      z_proj_nonzero_rel c ml Ty TZ ->
+      let '(_, _, Ny, _) :=
+        double_step_proj (zproj_ops c ml) f TX TY TZ Px Py in
+      Ny <> (0, 0)) *
+   (forall f Tx Ty TX TY TZ Qx Qy Px Py,
+      z_proj_affine_rel c ml Tx Ty TX TY TZ ->
+      z_proj_nonzero_rel c ml Ty TZ ->
+      canonical_fp2_z (prime_p c) Qx ->
+      canonical_fp2_z (prime_p c) Qy ->
+      let '(_, _, Ny, _) :=
+        add_step_proj (zproj_ops c ml) f TX TY TZ Qx Qy Px Py in
+      Ny <> (0, 0)) *
+   (forall Tx Ty TX TY TZ Qx Qy,
+      z_proj_affine_rel c ml Tx Ty TX TY TZ ->
+      z_proj_nonzero_rel c ml Ty TZ ->
+      canonical_fp2_z (prime_p c) Qx ->
+      canonical_fp2_z (prime_p c) Qy ->
+      zfp2_mul (prime_p c) Qx (zfp2_sqr (prime_p c) TZ) <> TX))%type.
+
 Theorem bn254_projective_eq_affine
   n Px Py Qx Qy
+  (Hpr : prime (prime_p bn254_params))
+  (Hmod : prime_p bn254_params mod 4 = 3)
+  (HdblNy : forall f Tx Ty TX TY TZ Px Py,
+     z_proj_affine_rel bn254_params (dtwist_make_line (prime_p bn254_params)) Tx Ty TX TY TZ ->
+     z_proj_nonzero_rel bn254_params (dtwist_make_line (prime_p bn254_params)) Ty TZ ->
+     let '(_, _, Ny, _) :=
+       double_step_proj bn254_zmod_proj_ops f TX TY TZ Px Py in
+     Ny <> (0, 0))
+  (HaddNy : forall f Tx Ty TX TY TZ Qx Qy Px Py,
+     z_proj_affine_rel bn254_params (dtwist_make_line (prime_p bn254_params)) Tx Ty TX TY TZ ->
+     z_proj_nonzero_rel bn254_params (dtwist_make_line (prime_p bn254_params)) Ty TZ ->
+     canonical_fp2_z (prime_p bn254_params) Qx ->
+     canonical_fp2_z (prime_p bn254_params) Qy ->
+     let '(_, _, Ny, _) :=
+       add_step_proj bn254_zmod_proj_ops f TX TY TZ Qx Qy Px Py in
+     Ny <> (0, 0))
+  (HaddQxNe : forall Tx Ty TX TY TZ Qx Qy,
+     z_proj_affine_rel bn254_params (dtwist_make_line (prime_p bn254_params)) Tx Ty TX TY TZ ->
+     z_proj_nonzero_rel bn254_params (dtwist_make_line (prime_p bn254_params)) Ty TZ ->
+     canonical_fp2_z (prime_p bn254_params) Qx ->
+     canonical_fp2_z (prime_p bn254_params) Qy ->
+     zfp2_mul (prime_p bn254_params) Qx (zfp2_sqr (prime_p bn254_params) TZ) <> TX)
   (init_rel : z_proj_affine_rel bn254_params (dtwist_make_line (prime_p bn254_params))
                 Qx Qy Qx Qy (fp2_one bn254_zmod_ops))
   (init_nz : z_proj_nonzero_rel bn254_params (dtwist_make_line (prime_p bn254_params))
@@ -770,6 +916,28 @@ Proof. apply projective_miller_eq_affine_zproj; assumption. Qed.
 
 Theorem bls12_381_projective_eq_affine
   n Px Py Qx Qy
+  (Hpr : prime (prime_p bls12_381_params))
+  (Hmod : prime_p bls12_381_params mod 4 = 3)
+  (HdblNy : forall f Tx Ty TX TY TZ Px Py,
+     z_proj_affine_rel bls12_381_params (mtwist_make_line (prime_p bls12_381_params)) Tx Ty TX TY TZ ->
+     z_proj_nonzero_rel bls12_381_params (mtwist_make_line (prime_p bls12_381_params)) Ty TZ ->
+     let '(_, _, Ny, _) :=
+       double_step_proj bls12_381_zmod_proj_ops f TX TY TZ Px Py in
+     Ny <> (0, 0))
+  (HaddNy : forall f Tx Ty TX TY TZ Qx Qy Px Py,
+     z_proj_affine_rel bls12_381_params (mtwist_make_line (prime_p bls12_381_params)) Tx Ty TX TY TZ ->
+     z_proj_nonzero_rel bls12_381_params (mtwist_make_line (prime_p bls12_381_params)) Ty TZ ->
+     canonical_fp2_z (prime_p bls12_381_params) Qx ->
+     canonical_fp2_z (prime_p bls12_381_params) Qy ->
+     let '(_, _, Ny, _) :=
+       add_step_proj bls12_381_zmod_proj_ops f TX TY TZ Qx Qy Px Py in
+     Ny <> (0, 0))
+  (HaddQxNe : forall Tx Ty TX TY TZ Qx Qy,
+     z_proj_affine_rel bls12_381_params (mtwist_make_line (prime_p bls12_381_params)) Tx Ty TX TY TZ ->
+     z_proj_nonzero_rel bls12_381_params (mtwist_make_line (prime_p bls12_381_params)) Ty TZ ->
+     canonical_fp2_z (prime_p bls12_381_params) Qx ->
+     canonical_fp2_z (prime_p bls12_381_params) Qy ->
+     zfp2_mul (prime_p bls12_381_params) Qx (zfp2_sqr (prime_p bls12_381_params) TZ) <> TX)
   (init_rel : z_proj_affine_rel bls12_381_params (mtwist_make_line (prime_p bls12_381_params))
                 Qx Qy Qx Qy (fp2_one bls12_381_zmod_ops))
   (init_nz : z_proj_nonzero_rel bls12_381_params (mtwist_make_line (prime_p bls12_381_params))
@@ -782,8 +950,34 @@ Theorem bls12_381_projective_eq_affine
     = affine_miller bls12_381_zmod_ops n Px Py Qx Qy.
 Proof. apply projective_miller_eq_affine_zproj; assumption. Qed.
 
+(** BLS12-377: the Hmod hypothesis [prime_p _ mod 4 = 3] is FALSE for this
+    curve (it's 1, not 3), so this theorem cannot be instantiated.  The
+    theorem statement is kept for uniformity; callers should use the L4
+    feval chain for BLS12-377 instead. *)
 Theorem bls12_377_projective_eq_affine
   n Px Py Qx Qy
+  (Hpr : prime (prime_p bls12_377_params))
+  (Hmod : prime_p bls12_377_params mod 4 = 3)
+  (HdblNy : forall f Tx Ty TX TY TZ Px Py,
+     z_proj_affine_rel bls12_377_params (dtwist_make_line (prime_p bls12_377_params)) Tx Ty TX TY TZ ->
+     z_proj_nonzero_rel bls12_377_params (dtwist_make_line (prime_p bls12_377_params)) Ty TZ ->
+     let '(_, _, Ny, _) :=
+       double_step_proj bls12_377_zmod_proj_ops f TX TY TZ Px Py in
+     Ny <> (0, 0))
+  (HaddNy : forall f Tx Ty TX TY TZ Qx Qy Px Py,
+     z_proj_affine_rel bls12_377_params (dtwist_make_line (prime_p bls12_377_params)) Tx Ty TX TY TZ ->
+     z_proj_nonzero_rel bls12_377_params (dtwist_make_line (prime_p bls12_377_params)) Ty TZ ->
+     canonical_fp2_z (prime_p bls12_377_params) Qx ->
+     canonical_fp2_z (prime_p bls12_377_params) Qy ->
+     let '(_, _, Ny, _) :=
+       add_step_proj bls12_377_zmod_proj_ops f TX TY TZ Qx Qy Px Py in
+     Ny <> (0, 0))
+  (HaddQxNe : forall Tx Ty TX TY TZ Qx Qy,
+     z_proj_affine_rel bls12_377_params (dtwist_make_line (prime_p bls12_377_params)) Tx Ty TX TY TZ ->
+     z_proj_nonzero_rel bls12_377_params (dtwist_make_line (prime_p bls12_377_params)) Ty TZ ->
+     canonical_fp2_z (prime_p bls12_377_params) Qx ->
+     canonical_fp2_z (prime_p bls12_377_params) Qy ->
+     zfp2_mul (prime_p bls12_377_params) Qx (zfp2_sqr (prime_p bls12_377_params) TZ) <> TX)
   (init_rel : z_proj_affine_rel bls12_377_params (dtwist_make_line (prime_p bls12_377_params))
                 Qx Qy Qx Qy (fp2_one bls12_377_zmod_ops))
   (init_nz : z_proj_nonzero_rel bls12_377_params (dtwist_make_line (prime_p bls12_377_params))
@@ -798,6 +992,28 @@ Proof. apply projective_miller_eq_affine_zproj; assumption. Qed.
 
 Theorem bn256_projective_eq_affine
   n Px Py Qx Qy
+  (Hpr : prime (prime_p bn256_params))
+  (Hmod : prime_p bn256_params mod 4 = 3)
+  (HdblNy : forall f Tx Ty TX TY TZ Px Py,
+     z_proj_affine_rel bn256_params (dtwist_make_line (prime_p bn256_params)) Tx Ty TX TY TZ ->
+     z_proj_nonzero_rel bn256_params (dtwist_make_line (prime_p bn256_params)) Ty TZ ->
+     let '(_, _, Ny, _) :=
+       double_step_proj bn256_zmod_proj_ops f TX TY TZ Px Py in
+     Ny <> (0, 0))
+  (HaddNy : forall f Tx Ty TX TY TZ Qx Qy Px Py,
+     z_proj_affine_rel bn256_params (dtwist_make_line (prime_p bn256_params)) Tx Ty TX TY TZ ->
+     z_proj_nonzero_rel bn256_params (dtwist_make_line (prime_p bn256_params)) Ty TZ ->
+     canonical_fp2_z (prime_p bn256_params) Qx ->
+     canonical_fp2_z (prime_p bn256_params) Qy ->
+     let '(_, _, Ny, _) :=
+       add_step_proj bn256_zmod_proj_ops f TX TY TZ Qx Qy Px Py in
+     Ny <> (0, 0))
+  (HaddQxNe : forall Tx Ty TX TY TZ Qx Qy,
+     z_proj_affine_rel bn256_params (dtwist_make_line (prime_p bn256_params)) Tx Ty TX TY TZ ->
+     z_proj_nonzero_rel bn256_params (dtwist_make_line (prime_p bn256_params)) Ty TZ ->
+     canonical_fp2_z (prime_p bn256_params) Qx ->
+     canonical_fp2_z (prime_p bn256_params) Qy ->
+     zfp2_mul (prime_p bn256_params) Qx (zfp2_sqr (prime_p bn256_params) TZ) <> TX)
   (init_rel : z_proj_affine_rel bn256_params (dtwist_make_line (prime_p bn256_params))
                 Qx Qy Qx Qy (fp2_one bn256_zmod_ops))
   (init_nz : z_proj_nonzero_rel bn256_params (dtwist_make_line (prime_p bn256_params))
@@ -812,6 +1028,28 @@ Proof. apply projective_miller_eq_affine_zproj; assumption. Qed.
 
 Theorem bn446_projective_eq_affine
   n Px Py Qx Qy
+  (Hpr : prime (prime_p bn446_params))
+  (Hmod : prime_p bn446_params mod 4 = 3)
+  (HdblNy : forall f Tx Ty TX TY TZ Px Py,
+     z_proj_affine_rel bn446_params (dtwist_make_line (prime_p bn446_params)) Tx Ty TX TY TZ ->
+     z_proj_nonzero_rel bn446_params (dtwist_make_line (prime_p bn446_params)) Ty TZ ->
+     let '(_, _, Ny, _) :=
+       double_step_proj bn446_zmod_proj_ops f TX TY TZ Px Py in
+     Ny <> (0, 0))
+  (HaddNy : forall f Tx Ty TX TY TZ Qx Qy Px Py,
+     z_proj_affine_rel bn446_params (dtwist_make_line (prime_p bn446_params)) Tx Ty TX TY TZ ->
+     z_proj_nonzero_rel bn446_params (dtwist_make_line (prime_p bn446_params)) Ty TZ ->
+     canonical_fp2_z (prime_p bn446_params) Qx ->
+     canonical_fp2_z (prime_p bn446_params) Qy ->
+     let '(_, _, Ny, _) :=
+       add_step_proj bn446_zmod_proj_ops f TX TY TZ Qx Qy Px Py in
+     Ny <> (0, 0))
+  (HaddQxNe : forall Tx Ty TX TY TZ Qx Qy,
+     z_proj_affine_rel bn446_params (dtwist_make_line (prime_p bn446_params)) Tx Ty TX TY TZ ->
+     z_proj_nonzero_rel bn446_params (dtwist_make_line (prime_p bn446_params)) Ty TZ ->
+     canonical_fp2_z (prime_p bn446_params) Qx ->
+     canonical_fp2_z (prime_p bn446_params) Qy ->
+     zfp2_mul (prime_p bn446_params) Qx (zfp2_sqr (prime_p bn446_params) TZ) <> TX)
   (init_rel : z_proj_affine_rel bn446_params (dtwist_make_line (prime_p bn446_params))
                 Qx Qy Qx Qy (fp2_one bn446_zmod_ops))
   (init_nz : z_proj_nonzero_rel bn446_params (dtwist_make_line (prime_p bn446_params))
