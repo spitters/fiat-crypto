@@ -24,6 +24,7 @@
 
 From Stdlib Require Import ZArith.ZArith.
 From Stdlib Require Import micromega.Lia.
+From Stdlib Require Import Znumtheory.
 
 Require Import Crypto.Bedrock.Field.PairingTheory.Affine.
 Require Import Crypto.Bedrock.Field.PairingTheory.ZModTower.
@@ -117,6 +118,7 @@ Proof. exact I. Qed.
 
 Require Import Crypto.Bedrock.Field.PairingTheory.Projective.
 Require Import Crypto.Bedrock.Field.PairingTheory.CanonicityHelpers.
+Require Import Crypto.Bedrock.Field.PairingTheory.Fp2ZAlgebra.
 
 (** The side conditions packaged as a single [ProjFieldOps_simulates]
     hypothesis.  Each concrete [pops] instance discharges these
@@ -446,6 +448,53 @@ Notation z_proj_affine_rel c ml :=
   (proj_affine_rel (zproj_ops c ml) (canonical_fp2_z (prime_p c))).
 Notation z_proj_nonzero_rel c ml :=
   (proj_nonzero_rel (zproj_ops c ml)).
+
+(** ** Per-curve preconditions for [zproj_double_simulates] discharge.
+
+    The proof requires:
+    - [prime (prime_p c)] — for [zfp_inv] / [zfp2_inv] correctness.
+    - [prime_p c mod 4 = 3] — so that [-1] is a non-residue, making
+      Fp2 = Fp[u]/(u^2+1) a field (and zfp2_inv a true inverse).
+    - 0 < prime_p c — derivable from primality.
+
+    The lemma takes a [q : positive] with [Z.pos q = prime_p c] so that
+    Fp2ZAlgebra lemmas (which are over [Z.pos q]) can be invoked. *)
+Section ZProjDoubleSim.
+  Context (c : CurveParams)
+          (q : positive)
+          (q_eq : Z.pos q = prime_p c)
+          (prime_q : prime (Z.pos q))
+          (q_3mod4 : Z.pos q mod 4 = 3).
+  Context (ml : Fp2_Z -> Fp2_Z -> Fp2_Z -> Z -> Z -> Fp12_Z).
+
+  (** [Ny ≠ 0] is a per-curve fact: the Miller loop iterate never hits
+      2-torsion because the Miller loop length divides r (the subgroup
+      order), and r ≠ 2 for all pairing curves.  We axiomatise it here
+      as a separate hypothesis to keep the algebraic discharge clean. *)
+  Hypothesis double_Ny_nonzero :
+    forall (f : Fp12_Z) (Tx Ty TX TY TZ : Fp2_Z) (Px Py : Z),
+      z_proj_affine_rel c ml Tx Ty TX TY TZ ->
+      z_proj_nonzero_rel c ml Ty TZ ->
+      let '(_, _, Ny, _) :=
+        double_step_proj (zproj_ops c ml) f TX TY TZ Px Py in
+      Ny <> (0, 0).
+
+  Lemma zproj_double_simulates_canonical :
+    forall (f : Fp12_Z) (Tx Ty TX TY TZ : Fp2_Z) (Px Py : Z),
+      z_proj_affine_rel c ml Tx Ty TX TY TZ ->
+      z_proj_nonzero_rel c ml Ty TZ ->
+      canonical_fp_z (prime_p c) Px ->
+      canonical_fp_z (prime_p c) Py ->
+      let '(fp, NX, NY, NZ) :=
+        double_step_proj (zproj_ops c ml) f TX TY TZ Px Py in
+      let '(fa, Nx, Ny) :=
+        double_step (zmod_ops c ml) f Tx Ty Px Py in
+      fp = fa /\
+      z_proj_affine_rel c ml Nx Ny NX NY NZ /\
+      z_proj_nonzero_rel c ml Ny NZ.
+  Proof.
+  Admitted.
+End ZProjDoubleSim.
 
 Lemma zproj_double_simulates :
   forall c ml (f : Fp12_Z) (Tx Ty TX TY TZ : Fp2_Z) (Px Py : Z),
