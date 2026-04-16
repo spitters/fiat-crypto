@@ -499,6 +499,30 @@ Section ZProjDoubleSim.
       assumption.
   Qed.
 
+  (** Concrete closing path for [zproj_double_simulates_canonical]:
+
+      1. [fp = fa]: by [zproj_to_affine_at_c], [zproj_to_affine TX TY TZ
+         = (Tx, Ty)].  Substituting into [zproj_make_line_double] reduces
+         it to [ml lam Tx Ty Px Py] with the same lambda as
+         [affine_doubling_slope].  Both [fp] and [fa] then call
+         [zfp12_mul] on [zfp12_sqr f] and the same line.
+
+      2. [proj_affine_rel Nx Ny NX NY NZ]:
+         - Canonicity of NX, NY, NZ follows by [zfp2_*_canonical] (every
+           [zfp2_*] op outputs canonical values).  Same for Nx, Ny.
+         - Invariant equations follow from
+           [FProjAlgebra.zproj_double_preserves_{x,y}] lifted via
+           [FProjBridge.proj_invariant_to_F].
+
+      3. [proj_nonzero_rel Ny NZ]:
+         - [Ny ≠ 0]: discharged by the [double_Ny_nonzero] hypothesis.
+         - [NZ ≠ 0]: [NZ = (TY+TZ)^2 - TY^2 - TZ^2 = 2*TY*TZ] in Fp2.
+           Since [2 ≠ 0] (q > 2), [TY ≠ 0] (from [Ty ≠ 0] + invariant +
+           [TZ ≠ 0]), and [TZ ≠ 0], by [zfp2_nonzero_mul] (Fp2ZAlgebra)
+           [NZ ≠ 0].
+
+      Each step is mechanical given the helpers above; the proof body
+      is left admitted pending the substantial bookkeeping (~150 LoC). *)
   Lemma zproj_double_simulates_canonical :
     forall (f : Fp12_Z) (Tx Ty TX TY TZ : Fp2_Z) (Px Py : Z),
       z_proj_affine_rel c ml Tx Ty TX TY TZ ->
@@ -512,7 +536,6 @@ Section ZProjDoubleSim.
       fp = fa /\
       z_proj_affine_rel c ml Nx Ny NX NY NZ /\
       z_proj_nonzero_rel c ml Ny NZ.
-  Proof.
   Admitted.
 End ZProjDoubleSim.
 
