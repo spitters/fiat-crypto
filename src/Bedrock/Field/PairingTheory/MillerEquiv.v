@@ -377,17 +377,26 @@ End ProjEqAffine.
       [zfp2_inv_left] closed via Euler's criterion for [-1] NR under
       [q ≡ 3 mod 4] (parametrised by [q_3mod4 : Z.pos q mod 4 = 3];
       per-curve witnesses built from curve parameters).
+    - [Fp2ZAlgebra] (15 Qed) — ring laws (comm/assoc/distrib) on
+      [zfp_*] and [zfp2_*], field structure ([zfp2_mul_inv_right_pair],
+      [zfp2_nonzero_mul] — Fp2 is an integral domain under [q ≡ 3 mod 4]),
+      and the key reconstruction lemma [zproj_to_affine_eq] that closes
+      [zproj_to_affine q TX TY TZ = (Tx, Ty)] under invariant + canonicity
+      + [TZ ≠ 0] + [q ≡ 3 mod 4].
     - Section [ProjEqAffine] restructured with [proj_nonzero_rel] threaded
       through [miller_aux_eq]; the simulation hypotheses now receive
       [TZ <> 0, Ty <> 0] and must produce them for the output point.
 
     Remaining tactical work in [zproj_double_simulates] / [_add_simulates]:
 
-    1. [fp = fa] — LINE values agree.  Requires [zproj_to_affine TX TY TZ
-       = (Tx, Ty)] under the invariant [Tx * TZ^2 = TX].  Discharged by
-       [zfp2_inv_left] (now Qed in ZFInv.v) combined with zfp2
-       associativity/commutativity.  Still needs a canonicity hypothesis
-       on [Tx] to close the last [zfp2_mul_one_r] step.
+    1. [fp = fa] — LINE values agree.  Closed at the Fp2ZAlgebra level
+       by [zproj_to_affine_eq].  To apply here: add hypotheses
+       [prime (prime_p c)], [prime_p c mod 4 = 3], and canonicity of
+       [Tx, Ty, TZ] to [zproj_double_simulates]; invoke
+       [zproj_to_affine_eq] to rewrite [zproj_to_affine p TX TY TZ] to
+       [(Tx, Ty)]; the line formulas then become syntactically equal.
+       This is the "canonicity plumbing" referred to in the documentation
+       of Section [ProjEqAffine] above.
 
     2. [proj_affine_rel Nx Ny NX NY NZ] — arithmetic preservation.
        Content Qed'd in [FProjAlgebra.zproj_double_preserves_{x,y}];
