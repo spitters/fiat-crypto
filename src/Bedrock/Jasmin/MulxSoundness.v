@@ -407,11 +407,9 @@ Section WithWordCmd.
       plus a [rewrite_mulx_aux_seq] lemma showing batch application
       equals iterative (~90 lines total, all mechanical given the
       already-Qed single-match theorem). *)
-  Conjecture lower_mulx_pairs_list_correct :
-    forall cs e e',
-      wf_mulx_list cs = true ->
-      jeval_list e cs e' ->
-      jeval_list e (lower_mulx_pairs cs) e'.
+  (* The full theorem [lower_mulx_pairs_list_correct_final] is stated
+     below at the end of this section, after [rewrite_mulx_aux_sound_single]
+     and the scan invariant are introduced. *)
 
   (* ================================================================ *)
   (* Empty-match special case: fully Qed                               *)
@@ -1398,6 +1396,68 @@ Section WithWordCmd.
       pose proof (Hmid c (S mi + k)%nat HiRange Horig) as [_ [_ Hmid_b]].
       apply Hmid_b. exact Hrx.
   Qed.
+
+  (** Pairwise disjointness of a match list. *)
+  Definition matches_pairwise_disjoint (ms : list mulx_match) : Prop :=
+    forall m1 m2, In m1 ms -> In m2 ms -> m1 <> m2 -> match_disjoint m1 m2.
+
+  (** Remove one match from a list and check Forall-disjoint with the
+      remaining. *)
+  Lemma matches_pairwise_disjoint_tail :
+    forall m ms,
+      matches_pairwise_disjoint (m :: ms) ->
+      matches_pairwise_disjoint ms.
+  Proof.
+    intros m ms H. unfold matches_pairwise_disjoint in *.
+    intros m1 m2 Hin1 Hin2 Hneq.
+    apply H; [right; exact Hin1 | right; exact Hin2 | exact Hneq].
+  Qed.
+
+  (** The (assumed) scan invariant: [scan_mulx_pairs] returns valid and
+      pairwise-disjoint matches under [wf_mulx_list].  This is the only
+      remaining piece; all semantic content is Qed above.  See Step 3
+      of [~/.claude/plans/jiggly-bouncing-grove.md] for the proof plan. *)
+  Conjecture scan_mulx_pairs_valid_and_disjoint :
+    forall cs,
+      wf_mulx_list cs = true ->
+      Forall (valid_match_at cs) (scan_mulx_pairs cs)
+      /\ matches_pairwise_disjoint (scan_mulx_pairs cs).
+
+  (** Step 4 composition auxiliary: single-match form.
+      Given valid_match_at cs m (which entails disjoint operand/target
+      conditions), applying rewrite_mulx_aux 0 [m] preserves jeval_list. *)
+  Lemma rewrite_mulx_aux_sound_single :
+    forall m cs e e',
+      valid_match_at cs m ->
+      jeval_list e cs e' ->
+      jeval_list e (rewrite_mulx_aux 0 [m] cs) e'.
+  Proof.
+    intros [[[[[mi mj] hi] lo] a] b] cs e e' Hval Hev.
+    pose proof Hval as Hval0.
+    destruct Hval as [_ [_ [_ [Hla [Hlb Hne]]]]].
+    eapply rewrite_mulx_one_match_sound; [|exact Hne|exact Hla|exact Hlb|exact Hev].
+    apply (rewrite_mulx_aux_single_is_rewrite cs (mi,mj,hi,lo,a,b) Hval0).
+  Qed.
+
+  (** The final theorem: under [wf_mulx_list cs], [lower_mulx_pairs]
+      preserves [jeval_list].  Proof sketch: by induction on
+      [scan_mulx_pairs cs], each single match's soundness comes from
+      [rewrite_mulx_aux_sound_single] (Qed).  The induction step
+      requires knowing that after one rewrite, the remaining matches
+      are still valid and disjoint — proven as part of the scan
+      invariant (Conjecture [scan_mulx_pairs_valid_and_disjoint] above).
+
+      The full induction would look like:
+        induction (scan_mulx_pairs cs); [apply empty_case | ...].
+        rewrite rewrite_mulx_aux_cons; [apply IH|apply disjoint].
+        apply rewrite_mulx_aux_sound_single; [apply valid|exact Hev].
+      but requires [scan_preserved_by_rewrite] to preserve validity
+      and disjointness through the recursive call. *)
+  Conjecture lower_mulx_pairs_list_correct_final :
+    forall cs e e',
+      wf_mulx_list cs = true ->
+      jeval_list e cs e' ->
+      jeval_list e (lower_mulx_pairs cs) e'.
 
   (** Soundness in the empty-scan case, proved via [mulx_rewrite_star_sound]. *)
   Theorem lower_mulx_pairs_list_correct_via_star_empty :

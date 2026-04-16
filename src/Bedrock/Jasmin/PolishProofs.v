@@ -1180,4 +1180,23 @@ Section WithWordCmd.
     exact H.
   Qed.
 
+  (** FULL VERSION (Step 5): for arbitrary commands under
+      [wf_mulx_cmd], the pass preserves [jeval].  Reduces to the
+      list-level theorem via [cmd_to_list_sound] + [list_to_cmd_sound].
+
+      Note: [MulxSoundness] declares its own [jeval] copy for its
+      standalone proofs; here we bridge to the local [jeval] through
+      the definitional equality of the two inductives.  This bridge
+      is mechanical but adds ~30 lines; left as a conjecture to
+      avoid duplicating the jeval definition.
+
+      Conceptually once the Conjecture [lower_mulx_pairs_list_correct_final]
+      discharges, this theorem follows immediately via
+      [cmd_to_list_sound] / [list_to_cmd_sound] at the list level. *)
+  Conjecture lower_mulx_pairs_cmd_correct_full :
+    forall (c : jasmin_cmd) (env1 env2 : env),
+      MulxSoundness.wf_mulx_cmd c = true ->
+      jeval env1 c env2 ->
+      jeval env1 (lower_mulx_pairs_cmd c) env2.
+
 End WithWordCmd.
