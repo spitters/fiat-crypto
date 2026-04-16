@@ -546,24 +546,33 @@ Section ZProjDoubleSim.
     change (fp2_zero (zmod_ops c ml)) with ((0, 0) : Fp2_Z) in HTZ, HTy.
     (* Reconstruct the affine point from its projective form. *)
     pose proof (zproj_to_affine_at_c TX TY TZ Tx Ty HcTx HcTy HcTZ HTZ HX HY) as Haff.
-    (* Conjunct 1: fp = fa.  Unfold double_step_proj and double_step;
-       use Haff to replace the zproj_to_affine call. *)
+    pose proof (double_Ny_nonzero f Tx Ty TX TY TZ Px Py Hrel Hnz) as HNy.
+    (* Unfold double_step_proj and double_step. *)
     cbn [double_step_proj double_step base_ops zproj_ops zmod_ops
          fp2_zero fp2_one fp2_add fp2_sub fp2_mul fp2_sqr fp2_inv fp2_mul_fp
          fp12_mul fp12_sqr make_line
          Projective.make_line_proj_double Projective.fp12_mul_by_line
-         Projective.base_ops].
-    (* Rewrite the inner zproj_to_affine. *)
-    unfold zproj_make_line_double.
-    rewrite Haff.
-    (* Both fp and fa now compute the same slope lam and call ml on it. *)
-    unfold affine_doubling_slope.
-    cbn [fp2_add fp2_sub fp2_mul fp2_sqr fp2_inv base_ops zmod_ops].
-    (* Admits for the remaining conjuncts. *)
+         Projective.base_ops] in *.
+    (* Rewrite the inner zproj_to_affine via Haff. *)
+    unfold zproj_make_line_double in *.
+    rewrite Haff in *.
+    unfold affine_doubling_slope in *.
+    cbn [fp2_add fp2_sub fp2_mul fp2_sqr fp2_inv base_ops zmod_ops] in *.
     split; [| split].
-    - reflexivity.
-    - admit.
-    - admit.
+    - (* Conjunct 1: fp = fa, slopes + lines match. *)
+      reflexivity.
+    - (* Conjunct 2: proj_affine_rel preservation.
+         The equations Nx * NZ^2 = NX, Ny * NZ^3 = NY are proved
+         over F q in [FProjAlgebra.zproj_double_preserves_{x,y}];
+         lifting to Fp2_Z requires the F-bridge [FProjBridge] and
+         an Fp2-level injectivity lemma [fp2_canonical_eq] not yet
+         proved.  See the outer commentary for the closing path. *)
+      admit.
+    - (* Conjunct 3: proj_nonzero_rel for the new (Ny, NZ).
+         Ny ≠ 0 is by the [double_Ny_nonzero] hypothesis.
+         NZ = (TY+TZ)^2 - TY^2 - TZ^2 = 2*TY*TZ ≠ 0 by integral domain.
+         TY ≠ 0 follows from Ty ≠ 0 and TZ ≠ 0 via HY. *)
+      admit.
   Admitted.
 End ZProjDoubleSim.
 
@@ -582,12 +591,120 @@ Lemma zproj_double_simulates :
     z_proj_nonzero_rel c ml Ny NZ.
 Admitted.
 
+(** ** Per-curve preconditions for [zproj_add_simulates] discharge.
+    Mirrors [Section ZProjDoubleSim].  The additional side condition
+    [Qx * TZ^2 <> TX] (i.e., [Qx <> Tx] under the dehomogenisation)
+    comes from pairing well-formedness — mixed addition requires
+    [P <> Q] geometrically.  The [add_Ny_nonzero] hypothesis is the
+    addition analogue of [double_Ny_nonzero]. *)
+Section ZProjAddSim.
+  Context (c : CurveParams)
+          (q : positive)
+          (q_eq : Z.pos q = prime_p c)
+          (prime_q : prime (Z.pos q))
+          (q_3mod4 : Z.pos q mod 4 = 3).
+  Context (ml : Fp2_Z -> Fp2_Z -> Fp2_Z -> Z -> Z -> Fp12_Z).
+
+  (** [Qx * TZ^2 <> TX] ensures the mixed-addition slope denominator
+      [Qx - Tx] is nonzero. *)
+  Hypothesis Qx_neq_Tx :
+    forall (Tx Ty TX TY TZ Qx Qy : Fp2_Z),
+      z_proj_affine_rel c ml Tx Ty TX TY TZ ->
+      z_proj_nonzero_rel c ml Ty TZ ->
+      canonical_fp2_z (prime_p c) Qx ->
+      canonical_fp2_z (prime_p c) Qy ->
+      zfp2_mul (prime_p c) Qx (zfp2_sqr (prime_p c) TZ) <> TX.
+
+  (** [Ny ≠ 0] for addition: same physical fact as for doubling — the
+      iterate never hits 2-torsion. *)
+  Hypothesis add_Ny_nonzero :
+    forall (f : Fp12_Z) (Tx Ty TX TY TZ Qx Qy : Fp2_Z) (Px Py : Z),
+      z_proj_affine_rel c ml Tx Ty TX TY TZ ->
+      z_proj_nonzero_rel c ml Ty TZ ->
+      canonical_fp2_z (prime_p c) Qx ->
+      canonical_fp2_z (prime_p c) Qy ->
+      let '(_, _, Ny, _) :=
+        add_step_proj (zproj_ops c ml) f TX TY TZ Qx Qy Px Py in
+      Ny <> (0, 0).
+
+  (** Reuse the reconstruction lemma from doubling — it doesn't depend
+      on [double_Ny_nonzero], only on [zproj_to_affine_eq]. *)
+  Lemma zproj_to_affine_at_c_add :
+    forall TX TY TZ Tx Ty,
+      canonical_fp2_z (prime_p c) Tx ->
+      canonical_fp2_z (prime_p c) Ty ->
+      canonical_fp2_z (prime_p c) TZ ->
+      TZ <> (0, 0) ->
+      zfp2_mul (prime_p c) Tx (zfp2_sqr (prime_p c) TZ) = TX ->
+      zfp2_mul (prime_p c) Ty
+        (zfp2_mul (prime_p c) (zfp2_sqr (prime_p c) TZ) TZ) = TY ->
+      zproj_to_affine (prime_p c) TX TY TZ = (Tx, Ty).
+  Proof.
+    intros TX TY TZ Tx Ty HcTx HcTy HcTZ HTZ HX HY.
+    rewrite <- q_eq in *.
+    apply (@zproj_to_affine_eq q prime_q q_3mod4 TX TY TZ Tx Ty);
+      assumption.
+  Qed.
+
+  Lemma zproj_add_simulates_canonical :
+    forall (f : Fp12_Z) (Tx Ty TX TY TZ Qx Qy : Fp2_Z) (Px Py : Z),
+      z_proj_affine_rel c ml Tx Ty TX TY TZ ->
+      z_proj_nonzero_rel c ml Ty TZ ->
+      canonical_fp_z (prime_p c) Px ->
+      canonical_fp_z (prime_p c) Py ->
+      canonical_fp2_z (prime_p c) Qx ->
+      canonical_fp2_z (prime_p c) Qy ->
+      let '(fp, NX, NY, NZ) :=
+        add_step_proj (zproj_ops c ml) f TX TY TZ Qx Qy Px Py in
+      let '(fa, Nx, Ny) :=
+        add_step (zmod_ops c ml) f Tx Ty Qx Qy Px Py in
+      fp = fa /\
+      z_proj_affine_rel c ml Nx Ny NX NY NZ /\
+      z_proj_nonzero_rel c ml Ny NZ.
+  Proof.
+    intros f Tx Ty TX TY TZ Qx Qy Px Py Hrel Hnz HcPx HcPy HcQx HcQy.
+    pose proof Hnz as Hnz'.
+    destruct Hnz' as [HTZ HTy].
+    pose proof Hrel as Hrel'.
+    destruct Hrel' as [HX [HY [HcTx [HcTy [HcTX [HcTY HcTZ]]]]]].
+    change (fp2_zero (zmod_ops c ml)) with ((0, 0) : Fp2_Z) in HTZ, HTy.
+    pose proof (zproj_to_affine_at_c_add TX TY TZ Tx Ty
+                  HcTx HcTy HcTZ HTZ HX HY) as Haff.
+    pose proof (add_Ny_nonzero f Tx Ty TX TY TZ Qx Qy Px Py
+                  Hrel Hnz HcQx HcQy) as HNy.
+    cbn [add_step_proj add_step base_ops zproj_ops zmod_ops
+         fp2_zero fp2_one fp2_add fp2_sub fp2_mul fp2_sqr fp2_inv fp2_mul_fp
+         fp12_mul fp12_sqr make_line
+         Projective.make_line_proj_add Projective.fp12_mul_by_line
+         Projective.base_ops] in *.
+    unfold zproj_make_line_add in *.
+    rewrite Haff in *.
+    unfold affine_chord_slope in *.
+    cbn [fp2_add fp2_sub fp2_mul fp2_sqr fp2_inv base_ops zmod_ops] in *.
+    split; [| split].
+    - (* Conjunct 1: fp = fa.  Both compute zfp12_mul ... (ml lam Tx Ty Px Py). *)
+      reflexivity.
+    - (* Conjunct 2: proj_affine_rel preservation.
+         Same closing path as in [zproj_double_simulates_canonical] —
+         lift via [FProjBridge] to F q, apply the addition analogue
+         [FProjAlgebra.zproj_add_preserves_{x,y}], use [Qx_neq_Tx]
+         to discharge the [Qx - Tx ≠ 0] precondition.  Same Fp2-level
+         injectivity infrastructure required. *)
+      admit.
+    - (* Conjunct 3: proj_nonzero_rel.
+         Ny ≠ 0 by [add_Ny_nonzero] hypothesis.
+         NZ = (TZ + h)^2 - z1z1 - hh = 2*TZ*h, with h = Qx*TZ^2 - TX.
+         h ≠ 0 from [Qx_neq_Tx]; TZ ≠ 0; integral domain → NZ ≠ 0. *)
+      admit.
+  Admitted.
+End ZProjAddSim.
+
 (** Same closing path as [zproj_double_simulates]: left-inverse
     for [zfp2_inv] + lowering via [FProjBridge] of the F-level
     [FProjAlgebra.zproj_add_preserves_\{x,y\}] theorems.  The
-    additional side condition [Qx * TZ^2 \<\> TX] (ensuring
+    additional side condition [Qx * TZ^2 <> TX] (ensuring
     [Qx <> Tx] in affine) comes from the pairing well-formedness
-    preconditions ([P \<\> Q] for mixed addition to make sense). *)
+    preconditions ([P <> Q] for mixed addition to make sense). *)
 Lemma zproj_add_simulates :
   forall c ml (f : Fp12_Z) (Tx Ty TX TY TZ Qx Qy : Fp2_Z) (Px Py : Z),
     z_proj_affine_rel c ml Tx Ty TX TY TZ ->
