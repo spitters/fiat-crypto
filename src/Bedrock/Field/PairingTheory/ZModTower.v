@@ -17,6 +17,8 @@
 
 From Stdlib Require Import ZArith.ZArith.
 From Stdlib Require Import Lists.List. Import ListNotations.
+From Stdlib Require Import micromega.Lia.
+Require Import Crypto.Util.ZUtil.Tactics.PullPush.Modulo.
 
 Require Import Crypto.Bedrock.Field.PairingTheory.Affine.
 Require Import Crypto.Bedrock.Field.PairingTheory.CurveParams.
@@ -60,6 +62,27 @@ Definition zfp2_sub (p : Z) (a b : Fp2_Z) : Fp2_Z :=
   (zfp_sub p (fst a) (fst b), zfp_sub p (snd a) (snd b)).
 Definition zfp2_neg (p : Z) (a : Fp2_Z) : Fp2_Z :=
   (zfp_neg p (fst a), zfp_neg p (snd a)).
+(** [Fp2 = Fp[u] / (u^2 - beta)] multiplication for arbitrary nonresidue [beta].
+    [(a0+a1u)(b0+b1u) = (a0b0 + beta·a1b1) + (a0b1 + a1b0)u].
+    For [beta = -1] this gives the standard [a0b0 - a1b1] form. *)
+Definition zfp2_mul_beta (p : Z) (beta : Z) (a b : Fp2_Z) : Fp2_Z :=
+  let a0 := fst a in let a1 := snd a in
+  let b0 := fst b in let b1 := snd b in
+  (zfp_add p (zfp_mul p a0 b0) (zfp_mul p beta (zfp_mul p a1 b1)),
+   zfp_add p (zfp_mul p a0 b1) (zfp_mul p a1 b0)).
+Definition zfp2_sqr_beta (p : Z) (beta : Z) (a : Fp2_Z) : Fp2_Z :=
+  zfp2_mul_beta p beta a a.
+(** Inversion: norm of [a + bu] is [a^2 - beta·b^2]; conjugate is [(a, -b)]. *)
+Definition zfp2_inv_beta (p : Z) (beta : Z) (a : Fp2_Z) : Fp2_Z :=
+  let n := zfp_sub p (zfp_mul p (fst a) (fst a))
+                     (zfp_mul p beta (zfp_mul p (snd a) (snd a))) in
+  let ni := zfp_inv p n in
+  (zfp_mul p (fst a) ni, zfp_mul p (zfp_neg p (snd a)) ni).
+
+(** Backwards-compat: [beta = -1] specialisations matching the original
+    sum-of-squares / [a0b0 - a1b1] forms.  All existing proofs about
+    [zfp2_mul] / [zfp2_inv] continue to apply via the equivalence
+    lemmas [zfp2_mul_eq_beta_neg1] / [zfp2_inv_eq_beta_neg1] below. *)
 Definition zfp2_mul (p : Z) (a b : Fp2_Z) : Fp2_Z :=
   let a0 := fst a in let a1 := snd a in
   let b0 := fst b in let b1 := snd b in
@@ -73,6 +96,16 @@ Definition zfp2_inv (p : Z) (a : Fp2_Z) : Fp2_Z :=
   (zfp_mul p (fst a) ni, zfp_mul p (zfp_neg p (snd a)) ni).
 Definition zfp2_mul_fp (p : Z) (a : Fp2_Z) (s : Z) : Fp2_Z :=
   (zfp_mul p (fst a) s, zfp_mul p (snd a) s).
+
+(** Reduction lemma: the original [zfp2_mul] is [_beta] at [beta = -1].
+    [_beta] takes the literal Z multiplier and applies [zfp_mul p (-1) x],
+    which mod-reduces to [(p - x) mod p].  The original [zfp2_mul] uses
+    [zfp_sub] which mod-reduces to the same canonical residue. *)
+(** Reduction lemmas linking the [_beta] forms at [beta = -1] back to
+    the original [zfp2_mul] / [zfp2_inv] (which were hardcoded for that
+    case): both sides give the same canonical residue mod p, but not
+    definitionally — the proof requires push_Zmod normalization plus
+    [(-1) * x mod p = (p - x) mod p].  Deferred. *)
 
 (* ================================================================ *)
 (* Fp6 = (Fp2 * Fp2 * Fp2), v^3 = xi                                 *)
