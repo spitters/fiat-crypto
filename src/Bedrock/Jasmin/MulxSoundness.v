@@ -1413,15 +1413,29 @@ Section WithWordCmd.
     apply H; [right; exact Hin1 | right; exact Hin2 | exact Hneq].
   Qed.
 
-  (** Variable-names-disjoint property between two matches.  This is
-      what the scan naturally produces (each JCset hi introduces a
-      fresh hi), and what we need for [valid_match_at] preservation. *)
+  (** Variable-names-disjoint property between two matches m1 and m2.
+      Strong form: applying m1 (JCmulx hi1 lo1 a1 b1 insertion +
+      JCskip at mj1) must not touch m2's safety-protected variables
+      (hi2 and the reads of a2/b2).
+
+      [cmd_touches x (JCmulx hi lo a b) = false] requires:
+        x ≠ hi, x ≠ lo, expr_reads x a = false, expr_reads x b = false.
+      So match_names_disjoint m1 m2 needs:
+      - hi2 ≠ hi1, hi2 ≠ lo1, hi2 ∉ reads(a1), hi2 ∉ reads(b1)
+      - for every x ∈ reads(a2) ∪ reads(b2):
+          x ≠ hi1, x ≠ lo1, x ∉ reads(a1), x ∉ reads(b1). *)
   Definition match_names_disjoint (m1 m2 : mulx_match) : Prop :=
-    let '(_, _, hi1, lo1, _, _) := m1 in
+    let '(_, _, hi1, lo1, a1, b1) := m1 in
     let '(_, _, hi2, _, a2, b2) := m2 in
-    hi1 <> hi2 /\ lo1 <> hi2
-    /\ expr_reads hi1 a2 = false /\ expr_reads hi1 b2 = false
-    /\ expr_reads lo1 a2 = false /\ expr_reads lo1 b2 = false.
+    (* m1's inserted JCmulx does not touch hi2 *)
+    hi2 <> hi1 /\ hi2 <> lo1
+    /\ expr_reads hi2 a1 = false /\ expr_reads hi2 b1 = false
+    /\ (* m1's inserted JCmulx does not touch any var read by a2 *)
+       (forall x, expr_reads x a2 = true ->
+          x <> hi1 /\ x <> lo1 /\ expr_reads x a1 = false /\ expr_reads x b1 = false)
+    /\ (* ...or by b2 *)
+       (forall x, expr_reads x b2 = true ->
+          x <> hi1 /\ x <> lo1 /\ expr_reads x a1 = false /\ expr_reads x b1 = false).
 
   (** Strong pairwise-disjointness: position AND name. *)
   Definition matches_strong_disjoint (ms : list mulx_match) : Prop :=
@@ -1515,36 +1529,145 @@ Section WithWordCmd.
     forall x, cmd_touches x JCskip = false.
   Proof. reflexivity. Qed.
 
-  (** Full preservation: if m and m' are disjoint (position+name), then
-      m' remains valid at the post-rewrite list.
+  (** Helper: when a single match's positions are disjoint from a target
+      position, the rewrite produces [Some (JCmulx ...)] at mi. *)
+  Lemma rewrite_mulx_aux_nth_at_mi :
+    forall mi mj hi lo a b cs,
+      (mi < mj)%nat ->
+      nth_error cs mi = Some (JCset lo (JEmul a b)) ->
+      nth_error (rewrite_mulx_aux 0%nat [(mi,mj,hi,lo,a,b)] cs) mi
+      = Some (JCmulx hi lo a b).
+  Proof.
+    intros mi mj hi lo a b cs Hlt Hnth.
+    assert (Hgen : forall n cs0 k,
+              nth_error cs0 k = Some (JCset lo (JEmul a b)) ->
+              (n + k)%nat = mi ->
+              (mi < mj)%nat ->
+              nth_error (rewrite_mulx_aux n [(mi,mj,hi,lo,a,b)] cs0) k
+              = Some (JCmulx hi lo a b)).
+    { clear. intros n cs0 k. revert n k.
+      induction cs0 as [|c0 cs0 IH]; intros n k Hnth Hsum Hmm;
+        [destruct k; discriminate|].
+      rewrite rewrite_mulx_aux_step. destruct k as [|k']; simpl.
+      - rewrite Nat.add_0_r in Hsum. subst n.
+        cbn [find_mul_match is_mulhuu_idx].
+        rewrite Nat.eqb_refl. reflexivity.
+      - apply IH;
+          [simpl in Hnth; exact Hnth
+          |replace (S n + k')%nat with (n + S k')%nat by lia; exact Hsum
+          |exact Hmm]. }
+    apply (Hgen 0%nat cs mi Hnth); [lia | exact Hlt].
+  Qed.
 
-      Proof sketch (fully mechanical, ~80 lines; admitted here to keep
-      the theorem layer clean):
-      - Positions at mi', mj' are unchanged (by [rewrite_mulx_aux_nth_unchanged_at],
-        Qed above).
-      - For the middle range of m': case split by whether i ∈ {mi, mj}:
-        * i = mi: position now holds [JCmulx hi lo a b].  By
-          [cmd_touches_JCmulx_iff_names] (Qed above), this doesn't
-          touch hi'/a'-reads/b'-reads provided:
-          hi'≠hi, hi'≠lo, hi∉reads(a'), hi∉reads(b'),
-          lo∉reads(a'), lo∉reads(b').
-          These need to be in [match_names_disjoint].
-        * i = mj: position now holds [JCskip]. [cmd_touches_JCskip]
-          (Qed above) closes this trivially.
-        * else: position unchanged, use original [Hmid'].
-      [match_names_disjoint] currently has hi≠hi', lo≠hi', hi∉reads(a'/b'),
-      lo∉reads(a'/b') — MISSING: conditions for safety of reads by
-      a'/b' w.r.t. JCmulx.  The full proof requires extending
-      [match_names_disjoint] with: for every x read by a' or b',
-      x≠hi, x≠lo, x∉reads(a), x∉reads(b). *)
+  (** Similarly for mj: position becomes JCskip. *)
+  Lemma rewrite_mulx_aux_nth_at_mj :
+    forall mi mj hi lo a b cs,
+      (mi < mj)%nat ->
+      nth_error (rewrite_mulx_aux 0%nat [(mi,mj,hi,lo,a,b)] cs) mj
+      = match nth_error cs mj with Some _ => Some JCskip | None => None end.
+  Proof.
+    intros mi mj hi lo a b cs Hlt.
+    assert (Hgen : forall n cs0 k,
+              (n + k)%nat = mj ->
+              (mi < mj)%nat ->
+              nth_error (rewrite_mulx_aux n [(mi,mj,hi,lo,a,b)] cs0) k
+              = match nth_error cs0 k with Some _ => Some JCskip | None => None end).
+    { clear. intros n cs0 k. revert n k.
+      induction cs0 as [|c0 cs0 IH]; intros n k Hsum Hmm.
+      - destruct k; reflexivity.
+      - rewrite rewrite_mulx_aux_step. destruct k as [|k']; simpl.
+        + rewrite Nat.add_0_r in Hsum. subst n.
+          cbn [find_mul_match is_mulhuu_idx].
+          assert (Hneq : Nat.eqb mj mi = false)
+            by (apply Nat.eqb_neq; lia).
+          rewrite Hneq, Nat.eqb_refl. cbn [orb]. reflexivity.
+        + apply IH;
+            [replace (S n + k')%nat with (n + S k')%nat by lia; exact Hsum
+            |exact Hmm]. }
+    apply (Hgen 0%nat cs mj); [lia | exact Hlt].
+  Qed.
+
+  (** Full preservation: if m and m' are disjoint (position+name), then
+      m' remains valid at the post-rewrite list. *)
   Lemma valid_match_at_preserved :
     forall cs m m',
       valid_match_at cs m ->
       valid_match_at cs m' ->
       match_disjoint m m' ->
       match_names_disjoint m m' ->
-      valid_match_at (rewrite_mulx_aux 0 [m] cs) m'.
-  Admitted.
+      valid_match_at (rewrite_mulx_aux 0%nat [m] cs) m'.
+  Proof.
+    intros cs [[[[[mi mj] hi] lo] a] b] [[[[[mi' mj'] hi'] lo'] a'] b']
+           Hvm Hvm' Hposd Hnamed.
+    destruct Hposd as [Hii' [Hij' [Hji' Hjj']]].
+    destruct Hnamed as [Hhi'hi [Hhi'lo [Hhi'a [Hhi'b [HRa HRb]]]]].
+    destruct Hvm as [Hij_m [[a2 [b2 [Hnth_m _]]] _]].
+    destruct Hvm' as [Hij_lt' [[a'' [b'' [Hnth_m' [Hnth_mh' [Hae' Hbe']]]]]
+                      [Hmid' [Hla' [Hlb' Hne']]]]].
+    split; [exact Hij_lt'|].
+    split.
+    { exists a'', b''. split; [|split; [|split; [exact Hae' | exact Hbe']]].
+      - rewrite rewrite_mulx_aux_nth_unchanged_at by auto.
+        exact Hnth_m'.
+      - rewrite rewrite_mulx_aux_nth_unchanged_at by auto.
+        exact Hnth_mh'. }
+    split.
+    { intros c i HiRange Hnth_new.
+      destruct (Nat.eq_dec i mi) as [Heq_mi | Hneq_mi].
+      - (* i = mi: now JCmulx hi lo a b *)
+        subst i.
+        pose proof (rewrite_mulx_aux_nth_at_mi mi mj hi lo a b cs Hij_m Hnth_m) as Hmulx.
+        (* Debug: see the state *)
+        idtac.
+        assert (Hceq : c = JCmulx hi lo a b).
+        { assert (Some c = Some (JCmulx hi lo a b)).
+          { rewrite <- Hnth_new. exact Hmulx. }
+          congruence. }
+        subst c.
+        split; [|split].
+        + (* cmd_touches hi' (JCmulx hi lo a b) = false *)
+          cbn.
+          destruct (String.eqb hi' hi) eqn:E1;
+            [apply String.eqb_eq in E1; contradiction|].
+          destruct (String.eqb hi' lo) eqn:E2;
+            [apply String.eqb_eq in E2; contradiction|].
+          rewrite Hhi'a, Hhi'b. reflexivity.
+        + (* x reads a' -> x doesn't touch JCmulx hi lo a b *)
+          intros x Hrx.
+          specialize (HRa x Hrx) as [Hxhi [Hxlo [Hxa Hxb]]].
+          cbn.
+          destruct (String.eqb x hi) eqn:E1;
+            [apply String.eqb_eq in E1; contradiction|].
+          destruct (String.eqb x lo) eqn:E2;
+            [apply String.eqb_eq in E2; contradiction|].
+          rewrite Hxa, Hxb. reflexivity.
+        + (* x reads b' -> similar *)
+          intros x Hrx.
+          specialize (HRb x Hrx) as [Hxhi [Hxlo [Hxa Hxb]]].
+          cbn.
+          destruct (String.eqb x hi) eqn:E1;
+            [apply String.eqb_eq in E1; contradiction|].
+          destruct (String.eqb x lo) eqn:E2;
+            [apply String.eqb_eq in E2; contradiction|].
+          rewrite Hxa, Hxb. reflexivity.
+      - destruct (Nat.eq_dec i mj) as [Heq_mj | Hneq_mj].
+        + (* i = mj: now JCskip *)
+          subst i.
+          pose proof (rewrite_mulx_aux_nth_at_mj mi mj hi lo a b cs Hij_m) as Hskip.
+          destruct (nth_error cs mj) eqn:Hnth_mj.
+          * assert (c = JCskip).
+            { assert (Some c = Some JCskip) by (rewrite <- Hnth_new; exact Hskip).
+              congruence. }
+            subst c.
+            split; [reflexivity | split; intros; reflexivity].
+          * (* Hnth_new says ... = Some c but Hskip says ... = None *)
+            assert (Some c = None) by (rewrite <- Hnth_new; exact Hskip).
+            discriminate.
+        + (* i ∉ {mi, mj}: position unchanged *)
+          rewrite rewrite_mulx_aux_nth_unchanged_at in Hnth_new by auto.
+          apply (Hmid' c i HiRange Hnth_new). }
+    split; [exact Hla'|]. split; [exact Hlb'|]. exact Hne'.
+  Qed.
 
   (** Strong-disjoint is preserved on the tail after removing head. *)
   Lemma matches_strong_disjoint_tail :
