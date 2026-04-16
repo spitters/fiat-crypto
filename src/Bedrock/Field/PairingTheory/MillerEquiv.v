@@ -536,6 +536,34 @@ Section ZProjDoubleSim.
       fp = fa /\
       z_proj_affine_rel c ml Nx Ny NX NY NZ /\
       z_proj_nonzero_rel c ml Ny NZ.
+  Proof.
+    intros f Tx Ty TX TY TZ Px Py Hrel Hnz HcPx HcPy.
+    pose proof Hnz as Hnz'.
+    destruct Hnz' as [HTZ HTy].
+    pose proof Hrel as Hrel'.
+    destruct Hrel' as [HX [HY [HcTx [HcTy [HcTX [HcTY HcTZ]]]]]].
+    (* Unfold the TZ ≠ 0 witness under the Z-instance. *)
+    change (fp2_zero (zmod_ops c ml)) with ((0, 0) : Fp2_Z) in HTZ, HTy.
+    (* Reconstruct the affine point from its projective form. *)
+    pose proof (zproj_to_affine_at_c TX TY TZ Tx Ty HcTx HcTy HcTZ HTZ HX HY) as Haff.
+    (* Conjunct 1: fp = fa.  Unfold double_step_proj and double_step;
+       use Haff to replace the zproj_to_affine call. *)
+    cbn [double_step_proj double_step base_ops zproj_ops zmod_ops
+         fp2_zero fp2_one fp2_add fp2_sub fp2_mul fp2_sqr fp2_inv fp2_mul_fp
+         fp12_mul fp12_sqr make_line
+         Projective.make_line_proj_double Projective.fp12_mul_by_line
+         Projective.base_ops].
+    (* Rewrite the inner zproj_to_affine. *)
+    unfold zproj_make_line_double.
+    rewrite Haff.
+    (* Both fp and fa now compute the same slope lam and call ml on it. *)
+    unfold affine_doubling_slope.
+    cbn [fp2_add fp2_sub fp2_mul fp2_sqr fp2_inv base_ops zmod_ops].
+    (* Admits for the remaining conjuncts. *)
+    split; [| split].
+    - reflexivity.
+    - admit.
+    - admit.
   Admitted.
 End ZProjDoubleSim.
 
