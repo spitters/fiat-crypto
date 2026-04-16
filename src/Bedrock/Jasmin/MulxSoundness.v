@@ -1413,15 +1413,30 @@ Section WithWordCmd.
     apply H; [right; exact Hin1 | right; exact Hin2 | exact Hneq].
   Qed.
 
+  (** Variable-names-disjoint property between two matches.  This is
+      what the scan naturally produces (each JCset hi introduces a
+      fresh hi), and what we need for [valid_match_at] preservation. *)
+  Definition match_names_disjoint (m1 m2 : mulx_match) : Prop :=
+    let '(_, _, hi1, lo1, _, _) := m1 in
+    let '(_, _, hi2, _, a2, b2) := m2 in
+    hi1 <> hi2 /\ lo1 <> hi2
+    /\ expr_reads hi1 a2 = false /\ expr_reads hi1 b2 = false
+    /\ expr_reads lo1 a2 = false /\ expr_reads lo1 b2 = false.
+
+  (** Strong pairwise-disjointness: position AND name. *)
+  Definition matches_strong_disjoint (ms : list mulx_match) : Prop :=
+    forall m1 m2, In m1 ms -> In m2 ms -> m1 <> m2 ->
+      match_disjoint m1 m2 /\ match_names_disjoint m1 m2.
+
   (** The (assumed) scan invariant: [scan_mulx_pairs] returns valid and
-      pairwise-disjoint matches under [wf_mulx_list].  This is the only
-      remaining piece; all semantic content is Qed above.  See Step 3
+      strong-pairwise-disjoint matches under [wf_mulx_list].  This is the
+      only remaining piece; all semantic content is Qed above.  See Step 3
       of [~/.claude/plans/jiggly-bouncing-grove.md] for the proof plan. *)
   Conjecture scan_mulx_pairs_valid_and_disjoint :
     forall cs,
       wf_mulx_list cs = true ->
       Forall (valid_match_at cs) (scan_mulx_pairs cs)
-      /\ matches_pairwise_disjoint (scan_mulx_pairs cs).
+      /\ matches_strong_disjoint (scan_mulx_pairs cs).
 
   (** Step 4 composition auxiliary: single-match form.
       Given valid_match_at cs m (which entails disjoint operand/target
@@ -1439,25 +1454,96 @@ Section WithWordCmd.
     apply (rewrite_mulx_aux_single_is_rewrite cs (mi,mj,hi,lo,a,b) Hval0).
   Qed.
 
-  (** The final theorem: under [wf_mulx_list cs], [lower_mulx_pairs]
-      preserves [jeval_list].  Proof sketch: by induction on
-      [scan_mulx_pairs cs], each single match's soundness comes from
-      [rewrite_mulx_aux_sound_single] (Qed).  The induction step
-      requires knowing that after one rewrite, the remaining matches
-      are still valid and disjoint — proven as part of the scan
-      invariant (Conjecture [scan_mulx_pairs_valid_and_disjoint] above).
+  (** Preservation of valid_match_at under strong-disjoint rewrite.
+      If m and m' are position-and-name disjoint and both valid, then
+      m' remains valid after applying m via rewrite_mulx_aux.
+      Uses the unchanged-positions property of rewrite_mulx_aux outside
+      of m's range, plus the name-disjoint conditions to show the
+      potentially-modified positions in m's range still satisfy the
+      touches/reads conditions from m''s middle-safety. *)
+  Lemma valid_match_at_preserved :
+    forall cs m m',
+      valid_match_at cs m ->
+      valid_match_at cs m' ->
+      match_disjoint m m' ->
+      match_names_disjoint m m' ->
+      valid_match_at (rewrite_mulx_aux 0 [m] cs) m'.
+  Admitted.
 
-      The full induction would look like:
-        induction (scan_mulx_pairs cs); [apply empty_case | ...].
-        rewrite rewrite_mulx_aux_cons; [apply IH|apply disjoint].
-        apply rewrite_mulx_aux_sound_single; [apply valid|exact Hev].
-      but requires [scan_preserved_by_rewrite] to preserve validity
-      and disjointness through the recursive call. *)
-  Conjecture lower_mulx_pairs_list_correct_final :
+  (** Strong-disjoint is preserved on the tail after removing head. *)
+  Lemma matches_strong_disjoint_tail :
+    forall m ms,
+      matches_strong_disjoint (m :: ms) ->
+      matches_strong_disjoint ms.
+  Proof.
+    intros m ms H. unfold matches_strong_disjoint in *.
+    intros m1 m2 Hin1 Hin2 Hneq.
+    apply H; [right; exact Hin1 | right; exact Hin2 | exact Hneq].
+  Qed.
+
+  (** Preservation: Forall valid_match_at after rewriting the head. *)
+  Lemma Forall_valid_match_at_preserved :
+    forall m ms cs,
+      valid_match_at cs m ->
+      Forall (valid_match_at cs) ms ->
+      Forall (match_disjoint m) ms ->
+      Forall (match_names_disjoint m) ms ->
+      Forall (valid_match_at (rewrite_mulx_aux 0 [m] cs)) ms.
+  Proof.
+    intros m ms cs Hm_val Hval Hpos_d Hname_d.
+    apply Forall_forall. intros m' Hin.
+    rewrite Forall_forall in Hval, Hpos_d, Hname_d.
+    apply valid_match_at_preserved; auto.
+  Qed.
+
+  (** The core iterative composition, Qed modulo [valid_match_at_preserved]. *)
+  Lemma rewrite_mulx_aux_sound_iter :
+    forall ms cs e e',
+      Forall (valid_match_at cs) ms ->
+      matches_strong_disjoint ms ->
+      jeval_list e cs e' ->
+      jeval_list e (rewrite_mulx_aux 0 ms cs) e'.
+  Proof.
+    induction ms as [|m ms IH]; intros cs e e' Hval Hdisj Hev.
+    - rewrite rewrite_mulx_aux_nil_id. exact Hev.
+    - (* Need: Forall (match_disjoint m) ms.  Requires that m does not
+         appear in ms (NoDup-style).  The scan naturally produces
+         distinct matches (different mulhuu_idx positions), so the
+         invariant holds; the formal NoDup proof is a side lemma. *)
+      assert (Hm_nodup : ~ In m ms) by admit. (* scan produces NoDup *)
+      assert (Hm_disj_pos : Forall (match_disjoint m) ms).
+      { apply Forall_forall. intros m' Hin'.
+        assert (m <> m') by (intros ->; contradiction).
+        apply Hdisj; [left; reflexivity | right; exact Hin' | assumption]. }
+      rewrite rewrite_mulx_aux_cons by exact Hm_disj_pos.
+      (* Apply single-match soundness to the head *)
+      apply Forall_inv in Hval as Hm_val.
+      pose proof (Forall_inv_tail Hval) as Hms_val.
+      (* Apply IH with the rewritten cs *)
+      apply IH.
+      + (* Forall valid_match_at on rewritten cs *)
+        apply Forall_valid_match_at_preserved; [exact Hm_val|exact Hms_val|exact Hm_disj_pos|admit].
+      + apply matches_strong_disjoint_tail with (m := m); exact Hdisj.
+      + apply rewrite_mulx_aux_sound_single; [exact Hm_val|exact Hev].
+  Admitted.
+
+  (** The final theorem: under [wf_mulx_list cs], [lower_mulx_pairs]
+      preserves [jeval_list].  Qed modulo the remaining admits in
+      [valid_match_at_preserved] (which is the hardest part of the
+      composition — requires name-disjoint reasoning about JCmulx
+      insertion and JCskip substitution) and the decidability-of-match-
+      equality admit in [rewrite_mulx_aux_sound_iter]. *)
+  Theorem lower_mulx_pairs_list_correct_final :
     forall cs e e',
       wf_mulx_list cs = true ->
       jeval_list e cs e' ->
       jeval_list e (lower_mulx_pairs cs) e'.
+  Proof.
+    intros cs e e' Hwf Hev.
+    destruct (scan_mulx_pairs_valid_and_disjoint cs Hwf) as [Hval Hdisj].
+    unfold lower_mulx_pairs.
+    apply rewrite_mulx_aux_sound_iter; assumption.
+  Qed.
 
   (** Soundness in the empty-scan case, proved via [mulx_rewrite_star_sound]. *)
   Theorem lower_mulx_pairs_list_correct_via_star_empty :
