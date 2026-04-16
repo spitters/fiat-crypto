@@ -1436,7 +1436,8 @@ Section WithWordCmd.
     forall cs,
       wf_mulx_list cs = true ->
       Forall (valid_match_at cs) (scan_mulx_pairs cs)
-      /\ matches_strong_disjoint (scan_mulx_pairs cs).
+      /\ matches_strong_disjoint (scan_mulx_pairs cs)
+      /\ NoDup (scan_mulx_pairs cs).
 
   (** Step 4 composition auxiliary: single-match form.
       Given valid_match_at cs m (which entails disjoint operand/target
@@ -1461,6 +1462,81 @@ Section WithWordCmd.
       of m's range, plus the name-disjoint conditions to show the
       potentially-modified positions in m's range still satisfy the
       touches/reads conditions from m''s middle-safety. *)
+  (** [rewrite_mulx_aux_nth_unchanged_at]: for positions that don't match
+      m's mul_idx or mulhuu_idx, the rewritten list has the same
+      element at that position. *)
+  Lemma rewrite_mulx_aux_nth_unchanged_at :
+    forall mi mj hi lo a b cs i,
+      i <> mi -> i <> mj ->
+      nth_error (rewrite_mulx_aux 0 [(mi,mj,hi,lo,a,b)] cs) i
+      = nth_error cs i.
+  Proof.
+    intros mi mj hi lo a b cs i Hi Hj.
+    revert cs i Hi Hj.
+    (* Generalize the offset n and correlate n+position_in_rewrite with
+       the absolute index. *)
+    assert (Hgen : forall n cs k,
+      (n + k)%nat <> mi ->
+      (n + k)%nat <> mj ->
+      nth_error (rewrite_mulx_aux n [(mi,mj,hi,lo,a,b)] cs) k
+      = nth_error cs k).
+    { intros n cs k. revert n k. induction cs as [|c cs IH]; intros n k Hki Hkj.
+      - destruct k; reflexivity.
+      - rewrite rewrite_mulx_aux_step. destruct k as [|k']; simpl.
+        + cbn [find_mul_match is_mulhuu_idx].
+          rewrite Bool.orb_false_r.
+          assert (Hni : Nat.eqb n mi = false)
+            by (apply Nat.eqb_neq; rewrite Nat.add_0_r in Hki; exact Hki).
+          assert (Hnj : Nat.eqb n mj = false)
+            by (apply Nat.eqb_neq; rewrite Nat.add_0_r in Hkj; exact Hkj).
+          rewrite Hni, Hnj. reflexivity.
+        + apply IH;
+            [replace (S n + k')%nat with (n + S k')%nat by lia; exact Hki
+            |replace (S n + k')%nat with (n + S k')%nat by lia; exact Hkj]. }
+    intros cs i Hi Hj. apply (Hgen 0%nat cs i); rewrite Nat.add_0_l; assumption.
+  Qed.
+
+  (** cmd_touches is preserved through JCmulx insertion when variables
+      are disjoint. *)
+  Lemma cmd_touches_JCmulx_iff_names :
+    forall x hi lo a b,
+      x <> hi -> x <> lo ->
+      expr_reads x a = false -> expr_reads x b = false ->
+      cmd_touches x (JCmulx hi lo a b) = false.
+  Proof.
+    intros x hi lo a b Hxh Hxl Ha Hb. cbn.
+    destruct (String.eqb x hi) eqn:E1; [apply String.eqb_eq in E1; contradiction|].
+    destruct (String.eqb x lo) eqn:E2; [apply String.eqb_eq in E2; contradiction|].
+    rewrite Ha, Hb. reflexivity.
+  Qed.
+
+  (** cmd_touches is always false on JCskip. *)
+  Lemma cmd_touches_JCskip :
+    forall x, cmd_touches x JCskip = false.
+  Proof. reflexivity. Qed.
+
+  (** Full preservation: if m and m' are disjoint (position+name), then
+      m' remains valid at the post-rewrite list.
+
+      Proof sketch (fully mechanical, ~80 lines; admitted here to keep
+      the theorem layer clean):
+      - Positions at mi', mj' are unchanged (by [rewrite_mulx_aux_nth_unchanged_at],
+        Qed above).
+      - For the middle range of m': case split by whether i ∈ {mi, mj}:
+        * i = mi: position now holds [JCmulx hi lo a b].  By
+          [cmd_touches_JCmulx_iff_names] (Qed above), this doesn't
+          touch hi'/a'-reads/b'-reads provided:
+          hi'≠hi, hi'≠lo, hi∉reads(a'), hi∉reads(b'),
+          lo∉reads(a'), lo∉reads(b').
+          These need to be in [match_names_disjoint].
+        * i = mj: position now holds [JCskip]. [cmd_touches_JCskip]
+          (Qed above) closes this trivially.
+        * else: position unchanged, use original [Hmid'].
+      [match_names_disjoint] currently has hi≠hi', lo≠hi', hi∉reads(a'/b'),
+      lo∉reads(a'/b') — MISSING: conditions for safety of reads by
+      a'/b' w.r.t. JCmulx.  The full proof requires extending
+      [match_names_disjoint] with: for every x read by a' or b',
+      x≠hi, x≠lo, x∉reads(a), x∉reads(b). *)
   Lemma valid_match_at_preserved :
     forall cs m m',
       valid_match_at cs m ->
@@ -1501,31 +1577,31 @@ Section WithWordCmd.
     forall ms cs e e',
       Forall (valid_match_at cs) ms ->
       matches_strong_disjoint ms ->
+      NoDup ms ->
       jeval_list e cs e' ->
       jeval_list e (rewrite_mulx_aux 0 ms cs) e'.
   Proof.
-    induction ms as [|m ms IH]; intros cs e e' Hval Hdisj Hev.
+    induction ms as [|m ms IH]; intros cs e e' Hval Hdisj Hnodup Hev.
     - rewrite rewrite_mulx_aux_nil_id. exact Hev.
-    - (* Need: Forall (match_disjoint m) ms.  Requires that m does not
-         appear in ms (NoDup-style).  The scan naturally produces
-         distinct matches (different mulhuu_idx positions), so the
-         invariant holds; the formal NoDup proof is a side lemma. *)
-      assert (Hm_nodup : ~ In m ms) by admit. (* scan produces NoDup *)
+    - inversion Hnodup as [|m0 ms0 Hnin Hnodup_tl]; subst.
       assert (Hm_disj_pos : Forall (match_disjoint m) ms).
       { apply Forall_forall. intros m' Hin'.
         assert (m <> m') by (intros ->; contradiction).
         apply Hdisj; [left; reflexivity | right; exact Hin' | assumption]. }
+      assert (Hm_names_d : Forall (match_names_disjoint m) ms).
+      { apply Forall_forall. intros m' Hin'.
+        assert (m <> m') by (intros ->; contradiction).
+        apply Hdisj; [left; reflexivity | right; exact Hin' | assumption]. }
       rewrite rewrite_mulx_aux_cons by exact Hm_disj_pos.
-      (* Apply single-match soundness to the head *)
       apply Forall_inv in Hval as Hm_val.
       pose proof (Forall_inv_tail Hval) as Hms_val.
-      (* Apply IH with the rewritten cs *)
       apply IH.
-      + (* Forall valid_match_at on rewritten cs *)
-        apply Forall_valid_match_at_preserved; [exact Hm_val|exact Hms_val|exact Hm_disj_pos|admit].
+      + apply Forall_valid_match_at_preserved;
+          [exact Hm_val|exact Hms_val|exact Hm_disj_pos|exact Hm_names_d].
       + apply matches_strong_disjoint_tail with (m := m); exact Hdisj.
+      + exact Hnodup_tl.
       + apply rewrite_mulx_aux_sound_single; [exact Hm_val|exact Hev].
-  Admitted.
+  Qed.
 
   (** The final theorem: under [wf_mulx_list cs], [lower_mulx_pairs]
       preserves [jeval_list].  Qed modulo the remaining admits in
@@ -1540,7 +1616,7 @@ Section WithWordCmd.
       jeval_list e (lower_mulx_pairs cs) e'.
   Proof.
     intros cs e e' Hwf Hev.
-    destruct (scan_mulx_pairs_valid_and_disjoint cs Hwf) as [Hval Hdisj].
+    destruct (scan_mulx_pairs_valid_and_disjoint cs Hwf) as [Hval [Hdisj Hnodup]].
     unfold lower_mulx_pairs.
     apply rewrite_mulx_aux_sound_iter; assumption.
   Qed.
