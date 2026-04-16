@@ -479,6 +479,26 @@ Section ZProjDoubleSim.
         double_step_proj (zproj_ops c ml) f TX TY TZ Px Py in
       Ny <> (0, 0).
 
+  (** Z-instance reconstruction lemma: the projective coordinates'
+      dehomogenisation equals the affine point.  This is the workhorse
+      for closing [fp = fa] in [zproj_double_simulates_canonical]. *)
+  Lemma zproj_to_affine_at_c :
+    forall TX TY TZ Tx Ty,
+      canonical_fp2_z (prime_p c) Tx ->
+      canonical_fp2_z (prime_p c) Ty ->
+      canonical_fp2_z (prime_p c) TZ ->
+      TZ <> (0, 0) ->
+      zfp2_mul (prime_p c) Tx (zfp2_sqr (prime_p c) TZ) = TX ->
+      zfp2_mul (prime_p c) Ty
+        (zfp2_mul (prime_p c) (zfp2_sqr (prime_p c) TZ) TZ) = TY ->
+      zproj_to_affine (prime_p c) TX TY TZ = (Tx, Ty).
+  Proof.
+    intros TX TY TZ Tx Ty HcTx HcTy HcTZ HTZ HX HY.
+    rewrite <- q_eq in *.
+    apply (@zproj_to_affine_eq q prime_q q_3mod4 TX TY TZ Tx Ty);
+      assumption.
+  Qed.
+
   Lemma zproj_double_simulates_canonical :
     forall (f : Fp12_Z) (Tx Ty TX TY TZ : Fp2_Z) (Px Py : Z),
       z_proj_affine_rel c ml Tx Ty TX TY TZ ->
