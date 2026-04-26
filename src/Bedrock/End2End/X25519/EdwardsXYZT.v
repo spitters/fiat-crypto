@@ -1,6 +1,5 @@
 Require Import bedrock2.Array.
 Require Import bedrock2.bottom_up_simpl.
-Require Import bedrock2.FE310CSemantics.
 Require Import bedrock2.Loops.
 Require Import bedrock2.Map.Separation.
 Require Import bedrock2.Map.SeparationLogic.
@@ -13,9 +12,10 @@ Require Import bedrock2.Syntax.
 Require Import bedrock2.WeakestPrecondition.
 Require Import bedrock2.WeakestPreconditionProperties.
 Require Import bedrock2.ZnWords.
-Require Import compiler.MMIO.
-Require Import compiler.Pipeline.
-Require Import compiler.Symbols.
+(* Removed vestigial imports (verified unused in file body 2026-04-26):
+   bedrock2.FE310CSemantics, compiler.MMIO, compiler.Pipeline, compiler.Symbols.
+   Their absence allows this file to build in projects that don't have
+   the bedrock2 compiler stack in their loadpath (e.g., AUCurves). *)
 Require Import coqutil.Byte.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.OfListWord.
