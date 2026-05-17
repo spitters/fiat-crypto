@@ -74,7 +74,7 @@ jobs:
     - run: find . -name "*.timing" | xargs tar -czvf timing-files.tgz
       if: failure()
     - name: upload generated timing files
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: timing-files-${{ matrix.os.runs-on }}
         path: timing-files.tgz
@@ -87,22 +87,22 @@ jobs:
       run: opam exec -- etc/ci/github-actions-make.sh -j2 only-test-amd64-files-lite SLOWEST_FIRST=1
 
     - name: upload OCaml files
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: ExtractionOCaml-${{ matrix.os.arch }}
         path: src/ExtractionOCaml
     - name: upload js_of_ocaml files
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: ExtractionJsOfOCaml-${{ matrix.os.arch }}
         path: src/ExtractionJsOfOCaml
     - name: upload standalone files
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: standalone-macos-${{ matrix.os.arch }}
         path: dist/fiat_crypto
     - name: upload standalone js files
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: standalone-html-macos-${{ matrix.os.arch }}
         path: fiat-html
@@ -117,7 +117,7 @@ jobs:
     - name: display per-line timing info
       run: etc/ci/github-actions-display-per-line-timing.sh
 #    - name: upload timing and .vo info
-#      uses: actions/upload-artifact@v6
+#      uses: actions/upload-artifact@v7
 #      with:
 #        name: build-outputs-${{ matrix.os.arch }}
 #        path: .
@@ -134,12 +134,12 @@ jobs:
     steps:
     - uses: actions/checkout@v6
     - name: Download standalone MacOS x86_64
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         name: standalone-macos-x86_64
         path: dist-x86_64/
     - name: Download standalone MacOS arm64
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         name: standalone-macos-arm64
         path: dist-arm64/
@@ -148,7 +148,7 @@ jobs:
         mkdir -p dist
         lipo -create -output dist/fiat_crypto dist-x86_64/fiat_crypto dist-arm64/fiat_crypto
     - name: upload universal binary
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: standalone-macos
         path: dist/fiat_crypto
@@ -167,7 +167,7 @@ jobs:
     steps:
     - uses: actions/checkout@v6
     - name: Download standalone MacOS${{ matrix.arch }}
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         name: standalone-macos${{ matrix.arch }}
         path: dist/
@@ -202,7 +202,7 @@ jobs:
         fetch-depth: 0 # Fetch all history for all tags and branches
         tags: true     # Fetch all tags as well, `fetch-depth: 0` might be sufficient depending on Git version
     - name: Download standalone MacOS${{ matrix.arch }}
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         name: standalone-macos${{ matrix.arch }}
         path: dist/

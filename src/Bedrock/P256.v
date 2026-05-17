@@ -1,4 +1,5 @@
-From Crypto.Bedrock.P256 Require Import Specs Platform Coord Jacobian JacobianAffine.
+From Crypto.Bedrock.P256 Require Import Specs Platform Coord Jacobian JacobianAffine
+PrecomputedMultiples.
 
 Import Specs.NotationsCustomEntry Specs.coord Specs.point.
 
@@ -11,7 +12,7 @@ micromega.Lia
 coqutil.Byte
 Lists.List micromega.Lia
 Jacobian
-Coq.Strings.String Coq.Lists.List 
+Coq.Strings.String Coq.Lists.List
 ProgramLogic WeakestPrecondition
 ProgramLogic.Coercions
 Word.Interface OfListWord Separation SeparationLogic
@@ -36,7 +37,6 @@ Local Notation "xs $@ a" := (map.of_list_word_at a xs)
   (at level 10, format "xs $@ a").
 Local Notation "$ n" := (match word.of_Z n return word with w => w end) (at level 9, format "$ n").
 Local Notation "p .+ n" := (word.add p (word.of_Z n)) (at level 50, format "p .+ n", left associativity).
-Local Coercion F.to_Z : F >-> Z.
 
 Import coqutil.Map.Interface.
 Import bedrock2.ToCString.
@@ -105,13 +105,16 @@ Definition jacobian := &[,
  br_broadcast_odd;
  p256_coord_halve;
 
+ p256_point_set_zero;
  p256_point_iszero;
  p256_point_double;
  p256_point_add_nz_nz_neq;
  p256_point_add_vartime_if_doubling;
 
  p256_point_add_affine_nz_nz_neq;
- p256_point_add_affinenz_conditional_vartime_if_doubling
+ p256_point_add_affinenz_conditional_vartime_if_doubling;
+
+ p256_precompute_multiples
  ].
 
 Compute String.concat LF (List.map c_func jacobian).
@@ -175,16 +178,20 @@ Proof.
 
   pose_correctness p256_coord_square_ok.
   pose_correctness p256_coord_mul_ok.
-  
+
+  pose_correctness p256_point_set_zero_ok.
   pose_correctness p256_point_iszero_ok.
   pose_correctness p256_point_double_ok.
 
   pose_correctness p256_point_add_nz_nz_neq_ok.
 
   pose_correctness p256_point_add_vartime_if_doubling_ok.
+  pose_correctness p256_point_add_constant_time_ok.
 
   pose_correctness p256_point_add_affine_nz_nz_neq_ok.
   pose_correctness p256_point_add_affinenz_conditional_vartime_if_doubling_ok.
+
+  pose_correctness p256_precompute_multiples_ok.
   trivial.
 Qed.
 
