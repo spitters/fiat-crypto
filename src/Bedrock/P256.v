@@ -1,5 +1,4 @@
 From Crypto.Bedrock.P256 Require Import Specs Platform Coord Jacobian JacobianAffine
-PrecomputedMultiples.
 
 Import Specs.NotationsCustomEntry Specs.coord Specs.point.
 
