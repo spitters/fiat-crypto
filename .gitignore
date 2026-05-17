@@ -260,3 +260,9 @@ fiat-html/version.js
 
 # Misc
 native_compute_profile_*.data
+
+# Claude Code session state — never commit
+.claude/
+
+# MCP cache files
+rocq_mcp_cache_*.v
