@@ -1,0 +1,13 @@
+(include_subdirs qualified)
+
+(env
+ (_
+  (coq
+   (flags -w -all -native-compiler ondemand))))
+
+(coq.theory
+ (name Crypto)
+ (package coq-fiat-crypto)
+ (mode native)
+ (modules (:standard \ Everything))
+ (theories Stdlib Ltac2 coqutil bedrock2 Rupicola Rewriter Coqprime Bignums))
